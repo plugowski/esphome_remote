@@ -13,8 +13,8 @@ esphome_remote/
 ├── README.md                                    # This file
 └── devices/
     └── oled_remote/
-        ├── oled_remote.yaml                     # Main OLED AC remote configuration
-        ├── oled_remote_battery.yaml             # Battery-powered variant
+        ├── oled_remote.yaml                     # Basic OLED AC remote
+        ├── oled_remote_battery.yaml             # Configuration for PCB v3.1 and newer with fixed voltage divider
         └── ac_entities.h                        # C++ header for AC entities
 ```
 
@@ -22,77 +22,28 @@ esphome_remote/
 
 ### Prerequisites
 
-- ESP32 development board (Lolin D32 or compatible)
-- ESPHome installed (`pip install esphome`)
+- ESP32 development board (Lolin V1.0.0)
 - Home Assistant instance with API access
-- OLED display (SSD1306/SH1106 128x64)
+- OLED display (SH1106 128x64)
 
 ### Setting Up a New Device
 
 1. **Copy the main configuration file** to your ESPHome device directory:
-   ```bash
-   cp devices/oled_remote/oled_remote.yaml /path/to/esphome/your_device_name.yaml
-   ```
-
-2. **Edit the substitutions section** at the top of the YAML file. You only need to change:
-   - `DEVICE_NAME`: Your unique device name (lowercase, use underscores)
-   - `FRIENDLY_NAME`: Human-readable device name
-   - `API_KEY`: Your Home Assistant API encryption key
-
-   Example:
-   ```yaml
-   substitutions:
-     BOARD: "esp32dev"                           # Leave unchanged for Lolin board
-     DEVICE_NAME: "bedroom-ac-remote"            # Change this
-     FRIENDLY_NAME: "Bedroom AC Remote"          # Change this
-     API_KEY: "your_api_encryption_key_here"     # Change this
-     PIN_WAKE: "0"                               # Leave unchanged for Lolin board
-     PIN_I2C_SDA: "27"                           # Leave unchanged for Lolin board
-     PIN_I2C_SCL: "25"                           # Leave unchanged for Lolin board
-     PIN_BTN_CONTRAST: "32"                      # Leave unchanged for Lolin board
-     PIN_BTN_SWITCH_AC: "14"                     # Leave unchanged for Lolin board
-     PIN_BTN_TOGGLE: "26"                        # Leave unchanged for Lolin board
-     PIN_BTN_FAN: "33"                           # Leave unchanged for Lolin board
-     PIN_BTN_MODE: "22"                          # Leave unchanged for Lolin board
-     PIN_BTN_TEMP_UP: "23"                       # Leave unchanged for Lolin board
-     PIN_BTN_TEMP_DOWN: "19"                     # Leave unchanged for Lolin board
-   ```
-
-3. **Configure WiFi credentials** in your ESPHome secrets:
+2. **Configure WiFi credentials** in your ESPHome secrets:
    - Create or edit your `secrets.yaml` file in your ESPHome directory
    - Add your WiFi credentials:
      ```yaml
      wifi_ssid: "YourWiFiName"
      wifi_password: "YourWiFiPassword"
      ```
-
-4. **Update AC entities** (if needed):
+3. **Update AC entities** (if needed):
    - Edit `ac_entities.h` to match your Home Assistant climate entities
    - The default configuration includes: Living Room, Office, and Bedroom AC units
-
-5. **Compile and upload** to your ESP32:
-   ```bash
-   esphome run your_device_name.yaml
-   ```
+4. **Compile and upload** to your ESP32
 
 ### Important Notes
 
-#### Pin Configuration for ESP32 Lolin Board
-
-If you're using the **ESP32 Lolin** or compatible board, **DO NOT change the pin configuration**. The pins are already optimized for this hardware:
-
-- **I2C pins** (SDA: GPIO27, SCL: GPIO25) - for OLED display
-- **Button pins** - pre-configured for the physical button layout
-- **Wake pin** (GPIO0) - for deep sleep functionality
-
-Only change the pins if you're using a different board or custom hardware layout.
-
 #### What to Customize
-
-**Must customize:**
-- `DEVICE_NAME` - Make it unique for each device
-- `FRIENDLY_NAME` - Descriptive name for Home Assistant
-- `API_KEY` - Your Home Assistant API encryption key
 
 **Optional customization:**
 - WiFi power settings (if signal issues occur)
@@ -107,22 +58,6 @@ Only change the pins if you're using a different board or custom hardware layout
 - I2C frequency and settings
 - Display model and configuration
 
-### Getting Your API Key
-
-To get your Home Assistant API encryption key:
-
-1. Generate a new key using ESPHome:
-   ```bash
-   esphome wizard temp.yaml
-   ```
-   Or manually generate one:
-   ```bash
-   python3 -c "import secrets; print(secrets.token_hex(32))"
-   ```
-
-2. Use this key in your `substitutions` section
-3. Add the device to Home Assistant using this same key
-
 ## Hardware Setup
 
 ### Recommended Components
@@ -130,18 +65,6 @@ To get your Home Assistant API encryption key:
 - **ESP32 Lolin** development board
 - **SH1106 128x64 OLED** display (I2C)
 - **Push buttons** (7 total for full functionality)
-- Optional: Battery for portable operation (see `oled_remote_battery.yaml`)
-
-### Button Functions
-
-1. **Wake/Power** (GPIO0) - Turn on/off the remote
-2. **Contrast** (GPIO32) - Adjust display brightness
-3. **Switch AC** (GPIO14) - Cycle between different AC units
-4. **Toggle** (GPIO26) - Turn AC on/off
-5. **Fan** (GPIO33) - Change fan speed
-6. **Mode** (GPIO22) - Switch AC mode (cool/fan/dry)
-7. **Temp Up** (GPIO23) - Increase temperature
-8. **Temp Down** (GPIO19) - Decrease temperature
 
 ## Features
 
@@ -186,5 +109,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For issues and questions:
 - Check the [ESPHome documentation](https://esphome.io/)
-- Review the [Home Assistant Climate integration](https://www.home-assistant.io/integrations/climate/)
+- [Full project details](https://tech.lugowski.dev/smart-oled-remote-for-home-assistant/)
+- 3D Printed case available on [MakerWorld](https://makerworld.com/en/models/1902607-home-assistant-esphome-remote-with-oled-display#profileId-2039332)
 - Open an issue in this repository

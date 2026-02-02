@@ -1,19 +1,26 @@
 substitutions:
-  BOARD: "esp32-c3-devkitm-1"
-  DEVICE_NAME: "ac-lolin"
-  FRIENDLY_NAME: "AC Lolin"
-  API_KEY: "your_key_from_home_assistant_api"
-  PIN_WAKE: "3"
-  PIN_ADC: "2"
-  PIN_I2C_SDA: "6"
-  PIN_I2C_SCL: "7"
-  PIN_BTN_CONTRAST: "4"
-  PIN_BTN_SWITCH_AC: "20"
-  PIN_BTN_TOGGLE: "8"
-  PIN_BTN_FAN: "5"
-  PIN_BTN_MODE: "9"
-  PIN_BTN_TEMP_UP: "21"
-  PIN_BTN_TEMP_DOWN: "10"
+  PIN_WAKE: "0"
+  PIN_I2C_SDA: "27"
+  PIN_I2C_SCL: "25"
+  PIN_BTN_CONTRAST: "5"
+  PIN_BTN_SWITCH_AC: "14"
+  PIN_BTN_TOGGLE: "26"
+  PIN_BTN_FAN: "33"
+  PIN_BTN_MODE: "22"
+  PIN_BTN_TEMP_UP: "23"
+  PIN_BTN_TEMP_UP_2: "17"
+  PIN_BTN_TEMP_DOWN: "19"
+  PIN_BTN_TEMP_DOWN_2: "18"
+  PIN_OLED_EN: "15"
+  PIN_BAT_ADC: "32"
+
+api:
+  reboot_timeout: 0s
+  encryption:
+    key: "<UPDATE_YOUR_KEY>"
+
+ota:
+  - platform: esphome
 
 font:
   - file: "fonts/arial_bold.ttf"
@@ -23,21 +30,21 @@ font:
   - file: "fonts/arial_bold.ttf"
     id: small
     size: 10
-    glyphs: [0123456789.ADEFGHILMNOTUWVRY, " "]
+    glyphs: [ADEFGHILMNOTUWVRY1234567890., " "]
   - file: "fonts/arial_bold.ttf"
     id: bigger
     size: 28
-    glyphs: [0123456789.ADEGHILMOTUWRY]
+    glyphs: [ADEGHILMOTUWRY0123456789]
   - file: "fonts/arial_bold.ttf"
     id: big
     size: 40
-    glyphs: [0123456789.ADEGHILMOTUWRY]
+    glyphs: [ADEGHILMOTUWRY0123456789]
   - file:
       type: gfonts
       family: Material+Symbols+Rounded
       weight: 400
     id: symbols_small
-    size: 18   
+    size: 18
     glyphs: [
       "\ueae6", # up
       "\uf887", # fan
@@ -50,7 +57,7 @@ font:
       family: Material+Symbols+Rounded
       weight: 400
     id: symbols
-    size: 24   
+    size: 24
     glyphs: [
       "\uf168", # fan
       "\ueb3b", # AC
@@ -64,7 +71,7 @@ font:
       family: Material+Symbols+Rounded
       weight: 700
     id: symbols_big
-    size: 36   
+    size: 36
     glyphs: [
       "\uf168", # fan
       "\ueb3b", # AC
@@ -74,52 +81,53 @@ font:
     ]
 
 esphome:
-  name: seeduino-ac
-  friendly_name: Seeduino AC
+  name: ac-remote-v31
+  friendly_name: AC Controller
   min_version: 2024.11.0
   name_add_mac_suffix: false
   on_boot:
+    - priority: 700
+      then:
+        - output.turn_on: oled_power
+        - delay: 10ms
+
+    - priority: 400
+      then:
+        - script.execute: update_battery
+
     - priority: 250
       then:
         - lambda: |-
             id(last_active) = millis() / 1000;
-    - priority: 600
-      then:
-        - delay: 3s
-        - component.update: adc_raw
   includes:
     - ac_entities.h
 
 esp32:
-  board: ${BOARD}
+  board: esp32dev
   framework:
     type: arduino
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  use_address: 10.10.10.56
   output_power: 10dB
   fast_connect: true
   power_save_mode: LIGHT
-
-api:
-  reboot_timeout: 0s
-  encryption:
-    key: "Tve7wHTAPAyEVS4FcLDtqcZfz66xhztkr2pR0pxe4lk="
-
-ota:
-  - platform: esphome
 
 logger:
 
 deep_sleep:
   id: go_sleep
-  sleep_duration: 4320min # 3 days intervals - just to update battery level
-  wakeup_pin: 
+  sleep_duration: 360min # update battery every 6h
+  wakeup_pin:
     number: ${PIN_WAKE}
     allow_other_uses: true
   wakeup_pin_mode: INVERT_WAKEUP
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power
 
 i2c:
   sda: ${PIN_I2C_SDA}
@@ -136,10 +144,6 @@ display:
     id: oled_display
 
 globals:
-  - id: battery_v
-    type: float
-    initial_value: '0'
-    restore_value: True
 
   - id: debounce_active
     type: bool
@@ -155,9 +159,17 @@ globals:
     restore_value: no
     initial_value: '0'
 
+  - id: last_battery_update
+    type: uint32_t
+    initial_value: '0'
+
   - id: updated_ui
     type: bool
     initial_value: 'true'
+
+  - id: is_booting
+    type: bool
+    initial_value: 'false'
 
   - id: selected_ac_index
     type: int
@@ -228,45 +240,63 @@ sensor:
         - script.execute: set_selections
 
   - platform: adc
-    id: adc_raw
-    pin: ${PIN_ADC}
+    pin: ${PIN_BAT_ADC}
+    id: battery_adc
     attenuation: 11db
     update_interval: never
-    internal: True
     filters:
       - multiply: 1.68
-    on_value:
-      then:
-        - component.update: battery_voltage
-        - component.update: battery_percentage
-  
+
   - platform: template
     id: battery_voltage
     name: "Battery Voltage"
-    device_class: voltage
-    entity_category: diagnostic
     unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
     accuracy_decimals: 2
+    update_interval: never
     lambda: |-
-      float v = id(adc_raw).state;
-      v = v - 0.14;
-      if (v >= 4.2) v = 4.2;
-      id(battery_v) = v;
-      return v;
+      if (!id(battery_adc).has_state()) {
+        return NAN;
+      }
+      return id(battery_adc).state;
+
 
   - platform: template
-    id: battery_percentage
+    id: battery_percent
     name: "Battery"
-    update_interval: never
     unit_of_measurement: "%"
-    device_class: battery
-    entity_category: diagnostic
     accuracy_decimals: 0
+    device_class: battery
+    state_class: measurement
+    update_interval: never
     lambda: |-
-      float v = id(battery_v);
-      if (v >= 4.2) return 100;
-      else if (v <= 3.0) return 0;
-      else return (v - 3.0) / (4.2 - 3.0) * 100.0;
+      if (!id(battery_adc).has_state()) {
+        return NAN;
+      }
+
+      float v = id(battery_adc).state;
+      static float v_avg = 0;
+
+      const float V_MIN = 3.30;
+      const float V_MAX = 4.20;
+      const float GAMMA = 2.2;
+
+      if (isnan(v) || v < 2.5 || v > 4.5) {
+        return NAN;
+      }
+
+      v_avg = (v_avg == 0) ? v : (v_avg * 0.8f + v * 0.2f);
+      v = v_avg;
+
+      if (v <= V_MIN) return 0;
+      if (v >= V_MAX) return 100;
+
+      float x = (v - V_MIN) / (V_MAX - V_MIN);
+      float pct = powf(x, GAMMA) * 100.0f;
+
+      return (int)roundf(pct);
+
 
 text_sensor:
   - platform: homeassistant
@@ -321,32 +351,32 @@ text_sensor:
         - script.execute: set_selections
 
 binary_sensor:
-  
+
   - platform: gpio
-    pin: 
+    pin:
       allow_other_uses: true
       number: ${PIN_WAKE}
-      mode: 
+      mode:
         input: True
         pullup: True
-    name: "Test"
+    name: "On/Off Remote"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - script.execute: turn_off
 
   - platform: gpio
-    pin: 
+    pin:
       number: ${PIN_BTN_CONTRAST}
-      mode: 
+      mode:
         input: True
         pullup: True
     name: "Contrast"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - lambda: |-
@@ -357,15 +387,15 @@ binary_sensor:
             id(oled_display).set_contrast(contrast_value);
 
   - platform: gpio
-    pin: 
+    pin:
       number: ${PIN_BTN_SWITCH_AC}
-      mode: 
+      mode:
         input: True
         pullup: True
     name: "Switch AC"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - script.execute: reset_idle_timer
@@ -377,11 +407,11 @@ binary_sensor:
   - platform: gpio
     pin:
       number: ${PIN_BTN_TOGGLE}
-      mode: 
+      mode:
         input: True
         pullup: True
     filters:
-      - invert: 
+      - invert:
     name: "AC Toggle Button"
     internal: True
     on_press:
@@ -395,30 +425,30 @@ binary_sensor:
             }
 
   - platform: gpio
-    pin: 
+    pin:
       number: ${PIN_BTN_FAN}
-      mode: 
+      mode:
         input: True
         pullup: True
     name: "Switch FAN Mode"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - script.execute: change_fan_speed
         - script.execute: reset_idle_timer
 
   - platform: gpio
-    pin: 
+    pin:
       number: ${PIN_BTN_MODE}
-      mode: 
+      mode:
         input: True
         pullup: True
     name: "Switch Mode"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - script.execute: reset_idle_timer
@@ -432,13 +462,13 @@ binary_sensor:
   - platform: gpio
     pin:
       number: ${PIN_BTN_TEMP_UP}
-      mode: 
+      mode:
         input: True
         pullup: True
     name: "Temp Up"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - script.execute: reset_idle_timer
@@ -449,15 +479,15 @@ binary_sensor:
         - script.execute: await
 
   - platform: gpio
-    pin: 
+    pin:
       number: ${PIN_BTN_TEMP_DOWN}
-      mode: 
+      mode:
         input: True
         pullup: True
     name: "Temp Down"
     internal: True
     filters:
-      - invert: 
+      - invert:
     on_press:
       then:
         - script.execute: reset_idle_timer
@@ -469,23 +499,6 @@ binary_sensor:
         - script.execute: await
 
 script:
-
-  - id: test_screen
-    then:
-      - lambda: |-
-          auto it = id(oled_display);
-          it->clear();
-          it->print(64, 50, id(small), COLOR_ON, display::TextAlign::CENTER, "BUBUBUBU");
-          it->display();
-
-  - id: boot_screen
-    then:
-      - lambda: |-
-          auto it = id(oled_display);
-          it->clear();
-          it->print(64, 24, id(symbols), COLOR_ON, display::TextAlign::CENTER, "\ue88b");
-          it->print(64, 50, id(small), COLOR_ON, display::TextAlign::CENTER, "LOADING");
-          it->display();
 
   - id: turn_off
     mode: single
@@ -501,17 +514,44 @@ script:
           it->clear();
           it->display();
       - delay: 500ms
-      - component.update: adc_raw
-      - delay: 500ms
+      - output.turn_off: oled_power
+      - delay: 5ms
       - deep_sleep.enter: go_sleep
 
+  - id: boot_screen
+    then:
+      - lambda: |-
+          auto it = id(oled_display);
+          it->clear();
+          it->print(64, 24, id(symbols), COLOR_ON, display::TextAlign::CENTER, "\ue88b");
+          it->print(64, 50, id(small), COLOR_ON, display::TextAlign::CENTER, "LOADING");
+          it->display();
+
+          id(is_booting) = true;
+
+  - id: update_battery
+    mode: single
+    then:
+      - logger.log:
+          level: DEBUG
+          format: "Updating battery state"
+      - component.update: battery_adc
+      - delay: 50ms
+      - lambda: |-
+          ESP_LOGD("battery", "ADC has state: %d value: %.3f",
+            id(battery_adc).has_state(),
+            id(battery_adc).has_state() ? id(battery_adc).state : -1.0);
+      - component.update: battery_voltage
+      - component.update: battery_percent
+      - lambda: |-
+          id(last_battery_update) = millis();
 
   - id: update_display
     then:
       - if:
           condition:
               lambda: 'return id(updated_ui) == true;'
-          then:  
+          then:
             - logger.log:
                 format: "Screen Reloaded"
                 level: DEBUG
@@ -541,9 +581,6 @@ script:
                   it->print(64, 22, id(big), COLOR_ON, display::TextAlign::CENTER, std::to_string(id(selected_temp)).c_str());
                   it->print(85, 4, id(basic), "C");
                   
-                  // eco sign
-                  // it->print(87, 12, id(symbols), "\uf8be");
-
                   if (fan_mode == "high") {
                     it->filled_rectangle(110, 8, 20, 7);
                   }
@@ -585,8 +622,6 @@ script:
                     it->rectangle(42, 51, 44, 21);
                   } else {
                     it->rectangle(0, 38, 128, 1);
-                    // selected AC
-                    // it->print(64, 45, id(basic), COLOR_ON, display::TextAlign::CENTER, upper_selected_ac.c_str());
                     it->print(64, 46, id(basic), COLOR_ON, display::TextAlign::CENTER, upper_selected_ac.c_str());
 
                     // draw button guides on UI
@@ -601,21 +636,12 @@ script:
                   if (mode == "cool" or mode == "fan_only") {
                     it->print(107, 59, id(small), COLOR_ON, display::TextAlign::CENTER, "FAN");
                   }
-
-                  it->printf(64, 59, id(small), COLOR_ON, display::TextAlign::CENTER, "%.2f V", id(battery_voltage).state);
-                  
-                  // icons
-                  // it->print(18, 58, id(symbols_small), COLOR_ON, display::TextAlign::CENTER, "\ueae6");
-                  // it->print(64, 58, id(symbols_small), COLOR_ON, display::TextAlign::CENTER, "\uea35");
-                  // if (mode == "cool" or mode == "fan_only") {
-                  //   it->print(118, 57, id(symbols_small), COLOR_ON, display::TextAlign::CENTER, "\uf887");
-                  // }
                 }
 
-                // it->display();
+                it->display();
                 
                 id(updated_ui) = false;
-  
+
   - id: set_current_states
     mode: restart
     then:
@@ -646,28 +672,48 @@ script:
     then:
       lambda: |-
         if (id(current_ac_mode) != "unknown" and id(current_ac_mode) != "") {
-          id(selected_ac_mode) = id(current_ac_mode);
-          for (int i = 0; i < AC_MODES_COUNT; i++) {
-            if (strcmp(AC_MODES[i], id(selected_ac_mode).c_str()) == 0) {
-              id(selected_ac_mode_index) = i;
-              break;
-            }
-          }
-          id(selected_temp) = id(current_temp);
-          id(selected_fan_mode) = id(current_fan_mode);
 
-          std::vector<std::string> fan_speeds;
-          if (id(selected_ac_index) == 0) {
-            fan_speeds = {"low", "high"};
-          } else {
-            fan_speeds = {"auto", "low", "medium", "high"};
+          bool update = false;
+          if (id(selected_ac_mode) != id(current_ac_mode)) {
+            id(selected_ac_mode) = id(current_ac_mode);
+            for (int i = 0; i < AC_MODES_COUNT; i++) {
+              if (strcmp(AC_MODES[i], id(selected_ac_mode).c_str()) == 0) {
+                id(selected_ac_mode_index) = i;
+                break;
+              }
+            }
+
+            update = true;
+          }
+          
+
+          if (id(selected_temp) != id(current_temp)) {
+            id(selected_temp) = id(current_temp);
+            update = true;
+          }
+          
+          if (id(selected_fan_mode) != id(current_fan_mode)) {
+            id(selected_fan_mode) = id(current_fan_mode);
+            update = true;
           }
 
-          for (int i = 0; i < AC_MODES_COUNT; i++) {
-            if (strcmp(AC_MODES[i], id(current_fan_mode).c_str()) == 0) {
-              id(selected_fan_index) = i;
-              break;
+
+          if (id(selected_fan_mode) != id(current_fan_mode)) {
+            std::vector<std::string> fan_speeds;
+            if (id(selected_ac_index) == 0) {
+              fan_speeds = {"low", "high"};
+            } else {
+              fan_speeds = {"auto", "low", "medium", "high"};
             }
+
+
+            for (int i = 0; i < AC_MODES_COUNT; i++) {
+              if (strcmp(AC_MODES[i], id(current_fan_mode).c_str()) == 0) {
+                id(selected_fan_index) = i;
+                break;
+              }
+            }
+            update = true;
           }
 
           id(updated_ui) = true;
@@ -760,17 +806,17 @@ script:
       - if:
           condition:
               lambda: 'return id(debounce_active) == false and id(selected_ac_mode) != id(current_ac_mode);'
-          then:  
+          then:
             - script.execute: send_mode_update
       - if:
           condition:
               lambda: 'return id(debounce_active) == false and id(selected_fan_mode) != id(current_fan_mode);'
-          then:  
+          then:
             - script.execute: send_fan_update
       - if:
           condition:
               lambda: 'return id(debounce_active) == false and id(selected_temp) != id(current_temp);'
-          then:  
+          then:
             - script.execute: send_temp_update
       - script.execute: set_current_states
       - script.execute: update_display
@@ -790,13 +836,12 @@ script:
       - lambda: |-
           id(debounce_active) = false;
 
-
 interval:
   - interval: 500ms
     then:
       - if:
           condition:
-              lambda: 'return (millis() / 1000) - id(last_active) >= 120;' # 2 minutes todo: change
+              lambda: 'return (millis() / 1000) - id(last_active) >= 120;' # 2 minutes
           then:
             - script.execute: turn_off
           else:
