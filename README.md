@@ -73,6 +73,20 @@ Files marked ★ are the ones you edit to match your Home Assistant setup.
 
 ---
 
+## Button layouts
+
+<img src="devices/multi_function_remote/screenshots/button_layouts.jpg" width="580">
+
+| | v1 (left) | v2 (right) |
+|---|---|---|
+| **Buttons** | AC, Power, +, − | ↑ ↓ ← → OK ⏸ |
+| **Use case** | AC-only | Multi-mode (AC, lights, covers, automations) |
+| **Layout file** | `layouts/layout_v1.yaml` | `layouts/layout_v2.yaml` _(default)_ |
+
+Swap the `layout:` package line in `remote.yaml` to match your hardware revision.
+
+---
+
 ## Getting started
 
 ### 1. WiFi credentials
