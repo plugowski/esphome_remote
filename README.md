@@ -12,8 +12,8 @@ ESP32-based wireless remote with a 128×64 OLED display. Controls AC units, ligh
 
 | AC | Lights | Covers | Automations | Settings |
 |:---:|:---:|:---:|:---:|:---:|
-| ![Menu AC](devices/multi_function_remote/screenshots/menu_ac.png) | ![Menu Lights](devices/multi_function_remote/screenshots/menu_lights.png) | ![Menu Covers](devices/multi_function_remote/screenshots/menu_covers.png) | ![Menu Automations](devices/multi_function_remote/screenshots/menu_automations.png) | ![Menu Settings](devices/multi_function_remote/screenshots/manu_settings.png) |
-| ![AC](devices/multi_function_remote/screenshots/screen_ac.png) | ![Lights](devices/multi_function_remote/screenshots/screen_light.png) | ![Covers](devices/multi_function_remote/screenshots/screen_covers.png) | ![Automations](devices/multi_function_remote/screenshots/screen_automations.png) | ![Settings](devices/multi_function_remote/screenshots/screen_settings.png) |
+| <img src="devices/multi_function_remote/screenshots/menu_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_lights.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/manu_settings.png" width="160"> |
+| <img src="devices/multi_function_remote/screenshots/screen_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_light.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_settings.png" width="160"> |
 
 ---
 
