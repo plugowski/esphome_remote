@@ -1,0 +1,73 @@
+# ── menu.yaml ────────────────────────────────────────────────────────────────
+# Carousel mode-selector overlay.
+# All logic lives in menu_controller.h / menu_entities.h.
+
+esphome:
+  includes:
+    - src/menu_controller.h
+
+font:
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: menu_icon_big
+    size: 32
+    glyphs:
+      - "\ueb3b"  # ac_unit
+      - "\ue0f0"  # lightbulb
+      - "\uec12"  # curtain
+      - "\uea0b"  # bolt  (automations)
+      - "\ue88b"  # hourglass_empty  (boot screen loading icon)
+      - "\ue8b8"  # settings  (cog)
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: menu_icon_small
+    size: 18
+    glyphs:
+      - "\ueb3b"  # ac_unit
+      - "\ue0f0"  # lightbulb
+      - "\uec12"  # curtain
+      - "\uea0b"  # bolt  (automations)
+      - "\ue88b"  # hourglass_empty  (boot screen)
+      - "\ue8b8"  # settings  (cog)
+      - "\ue5d8"  # open_in_full      (cover: open)
+      - "\ue5d1"  # close_fullscreen  (cover: closed)
+      - "\ue5ce"  # unfold_more       (cover: opening)
+      - "\ue5cc"  # unfold_less       (cover: closing)
+      - "\ue034"  # pause             (cover: stopped)
+
+script:
+
+  - id: menu_open
+    then:
+      - lambda: 'MenuController::open(id(menu_index), id(app_mode), id(menu_active));'
+      - script.execute: menu_draw
+
+  - id: menu_confirm
+    then:
+      - lambda: 'MenuController::confirm(id(app_mode), id(menu_index), id(menu_active), id(updated_ui));'
+
+  - id: menu_prev
+    then:
+      - lambda: 'MenuController::prev(id(menu_index));'
+      - script.execute: menu_draw
+
+  - id: menu_next
+    then:
+      - lambda: 'MenuController::next(id(menu_index));'
+      - script.execute: menu_draw
+
+  - id: menu_cancel
+    then:
+      - lambda: 'id(menu_active) = false; id(updated_ui) = true;'
+
+  - id: menu_draw
+    then:
+      - lambda: >-
+          MenuController::draw(id(oled_display),
+            id(menu_icon_big), id(menu_icon_small),
+            id(font_base), id(font_small), id(menu_index));

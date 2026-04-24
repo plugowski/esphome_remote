@@ -1,0 +1,162 @@
+# ── buttons.yaml ─────────────────────────────────────────────────────────────
+# Abstract button dispatcher.
+#
+# Translates semantic btn_* scripts into per-mode controller scripts based on
+# the current app_mode.  Physical GPIO → btn_* wiring lives in the active
+# layout file (packages/layouts/layout_*.yaml).
+#
+# To change the physical button layout, swap the layout package in remote.yaml:
+#   layout: !include packages/layouts/layout_v2.yaml   ← new 6-button pad
+#   layout: !include packages/layouts/layout_v1.yaml   ← original 7-button board
+#
+# Dispatch table:
+#
+#   btn_*      │ menu  │ AC             │ Lights         │ Covers          │ Automations
+#   ───────────┼───────┼────────────────┼────────────────┼─────────────────┼─────────────────
+#   btn_left   │ prev  │ prev unit      │ brightness –   │ prev cover      │ L slot
+#   btn_right  │ next  │ next unit      │ brightness +   │ next cover      │ R slot
+#   btn_ok     │ confm │ cycle HVAC     │ toggle on/off  │ open ↔ close    │ trigger selected
+#   btn_up     │  —    │ temp +         │ scroll up ▲    │ position +10 %  │ scroll up ▲
+#   btn_down   │  —    │ temp –         │ scroll down ▼  │ position –10 %  │ scroll down ▼
+#   btn_stop   │ cancl │ cycle fan      │  —             │ stop            │  —
+#   btn_menu_open │ — │  —             │  —             │  —              │  —  (opens menu)
+
+script:
+
+  # ── btn_left ──────────────────────────────────────────────────────────────
+  # Menu: prev  |  AC: prev unit  |  Lights: brightness ↓
+  # Covers: prev cover  |  Automations: trigger L slot
+
+  - id: btn_left
+    then:
+      - if:
+          condition: { lambda: 'return id(menu_active);' }
+          then: [ script.execute: menu_prev ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          then: [ script.execute: ac_btn_left ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          then: [ script.execute: lights_btn_brightness_down ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          then: [ script.execute: covers_btn_left ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          then: [ script.execute: automations_btn_menu_l ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+          then: [ script.execute: settings_btn_left ]
+
+  # ── btn_right ─────────────────────────────────────────────────────────────
+  # Menu: next  |  AC: next unit  |  Lights: brightness ↑
+  # Covers: next cover  |  Automations: trigger R slot
+
+  - id: btn_right
+    then:
+      - if:
+          condition: { lambda: 'return id(menu_active);' }
+          then: [ script.execute: menu_next ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          then: [ script.execute: ac_btn_right ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          then: [ script.execute: lights_btn_brightness_up ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          then: [ script.execute: covers_btn_right ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          then: [ script.execute: automations_btn_menu_r ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+          then: [ script.execute: settings_btn_right ]
+
+  # ── btn_ok ────────────────────────────────────────────────────────────────
+  # Menu: confirm  |  AC: cycle HVAC mode  |  Lights: toggle on/off
+  # Covers: toggle open ↔ close  |  Automations: trigger selected
+
+  - id: btn_ok
+    then:
+      - if:
+          condition: { lambda: 'return id(menu_active);' }
+          then: [ script.execute: menu_confirm ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          then: [ script.execute: ac_btn_mode ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          then: [ script.execute: lights_btn_toggle ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          then: [ script.execute: covers_btn_ok ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          then: [ script.execute: automations_btn_trigger ]
+
+  # ── btn_up ────────────────────────────────────────────────────────────────
+  # Menu: —  |  AC: temp +  |  Lights: scroll up ▲
+  # Covers: position +10 %  |  Automations: scroll up ▲
+
+  - id: btn_up
+    then:
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          then: [ script.execute: ac_btn_temp_up ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          then: [ script.execute: lights_btn_prev ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          then: [ script.execute: covers_btn_pos_up ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          then: [ script.execute: automations_btn_prev ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+          then: [ script.execute: settings_btn_up ]
+
+  # ── btn_down ──────────────────────────────────────────────────────────────
+  # Menu: —  |  AC: temp –  |  Lights: scroll down ▼
+  # Covers: position –10 %  |  Automations: scroll down ▼
+
+  - id: btn_down
+    then:
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          then: [ script.execute: ac_btn_temp_down ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          then: [ script.execute: lights_btn_next ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          then: [ script.execute: covers_btn_pos_down ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          then: [ script.execute: automations_btn_next ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+          then: [ script.execute: settings_btn_down ]
+
+  # ── btn_stop ──────────────────────────────────────────────────────────────
+  # Menu: cancel (close without confirming)  |  AC: toggle power on/off
+  # Lights: —  |  Covers: stop  |  Automations: —
+
+  - id: btn_stop
+    then:
+      - if:
+          condition: { lambda: 'return id(menu_active);' }
+          then: [ script.execute: menu_cancel ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          then: [ script.execute: ac_btn_power ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          then: [ script.execute: covers_btn_stop ]
+
+  # ── btn_menu_open ─────────────────────────────────────────────────────────
+  # Opens the controller selection menu.  Mapped to long press in layout_v2.
+
+  - id: btn_menu_open
+    then: [ script.execute: menu_open ]

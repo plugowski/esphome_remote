@@ -1,0 +1,167 @@
+# ── mode_lights.yaml ─────────────────────────────────────────────────────────
+# Lights mode — scrollable list with on/off toggle and brightness control.
+# Entity configuration lives in src/light_entities.h.
+# Display + interaction logic lives in src/lights_controller.h.
+#
+# Button entry points (called from remote.yaml):
+#   lights_btn_prev            → scroll up   (pin22)
+#   lights_btn_next            → scroll down (pin33 / pin14)
+#   lights_btn_toggle          → on/off      (pin26)
+#   lights_btn_brightness_up   → +10 %       (pin23)
+#   lights_btn_brightness_down → -10 %       (pin19)
+# Main update loop: lights_update
+
+esphome:
+  includes:
+    - src/light_entities.h      # must come before lights_controller.h
+    - src/lights_controller.h
+
+# ── globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: selected_light_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+# ── HA sensors ────────────────────────────────────────────────────────────────
+# One text_sensor per light for on/off state.
+# One sensor per dimmable light for brightness (HA sends 0-255; converted to 0-100 %).
+
+text_sensor:
+  - platform: homeassistant
+    id: sofa_light
+    entity_id: light.sofa
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(0, x, NAN, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: table_light
+    entity_id: light.table
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(1, x, NAN, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: desk_light
+    entity_id: light.desk
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(2, x, NAN, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: workshop_light
+    entity_id: light.workshop
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(3, x, NAN, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: bed_lights_light
+    entity_id: light.bed_lights
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(4, x, NAN, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: printers_light
+    entity_id: light.printers
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(5, x, NAN, id(updated_ui));'
+        - script.execute: lights_draw
+
+sensor:
+  - platform: homeassistant
+    id: sofa_brightness
+    entity_id: light.sofa
+    attribute: brightness
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(0, id(sofa_light).state, x * 100.0f / 255.0f, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: desk_brightness
+    entity_id: light.desk
+    attribute: brightness
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(2, id(desk_light).state, x * 100.0f / 255.0f, id(updated_ui));'
+        - script.execute: lights_draw
+
+  - platform: homeassistant
+    id: bed_lights_brightness
+    entity_id: light.bed_lights
+    attribute: brightness
+    on_value:
+      then:
+        - lambda: 'LightsController::syncLight(4, id(bed_lights_light).state, x * 100.0f / 255.0f, id(updated_ui));'
+        - script.execute: lights_draw
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  - id: lights_btn_prev
+    then:
+      - lambda: 'LightsController::prevLight(id(selected_light_index)); id(updated_ui) = true;'
+      - script.execute: lights_draw
+
+  - id: lights_btn_next
+    then:
+      - lambda: 'LightsController::nextLight(id(selected_light_index)); id(updated_ui) = true;'
+      - script.execute: lights_draw
+
+  - id: lights_btn_toggle
+    then:
+      - lambda: 'LightsController::toggleLight(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_toggle
+      - script.execute: lights_draw
+
+  - id: lights_btn_brightness_up
+    then:
+      - lambda: 'LightsController::brightnessUp(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_brightness
+      - script.execute: lights_draw
+
+  - id: lights_btn_brightness_down
+    then:
+      - lambda: 'LightsController::brightnessDown(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_brightness
+      - script.execute: lights_draw
+
+  # ── HA service calls ──────────────────────────────────────────────────────
+
+  - id: lights_do_toggle
+    mode: queued
+    then:
+      - homeassistant.service:
+          service: light.toggle
+          data:
+            entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
+
+  - id: lights_do_brightness
+    mode: restart
+    then:
+      - delay: 300ms    # debounce — coalesce rapid presses before sending
+      - homeassistant.service:
+          service: light.turn_on
+          data:
+            entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
+            brightness_pct: !lambda 'return LightsController::getBrightness(id(selected_light_index));'
+
+  # ── display ───────────────────────────────────────────────────────────────
+
+  - id: lights_update
+    then: [ script.execute: lights_draw ]
+
+  - id: lights_draw
+    then:
+      - lambda: >-
+          LightsController::draw(id(oled_display), id(font_small),
+                                 id(selected_light_index), id(updated_ui));

@@ -1,0 +1,117 @@
+# ── mode_settings.yaml ───────────────────────────────────────────────────────
+# Settings mode — contrast adjustment, WiFi SSID/IP info, battery level.
+# Display + interaction logic lives in src/settings_controller.h.
+#
+# Button entry points (called via buttons.yaml / layout files):
+#   settings_btn_up    → previous setting row  (↑ / pin22)
+#   settings_btn_down  → next setting row      (↓ / pin33)
+#   settings_btn_left  → contrast −            (← / pin14)
+#   settings_btn_right → contrast +            (→ / pin26)
+# Main update loop: settings_update
+#
+# Battery sensor: reads raw ADC on GPIO34 through a 1:2 voltage divider.
+# Adjust PIN_BATTERY_ADC or replace with a homeassistant sensor as needed.
+
+esphome:
+  includes:
+    - src/settings_controller.h
+
+# ── WiFi info sensors ─────────────────────────────────────────────────────────
+text_sensor:
+  - platform: wifi_info
+    ssid:
+      id: wifi_ssid_sensor
+      name: "WiFi SSID"
+      internal: true
+      on_value:
+        then: [ script.execute: settings_draw ]
+    ip_address:
+      id: wifi_ip_sensor
+      name: "WiFi IP"
+      internal: true
+      on_value:
+        then: [ script.execute: settings_draw ]
+
+# ── Battery sensor ────────────────────────────────────────────────────────────
+# Assumes a 100 kΩ / 100 kΩ voltage divider: Vbatt → [100k] → GPIO34 → [100k] → GND
+# Multiply by 2 to recover full voltage; LiPo range 3.2 V (0 %) → 4.2 V (100 %).
+# Replace this block with a homeassistant sensor if you prefer to pull from HA.
+sensor:
+  - platform: adc
+    pin: GPIO34
+    id: battery_raw
+    name: "Battery"
+    internal: true
+    attenuation: 11db
+    update_interval: 60s
+    filters:
+      - multiply: 2.0
+      - lambda: |-
+          float pct = (x - 3.2f) / 1.0f * 100.0f;
+          return (pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct;
+    on_value:
+      then:
+        - lambda: 'id(battery_pct) = static_cast<int>(x); id(updated_ui) = true;'
+        - script.execute: settings_draw
+
+# ── globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: selected_setting_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: contrast_level      # 1–10 (maps to 0.1–1.0)
+    type: int
+    initial_value: '5'      # matches contrast: 0.5 in display config
+    restore_value: true
+
+  - id: battery_pct         # 0–100, or -1 when not yet read
+    type: int
+    initial_value: '-1'
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  - id: settings_btn_up
+    then:
+      - lambda: 'SettingsController::prevSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - script.execute: settings_draw
+
+  - id: settings_btn_down
+    then:
+      - lambda: 'SettingsController::nextSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - script.execute: settings_draw
+
+  - id: settings_btn_left
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_CONTRAST;' }
+          then:
+            - lambda: 'SettingsController::contrastDown(id(contrast_level), id(updated_ui));'
+            - script.execute: settings_apply_contrast
+      - script.execute: settings_draw
+
+  - id: settings_btn_right
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_CONTRAST;' }
+          then:
+            - lambda: 'SettingsController::contrastUp(id(contrast_level), id(updated_ui));'
+            - script.execute: settings_apply_contrast
+      - script.execute: settings_draw
+
+  - id: settings_apply_contrast
+    then:
+      - lambda: 'id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));'
+
+  - id: settings_update
+    then: [ script.execute: settings_draw ]
+
+  - id: settings_draw
+    then:
+      - lambda: >-
+          SettingsController::draw(id(oled_display), id(font_small),
+            id(selected_setting_index), id(contrast_level),
+            id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
+            id(battery_pct), id(updated_ui));

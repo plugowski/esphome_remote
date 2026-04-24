@@ -2,6 +2,8 @@ substitutions:
   PIN_WAKE: "0"
   PIN_I2C_SDA: "27"
   PIN_I2C_SCL: "25"
+  PIN_OLED_EN: "15"
+  PIN_BAT_ADC: "32"
   PIN_BTN_CONTRAST: "5"
   PIN_BTN_SWITCH_AC: "14"
   PIN_BTN_TOGGLE: "26"
@@ -11,8 +13,6 @@ substitutions:
   PIN_BTN_TEMP_UP_2: "17"
   PIN_BTN_TEMP_DOWN: "19"
   PIN_BTN_TEMP_DOWN_2: "18"
-  PIN_OLED_EN: "15"
-  PIN_BAT_ADC: "32"
 
 api:
   reboot_timeout: 0s
@@ -101,6 +101,7 @@ esphome:
             id(last_active) = millis() / 1000;
   includes:
     - ac_entities.h
+    - display_utils.h
 
 esp32:
   board: esp32dev
@@ -261,7 +262,6 @@ sensor:
       }
       return id(battery_adc).state;
 
-
   - platform: template
     id: battery_percent
     name: "Battery"
@@ -297,7 +297,6 @@ sensor:
 
       return (int)roundf(pct);
 
-
 text_sensor:
   - platform: homeassistant
     id: living_room_ac_mode
@@ -324,7 +323,7 @@ text_sensor:
         - script.execute: set_selections
 
   - platform: homeassistant
-    id: living_room_fan_mode
+    id: living_room_ac_fan_mode
     entity_id: climate.living_room_ac
     attribute: fan_mode
     on_value:
@@ -333,7 +332,7 @@ text_sensor:
         - script.execute: set_selections
 
   - platform: homeassistant
-    id: office_fan_mode
+    id: office_ac_fan_mode
     entity_id: climate.office_ac
     attribute: fan_mode
     on_value:
@@ -342,7 +341,7 @@ text_sensor:
         - script.execute: set_selections
 
   - platform: homeassistant
-    id: bedroom_fan_mode
+    id: bedroom_ac_fan_mode
     entity_id: climate.bedroom_ac
     attribute: fan_mode
     on_value:
@@ -453,8 +452,9 @@ binary_sensor:
       then:
         - script.execute: reset_idle_timer
         - lambda: |-
+            int ac_idx = id(selected_ac_index);
             id(selected_ac_mode_index)++;
-            if (id(selected_ac_mode_index) >= AC_MODES_COUNT) {
+            if (id(selected_ac_mode_index) >= AC_LIST[ac_idx].modes_count) {
               id(selected_ac_mode_index) = 0;
             }
         - script.execute: update_selected_mode
@@ -573,14 +573,14 @@ script:
 
 
                 } else if (mode == "cool") {
-                  
+
                   // mode icon
                   it->print(5, 8, id(symbols), "\ueb3b");
 
                   // temperature
                   it->print(64, 22, id(big), COLOR_ON, display::TextAlign::CENTER, std::to_string(id(selected_temp)).c_str());
                   it->print(85, 4, id(basic), "C");
-                  
+
                   if (fan_mode == "high") {
                     it->filled_rectangle(110, 8, 20, 7);
                   }
@@ -598,7 +598,7 @@ script:
                 } else if (mode == "fan_only") {
 
                   it->print(5, 8, id(symbols), "\uf168");
-                  
+
                   auto p_fan_mode = fan_mode;
                   if (p_fan_mode == "medium") {
                     p_fan_mode = "mid";
@@ -615,31 +615,21 @@ script:
                 }
 
                 if (mode != "off") {
-                  
+
                   if (fan_mode == "auto") {
                     it->filled_rectangle(0, 38, 128, 14, COLOR_ON);
                     it->print(64, 45, id(basic), COLOR_OFF, display::TextAlign::CENTER, upper_selected_ac.c_str());
-                    it->rectangle(42, 51, 44, 21);
                   } else {
                     it->rectangle(0, 38, 128, 1);
                     it->print(64, 46, id(basic), COLOR_ON, display::TextAlign::CENTER, upper_selected_ac.c_str());
-
-                    // draw button guides on UI
-                    it->rectangle(0, 53, 128, 1);
-                    it->rectangle(42, 53, 44, 19);
                   }
-                  
-                  
 
-                  it->print(21, 59, id(small), COLOR_ON, display::TextAlign::CENTER, "MODE");
-                  
-                  if (mode == "cool" or mode == "fan_only") {
-                    it->print(107, 59, id(small), COLOR_ON, display::TextAlign::CENTER, "FAN");
-                  }
+                  bool show_fan = (mode == "cool" || mode == "fan_only");
+                  draw_bottom_menu(it, id(small), "MODE", "MENU", show_fan ? "FAN" : nullptr);
                 }
 
                 it->display();
-                
+
                 id(updated_ui) = false;
 
   - id: set_current_states
@@ -650,15 +640,15 @@ script:
         if (idx == 0) {
           id(current_temp) = (int)id(living_room_ac_temp).state;
           id(current_ac_mode) = id(living_room_ac_mode).state;
-          id(current_fan_mode) = id(living_room_fan_mode).state;
+          id(current_fan_mode) = id(living_room_ac_fan_mode).state;
         } else if (idx == 1) {
           id(current_temp) = (int)id(office_ac_temp).state;
           id(current_ac_mode) = id(office_ac_mode).state;
-          id(current_fan_mode) = id(office_fan_mode).state;
+          id(current_fan_mode) = id(office_ac_fan_mode).state;
         } else if (idx == 2) {
           id(current_temp) = (int)id(bedroom_ac_temp).state;
           id(current_ac_mode) = id(bedroom_ac_mode).state;
-          id(current_fan_mode) = id(bedroom_fan_mode).state;
+          id(current_fan_mode) = id(bedroom_ac_fan_mode).state;
         }
 
         if (id(current_ac_mode) == "") {
@@ -673,11 +663,12 @@ script:
       lambda: |-
         if (id(current_ac_mode) != "unknown" and id(current_ac_mode) != "") {
 
+          int ac_idx = id(selected_ac_index);
           bool update = false;
           if (id(selected_ac_mode) != id(current_ac_mode)) {
             id(selected_ac_mode) = id(current_ac_mode);
-            for (int i = 0; i < AC_MODES_COUNT; i++) {
-              if (strcmp(AC_MODES[i], id(selected_ac_mode).c_str()) == 0) {
+            for (int i = 0; i < AC_LIST[ac_idx].modes_count; i++) {
+              if (strcmp(AC_LIST[ac_idx].modes[i], id(selected_ac_mode).c_str()) == 0) {
                 id(selected_ac_mode_index) = i;
                 break;
               }
@@ -685,13 +676,13 @@ script:
 
             update = true;
           }
-          
+
 
           if (id(selected_temp) != id(current_temp)) {
             id(selected_temp) = id(current_temp);
             update = true;
           }
-          
+
           if (id(selected_fan_mode) != id(current_fan_mode)) {
             id(selected_fan_mode) = id(current_fan_mode);
             update = true;
@@ -702,13 +693,14 @@ script:
             std::vector<std::string> fan_speeds;
             if (id(selected_ac_index) == 0) {
               fan_speeds = {"low", "high"};
-            } else {
+            } else if (id(selected_ac_index) == 1) {
+              fan_speeds = {"auto", "low", "medium", "high"};
+            } else if (id(selected_ac_index) == 2) {
               fan_speeds = {"auto", "low", "medium", "high"};
             }
 
-
-            for (int i = 0; i < AC_MODES_COUNT; i++) {
-              if (strcmp(AC_MODES[i], id(current_fan_mode).c_str()) == 0) {
+            for (int i = 0; i < (int)fan_speeds.size(); i++) {
+              if (fan_speeds[i] == id(current_fan_mode)) {
                 id(selected_fan_index) = i;
                 break;
               }
@@ -727,6 +719,26 @@ script:
             id(selected_ac) = AC_LIST[idx].entity_id;
             id(selected_ac_name) = AC_LIST[idx].name;
           }
+
+          // If the current mode is not available on the new AC, fall back to cool
+          bool mode_found = false;
+          for (int i = 0; i < AC_LIST[idx].modes_count; i++) {
+            if (strcmp(AC_LIST[idx].modes[i], id(selected_ac_mode).c_str()) == 0) {
+              id(selected_ac_mode_index) = i;
+              mode_found = true;
+              break;
+            }
+          }
+          if (!mode_found) {
+            id(selected_ac_mode) = "cool";
+            id(selected_ac_mode_index) = 0;
+            for (int i = 0; i < AC_LIST[idx].modes_count; i++) {
+              if (strcmp(AC_LIST[idx].modes[i], "cool") == 0) {
+                id(selected_ac_mode_index) = i;
+                break;
+              }
+            }
+          }
       - script.execute: set_current_states
       - script.execute: set_selections
       - script.execute: update_display
@@ -734,9 +746,10 @@ script:
   - id: update_selected_mode
     then:
       - lambda: |-
+          int ac_idx = id(selected_ac_index);
           int idx = id(selected_ac_mode_index);
-          if (idx >= 0 && idx < AC_MODES_COUNT) {
-            id(selected_ac_mode) = AC_MODES[idx];
+          if (idx >= 0 && idx < AC_LIST[ac_idx].modes_count) {
+            id(selected_ac_mode) = AC_LIST[ac_idx].modes[idx];
           }
           id(updated_ui) = true;
       - script.execute: await
@@ -748,12 +761,14 @@ script:
           std::vector<std::string> fan_speeds;
           if (id(selected_ac_index) == 0) {
             fan_speeds = {"low", "high"};
-          } else {
+          } else if (id(selected_ac_index) == 1) {
+            fan_speeds = {"auto", "low", "medium", "high"};
+          } else if (id(selected_ac_index) == 2) {
             fan_speeds = {"auto", "low", "medium", "high"};
           }
 
           id(selected_fan_index)++;
-          if (id(selected_fan_index) >= fan_speeds.size()) {
+          if (id(selected_fan_index) >= (int)fan_speeds.size()) {
             id(selected_fan_index) = 0;
           }
 

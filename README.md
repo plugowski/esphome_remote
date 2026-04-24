@@ -1,114 +1,58 @@
-# ESPHome Remote Configuration
+# ESPHome Remote
 
-This repository contains ESPHome YAML configuration files for remote devices and sensors, specifically designed for AC (Air Conditioning) control using ESP32 boards with OLED displays.
+ESP32-based wireless remote with a 128×64 OLED display, controlled via ESPHome and Home Assistant. Supports AC units, lights, covers, automations, and display settings — all navigable from a physical button pad.
 
-## Overview
+- Full project write-up: [https://tech.lugowski.dev/guides/smart-oled-remote/](https://tech.lugowski.dev/guides/smart-oled-remote/)
+- 3D-printed case: [MakerWorld](https://makerworld.com/en/models/1902607-home-assistant-esphome-remote-with-oled-display#profileId-2039332)
+- ESPHome docs: [esphome.io](https://esphome.io/)
 
-ESPHome is a system to control your ESP8266/ESP32 by simple yet powerful configuration files and control them remotely through Home Assistant. This repository serves as a centralized location for managing ESPHome device configurations for AC remote control devices.
+---
 
-## Repository Structure
+## Repository structure
 
 ```
 esphome_remote/
-├── README.md                                    # This file
+├── README.md                   ← this file
+├── secrets.yaml                ← shared WiFi credentials
 └── devices/
-    └── oled_remote/
-        ├── oled_remote.yaml                     # Basic OLED AC remote
-        ├── oled_remote_battery.yaml             # Configuration for PCB v3.1 and newer with fixed voltage divider
-        └── ac_entities.h                        # C++ header for AC entities
+    ├── multi_function_remote/  ← current device (v2 hardware, 6-button pad)
+    │   ├── README.md           ← setup and configuration guide
+    │   └── …
+    └── oled_remote/            ← legacy device (v1 hardware, original board)
+        └── …
 ```
 
-## Quick Start Guide
+→ For setup instructions, entity configuration, and build commands see
+**[devices/multi_function_remote/README.md](devices/multi_function_remote/README.md)**.
 
-### Prerequisites
+---
 
-- ESP32 development board (Lolin V1.0.0)
-- Home Assistant instance with API access
-- OLED display (SH1106 128x64)
+## Hardware
 
-### Setting Up a New Device
+| Component | Spec |
+|---|---|
+| MCU | ESP32 (esp32dev) |
+| Display | SH1106 128×64 OLED, I2C |
+| I2C pins | SDA GPIO27 · SCL GPIO25 |
+| Button pad | 6-button directional pad (v2) or original layout (v1) |
+| Power | LiPo battery with voltage divider on GPIO34 |
 
-1. **Copy the main configuration file** to your ESPHome device directory:
-2. **Configure WiFi credentials** in your ESPHome secrets:
-   - Create or edit your `secrets.yaml` file in your ESPHome directory
-   - Add your WiFi credentials:
-     ```yaml
-     wifi_ssid: "YourWiFiName"
-     wifi_password: "YourWiFiPassword"
-     ```
-3. **Update AC entities** (if needed):
-   - Edit `ac_entities.h` to match your Home Assistant climate entities
-   - The default configuration includes: Living Room, Office, and Bedroom AC units
-4. **Compile and upload** to your ESP32
-
-### Important Notes
-
-#### What to Customize
-
-**Optional customization:**
-- WiFi power settings (if signal issues occur)
-- Deep sleep duration (default: 3 days)
-- Idle timeout (default: 2 minutes)
-- Display contrast settings
-- AC entity IDs in `ac_entities.h`
-
-**Leave unchanged (for Lolin board):**
-- `BOARD` setting
-- All `PIN_*` configurations
-- I2C frequency and settings
-- Display model and configuration
-
-## Hardware Setup
-
-### Recommended Components
-
-- **ESP32 Lolin** development board
-- **SH1106 128x64 OLED** display (I2C)
-- **Push buttons** (7 total for full functionality)
-
-## Features
-
-- **Multi-AC Control**: Control multiple AC units from one device
-- **Deep Sleep**: Battery-efficient operation with automatic sleep
-- **OLED Display**: Real-time status display with custom fonts
-- **Button Interface**: Physical buttons for all common operations
-- **Home Assistant Integration**: Full API integration with encryption
-- **Auto-sync**: Automatically syncs with Home Assistant AC states
+---
 
 ## Troubleshooting
 
-### Device won't connect to WiFi
-- Verify WiFi credentials in `secrets.yaml`
-- Check WiFi signal strength
-- Try increasing `output_power` in the WiFi section
+**Device won't connect to WiFi**
+- Verify credentials in `secrets.yaml`
+- Try increasing `output_power` in `remote.yaml`
 
-### Display not working
-- Verify I2C pin connections (SDA: GPIO27, SCL: GPIO25)
-- Check display model in configuration (SH1106 vs SSD1306)
-- Verify display I2C address (default: 0x3C)
+**Display not working**
+- Check SDA/SCL wiring (GPIO27/GPIO25)
+- Verify the display model (`SH1106` vs `SSD1306`) and I2C address (`0x3C`)
 
-### Buttons not responding
-- Check pin assignments match your hardware
-- Verify pull-up resistor configuration
-- Test with a multimeter for button continuity
+**Buttons not responding**
+- Check pin assignments match your hardware revision (v1 vs v2 layout)
+- Pins use internal pull-ups — button should connect GPIO to GND
 
-### API connection fails
-- Verify API key matches in both ESPHome and Home Assistant
-- Check Home Assistant is accessible from ESP32 network
-- Ensure firewall allows API connections
-
-## Contributing
-
-Feel free to submit issues and enhancement requests!
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-For issues and questions:
-- Check the [ESPHome documentation](https://esphome.io/)
-- [Full project details](https://tech.lugowski.dev/smart-oled-remote-for-home-assistant/)
-- 3D Printed case available on [MakerWorld](https://makerworld.com/en/models/1902607-home-assistant-esphome-remote-with-oled-display#profileId-2039332)
-- Open an issue in this repository
+**API connection fails after flashing**
+- Make sure the `API_KEY` in `remote.yaml` matches what you entered in HA
+- HA must be reachable from the ESP32 subnet

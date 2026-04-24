@@ -1,0 +1,161 @@
+# ── mode_automations.yaml ────────────────────────────────────────────────────
+# Automations mode — scrollable list; two entries may be pinned as bottom-bar
+# shortcuts (menu_slot "L" / "R" in src/automation_entities.h).
+# All display logic lives in src/automation_controller.h.
+#
+# Button entry points (called from remote.yaml):
+#   automations_btn_prev    → scroll up            (pin23)
+#   automations_btn_next    → scroll down          (pin19 / pin14)
+#   automations_btn_trigger → trigger selected row (pin26)
+#   automations_btn_menu_l  → trigger L slot       (pin22)
+#   automations_btn_menu_r  → trigger R slot       (pin33)
+# Main update loop: automations_update
+
+esphome:
+  includes:
+    - src/automation_entities.h     # must come before automation_controller.h
+    - src/automation_controller.h
+
+# ── globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: selected_auto_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: auto_entity
+    type: std::string
+    initial_value: '""'
+
+  - id: auto_service
+    type: std::string
+    initial_value: '""'
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  # ── navigation ───────────────────────────────────────────────────────────
+
+  - id: automations_btn_prev
+    then:
+      - lambda: 'AutomationController::prevAuto(id(selected_auto_index)); id(updated_ui) = true;'
+      - script.execute: automations_draw
+
+  - id: automations_btn_next
+    then:
+      - lambda: 'AutomationController::nextAuto(id(selected_auto_index)); id(updated_ui) = true;'
+      - script.execute: automations_draw
+
+  # ── trigger ──────────────────────────────────────────────────────────────
+
+  - id: automations_btn_trigger
+    then:
+      - lambda: >-
+          AutomationController::triggerSelected(id(selected_auto_index),
+                                                id(auto_entity), id(auto_service));
+      - script.execute: auto_do_trigger
+
+  - id: automations_btn_menu_l
+    then:
+      - lambda: >-
+          AutomationController::triggerMenuSlot("L", id(auto_entity), id(auto_service));
+      - script.execute: auto_do_trigger
+
+  - id: automations_btn_menu_r
+    then:
+      - lambda: >-
+          AutomationController::triggerMenuSlot("R", id(auto_entity), id(auto_service));
+      - script.execute: auto_do_trigger
+
+  # ── resolve → show confirmation → call HA ────────────────────────────────
+
+  - id: auto_do_trigger
+    mode: single
+    then:
+      - if:
+          condition: { lambda: 'return !id(auto_entity).empty();' }
+          then:
+            - lambda: >-
+                AutomationController::drawConfirmation(id(oled_display),
+                  id(font_base), id(auto_entity));
+            - script.execute: auto_call_ha
+            - delay: 600ms
+            - lambda: 'id(updated_ui) = true;'
+
+  - id: auto_call_ha
+    mode: queued
+    then:
+      - if:
+          condition: { lambda: 'return id(auto_service) == "scene.turn_on";' }
+          then:
+            - homeassistant.service:
+                service: scene.turn_on
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "automation.trigger";' }
+          then:
+            - homeassistant.service:
+                service: automation.trigger
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "script.turn_on";' }
+          then:
+            - homeassistant.service:
+                service: script.turn_on
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "input_boolean.toggle";' }
+          then:
+            - homeassistant.service:
+                service: input_boolean.toggle
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "switch.toggle";' }
+          then:
+            - homeassistant.service:
+                service: switch.toggle
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "lock.lock";' }
+          then:
+            - homeassistant.service:
+                service: lock.lock
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "lock.unlock";' }
+          then:
+            - homeassistant.service:
+                service: lock.unlock
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "alarm_control_panel.arm_away";' }
+          then:
+            - homeassistant.service:
+                service: alarm_control_panel.arm_away
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+      - if:
+          condition: { lambda: 'return id(auto_service) == "alarm_control_panel.disarm";' }
+          then:
+            - homeassistant.service:
+                service: alarm_control_panel.disarm
+                data:
+                  entity_id: !lambda 'return id(auto_entity);'
+
+  # ── display ──────────────────────────────────────────────────────────────
+
+  - id: automations_update
+    then: [ script.execute: automations_draw ]
+
+  - id: automations_draw
+    then:
+      - lambda: >-
+          AutomationController::draw(id(oled_display), id(font_small),
+                                     id(selected_auto_index), id(updated_ui));

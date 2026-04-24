@@ -1,0 +1,189 @@
+# ── mode_covers.yaml ─────────────────────────────────────────────────────────
+# Covers / curtains mode — scrollable unit selector with open/close/stop/position.
+# Entity configuration lives in src/cover_entities.h.
+# Display + interaction logic lives in src/cover_controller.h.
+#
+# Button entry points (called from remote.yaml):
+#   covers_btn_left    → previous cover    (pin14)
+#   covers_btn_right   → next cover        (pin33 — open action)
+#   covers_btn_open    → open              (pin33)
+#   covers_btn_close   → close             (pin22)
+#   covers_btn_stop    → stop              (pin26)
+#   covers_btn_pos_up  → position +10 %   (pin23)
+#   covers_btn_pos_down→ position -10 %   (pin19)
+# Main update loop: covers_update
+
+esphome:
+  includes:
+    - src/cover_entities.h
+    - src/cover_controller.h
+
+# ── globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: selected_cover_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: selected_cover
+    type: std::string
+    initial_value: '"cover.living_room_curtain"'
+
+  - id: selected_cover_name
+    type: std::string
+    initial_value: '"Living"'
+
+  - id: cover_position
+    type: int
+    initial_value: '-1'
+
+  - id: cover_state
+    type: std::string
+    initial_value: '"unknown"'
+
+# ── HA sensors ────────────────────────────────────────────────────────────────
+text_sensor:
+  - platform: homeassistant
+    id: living_curtain_state
+    entity_id: cover.living_room_curtain
+    on_value:
+      then:
+        - lambda: 'CoverController::syncCoverState(0, x, id(selected_cover_index), id(cover_state), id(updated_ui));'
+        - script.execute: covers_draw
+
+  - platform: homeassistant
+    id: bedroom_curtain_state
+    entity_id: cover.bedroom_curtain
+    on_value:
+      then:
+        - lambda: 'CoverController::syncCoverState(1, x, id(selected_cover_index), id(cover_state), id(updated_ui));'
+        - script.execute: covers_draw
+
+  - platform: homeassistant
+    id: office_blind_state
+    entity_id: cover.office_blind
+    on_value:
+      then:
+        - lambda: 'CoverController::syncCoverState(2, x, id(selected_cover_index), id(cover_state), id(updated_ui));'
+        - script.execute: covers_draw
+
+sensor:
+  - platform: homeassistant
+    id: living_curtain_pos
+    entity_id: cover.living_room_curtain
+    attribute: current_position
+    on_value:
+      then:
+        - lambda: 'CoverController::syncCoverPosition(0, x, id(selected_cover_index), id(cover_position), id(updated_ui));'
+        - script.execute: covers_draw
+
+  - platform: homeassistant
+    id: bedroom_curtain_pos
+    entity_id: cover.bedroom_curtain
+    attribute: current_position
+    on_value:
+      then:
+        - lambda: 'CoverController::syncCoverPosition(1, x, id(selected_cover_index), id(cover_position), id(updated_ui));'
+        - script.execute: covers_draw
+
+  - platform: homeassistant
+    id: office_blind_pos
+    entity_id: cover.office_blind
+    attribute: current_position
+    on_value:
+      then:
+        - lambda: 'CoverController::syncCoverPosition(2, x, id(selected_cover_index), id(cover_position), id(updated_ui));'
+        - script.execute: covers_draw
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  - id: covers_btn_left
+    then:
+      - lambda: 'CoverController::prevCover(id(selected_cover_index));'
+      - script.execute: covers_select
+
+  - id: covers_btn_right
+    then:
+      - lambda: 'CoverController::nextCover(id(selected_cover_index));'
+      - script.execute: covers_select
+
+  - id: covers_select
+    then:
+      - lambda: >-
+          CoverController::selectCover(id(selected_cover_index),
+                                       id(selected_cover), id(selected_cover_name));
+          id(cover_state)    = "unknown";
+          id(cover_position) = -1;
+          id(updated_ui)     = true;
+      - script.execute: covers_draw
+
+  - id: covers_btn_open
+    then:
+      - homeassistant.service:
+          service: cover.open_cover
+          data:
+            entity_id: !lambda 'return id(selected_cover);'
+
+  - id: covers_btn_close
+    then:
+      - homeassistant.service:
+          service: cover.close_cover
+          data:
+            entity_id: !lambda 'return id(selected_cover);'
+
+  - id: covers_btn_stop
+    then:
+      - homeassistant.service:
+          service: cover.stop_cover
+          data:
+            entity_id: !lambda 'return id(selected_cover);'
+
+  - id: covers_btn_ok
+    then:
+      - if:
+          condition:
+            lambda: >-
+              return id(cover_state) == "closed" ||
+                     id(cover_state) == "stopped" ||
+                     id(cover_state) == "unknown";
+          then: [ script.execute: covers_btn_open ]
+          else: [ script.execute: covers_btn_close ]
+
+  - id: covers_btn_pos_up
+    then:
+      - lambda: 'CoverController::positionUp(id(cover_position), id(cover_state), id(updated_ui));'
+      - script.execute: covers_do_position
+      - script.execute: covers_draw
+
+  - id: covers_btn_pos_down
+    then:
+      - lambda: 'CoverController::positionDown(id(cover_position), id(cover_state), id(updated_ui));'
+      - script.execute: covers_do_position
+      - script.execute: covers_draw
+
+  # ── HA service calls ──────────────────────────────────────────────────────
+
+  - id: covers_do_position
+    mode: restart
+    then:
+      - delay: 300ms    # debounce — coalesce rapid presses before sending
+      - homeassistant.service:
+          service: cover.set_cover_position
+          data:
+            entity_id: !lambda 'return id(selected_cover);'
+            position: !lambda 'return id(cover_position);'
+
+  # ── display ───────────────────────────────────────────────────────────────
+
+  - id: covers_update
+    then: [ script.execute: covers_draw ]
+
+  - id: covers_draw
+    then:
+      - lambda: >-
+          CoverController::draw(id(oled_display),
+            id(ac_symbols), id(menu_icon_small),
+            id(font_big), id(font_base), id(font_small),
+            id(selected_cover_name), id(cover_state),
+            id(cover_position), id(updated_ui));

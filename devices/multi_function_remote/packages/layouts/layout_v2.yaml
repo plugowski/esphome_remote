@@ -1,0 +1,200 @@
+# ── layout_v2.yaml ────────────────────────────────────────────────────────────
+# Physical button layout for v2 hardware — 6-button directional pad.
+#
+# Pin assignment:
+#   14  ←  left arrow
+#   26  →  right arrow
+#   23  OK (centre confirm / select)
+#   17  ↑  up arrow
+#   18  ↓  down arrow
+#   19  ⏸  stop / pause
+#              short press  (50 – 700 ms) → btn_stop
+#              long  press  (800 – 3000 ms) → btn_menu_open
+#    0  power off  (shared with deep-sleep wake pin — allow_other_uses: true)
+#
+# Always-present hardware buttons (shared with v1):
+#    5  ☰  menu           open / confirm menu
+#   22  MODE / <<         menu prev | AC: HVAC mode | Lights: prev | Covers: close | Autos: L slot
+#   33  FAN  / >>         menu next | AC: fan speed | Covers: open | Autos: R slot
+#
+# btn_* routing logic lives in packages/buttons.yaml.
+# Pins 5 / 22 / 33 are dispatched inline (different semantics from btn_left/right).
+
+binary_sensor:
+
+  # ── power off ──────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      allow_other_uses: true   # shared with deep_sleep wakeup_pin
+      number: 0
+      mode: { input: true, pullup: true }
+    name: "Power Off"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then: [ script.execute: turn_off ]
+
+  # ── ← left ────────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 14
+      mode: { input: true, pullup: true }
+    name: "Button Left"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - script.execute: btn_left
+
+  # ── → right ───────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 26
+      mode: { input: true, pullup: true }
+    name: "Button Right"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - script.execute: btn_right
+
+  # ── OK ────────────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 23
+      mode: { input: true, pullup: true }
+    name: "Button OK"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - script.execute: btn_ok
+
+  # ── ↑ up ──────────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 17
+      mode: { input: true, pullup: true }
+    name: "Button Up"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - script.execute: btn_up
+
+  # ── ↓ down ────────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 18
+      mode: { input: true, pullup: true }
+    name: "Button Down"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - script.execute: btn_down
+
+  # ── ⏸ stop / menu ─────────────────────────────────────────────────────────
+  # Short press  → btn_stop  (cancel menu, stop cover, cycle AC fan)
+  # Long  press  → btn_menu_open  (open controller selection carousel)
+  - platform: gpio
+    pin:
+      number: 19
+      mode: { input: true, pullup: true }
+    name: "Button Stop"
+    internal: true
+    filters: [ invert: ]
+    on_click:
+      - min_length: 50ms
+        max_length: 700ms
+        then:
+          - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+          - script.execute: btn_stop
+      - min_length: 800ms
+        max_length: 3000ms
+        then:
+          - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+          - script.execute: btn_menu_open
+
+  # ── ☰ menu (pin 5) — open menu / confirm selection ───────────────────────
+  - platform: gpio
+    pin:
+      number: 5
+      mode: { input: true, pullup: true }
+    name: "Button Menu"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_confirm ]
+            else: [ script.execute: menu_open ]
+
+  # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: prev ─────────
+  # Covers: close | Autos: L slot
+  - platform: gpio
+    pin:
+      number: 22
+      mode: { input: true, pullup: true }
+    name: "Button Mode"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_mode ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_close ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_l ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_up ]
+
+  # ── FAN / >> (pin 33) — menu next | AC: fan speed | Covers: open ──────────
+  # Autos: R slot
+  - platform: gpio
+    pin:
+      number: 33
+      mode: { input: true, pullup: true }
+    name: "Button Fan"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_fan ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_open ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_r ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_down ]
