@@ -309,6 +309,16 @@ globals:
     type: int
     initial_value: '72'   # demo: hardcoded 72 %
 
+  - id: sleep_timeout_mins
+    type: int
+    initial_value: '2'
+    restore_value: true
+
+  - id: battery_interval_mins
+    type: int
+    initial_value: '60'
+    restore_value: true
+
   - id: info_page      # 0 = thank-you slide, 1 = QR code slide
     type: int
     initial_value: '0'
@@ -420,6 +430,9 @@ binary_sensor:
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
             then: [ script.execute: automations_btn_trigger ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: menu_open ]
 
   # ── ↑ up — AC temp+ / Lights scroll▲ / Covers pos+10% / Autos scroll▲
   - platform: gpio
@@ -503,11 +516,17 @@ binary_sensor:
           - if:
               condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
               then: [ script.execute: covers_btn_stop ]
+          - if:
+              condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+              then: [ script.execute: menu_open ]
       - min_length: 800ms
         max_length: 3000ms
         then:
           - lambda: 'id(last_active) = millis() / 1000;'
           - script.execute: menu_open
+      - min_length: 3000ms
+        max_length: 10000ms
+        then: [ script.execute: screenshot ]
 
   # ── ☰ menu (pin 5) — open menu / confirm selection ───────────────────────
   - platform: gpio
@@ -622,6 +641,25 @@ script:
           it->print(64, 50, id(font_small), COLOR_ON, display::TextAlign::CENTER, "DEMO MODE");
           it->display();
 
+  # ── Screenshot — dumps 128×64 framebuffer as hex over serial ────────────────
+  # Trigger: hold Pause/Stop (pin 19) for 3 s. Output 8 lines of 256 hex chars.
+  # Convert to PNG with:  python3 tools/screenshot.py <serial_port>
+  - id: screenshot
+    then:
+      - lambda: |-
+          const uint8_t* buf = grab_raw_buffer(id(oled_display));
+          // 128 × 64 = 1024 bytes; emit 8 chunks of 128 bytes each
+          char line[257];  // 128 bytes → 256 hex chars + NUL
+          ESP_LOGI("screenshot", "SCREENSHOT_BEGIN");
+          for (int chunk = 0; chunk < 8; chunk++) {
+            for (int i = 0; i < 128; i++) {
+              snprintf(line + i * 2, 3, "%02X", buf[chunk * 128 + i]);
+            }
+            line[256] = '\0';
+            ESP_LOGI("screenshot", "%s", line);
+          }
+          ESP_LOGI("screenshot", "SCREENSHOT_END");
+
   # ── Menu ────────────────────────────────────────────────────────────────────
   - id: menu_open
     then:
@@ -631,6 +669,10 @@ script:
   - id: menu_confirm
     then:
       - lambda: 'MenuController::confirm(id(app_mode), id(menu_index), id(menu_active), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(app_mode) == APP_INFO;' }
+          then:
+            - lambda: 'id(info_page) = 0;'
 
   - id: menu_prev
     then:
@@ -902,6 +944,14 @@ script:
           then:
             - lambda: 'SettingsController::contrastDown(id(contrast_level), id(updated_ui));'
             - script.execute: settings_apply_contrast
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_SLEEP;' }
+          then:
+            - lambda: 'SettingsController::sleepDown(id(sleep_timeout_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
+          then:
+            - lambda: 'SettingsController::battIntervalDown(id(battery_interval_mins), id(updated_ui));'
       - script.execute: settings_draw
 
   - id: settings_btn_right
@@ -911,6 +961,14 @@ script:
           then:
             - lambda: 'SettingsController::contrastUp(id(contrast_level), id(updated_ui));'
             - script.execute: settings_apply_contrast
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_SLEEP;' }
+          then:
+            - lambda: 'SettingsController::sleepUp(id(sleep_timeout_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
+          then:
+            - lambda: 'SettingsController::battIntervalUp(id(battery_interval_mins), id(updated_ui));'
       - script.execute: settings_draw
 
   - id: settings_apply_contrast
@@ -926,17 +984,18 @@ script:
           SettingsController::draw(id(oled_display), id(font_small),
             id(selected_setting_index), id(contrast_level),
             std::string("DEMO"), std::string("0.0.0.0"),
-            id(battery_pct), id(updated_ui));
+            id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+            id(updated_ui));
 
   # ── Info pages (thank-you + QR) ─────────────────────────────────────────────
   - id: info_btn_prev
     then:
-      - lambda: 'if (id(info_page) > 0) id(info_page)--; id(updated_ui) = true;'
+      - lambda: 'id(info_page) = (id(info_page) - 1 + 2) % 2; id(updated_ui) = true;'
       - script.execute: info_draw
 
   - id: info_btn_next
     then:
-      - lambda: 'if (id(info_page) < 1) id(info_page)++; id(updated_ui) = true;'
+      - lambda: 'id(info_page) = (id(info_page) + 1) % 2; id(updated_ui) = true;'
       - script.execute: info_draw
 
   - id: info_update
@@ -954,11 +1013,7 @@ script:
             it->line(0, 17, 128, 17);
             it->print(0, 22, id(font_small), COLOR_ON, "Configuration and setup:");
             it->print(64, 41, id(font_small), COLOR_ON, display::TextAlign::CENTER, "tech.lugowski.dev/remote");
-            it->rectangle(0, 52, 128, 1);
-            it->rectangle(42, 52, 44, 13);
-            it->print(21, 58, id(font_small), COLOR_ON, display::TextAlign::CENTER, "PREV");
-            it->print(64, 58, id(font_small), COLOR_ON, display::TextAlign::CENTER, "v3.1");
-            it->print(107, 58, id(font_small), COLOR_ON, display::TextAlign::CENTER, "NEXT");
+            draw_bottom_menu(it, id(font_small), "PREV", nullptr, "NEXT");
           } else {
             auto size = id(homepage_qr)->get_size() * 2;
             auto x = (it->get_width() / 2) - (size / 2);
@@ -1006,6 +1061,6 @@ interval:
     then:
       - if:
           condition:
-            lambda: 'return (millis() / 1000) - id(last_active) >= 120;'
+            lambda: 'return (millis() / 1000) - id(last_active) >= (uint32_t)id(sleep_timeout_mins) * 60;'
           then: [ script.execute: turn_off ]
           else: [ script.execute: main_update ]

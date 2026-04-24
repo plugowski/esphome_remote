@@ -28,7 +28,7 @@ font:
     id: font_small
     size: 10
     glyphs:
-      - "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890.% <>"
+      - "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890.%- <>"
       - "\u25b2"  # ▲ (list up)
       - "\u25bc"  # ▼ (list down)
 
@@ -51,16 +51,37 @@ esphome:
   includes:
     - src/menu_entities.h   # APP_* constants used in lambdas below
     - src/remote_core.h
+    - src/wake_utils.h
   on_boot:
     - priority: 700
       then:
-        - output.turn_on: oled_power
-        - delay: 10ms
+        - lambda: 'id(is_timer_wake) = is_timer_wakeup();'
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then:
+              - output.turn_on: oled_power
+              - delay: 10ms
     - priority: 250
       then:
-        - lambda: |-
-            RemoteCore::resetIdleTimer(id(last_active));
-            id(is_booting) = true;
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then:
+              - lambda: |-
+                  RemoteCore::resetIdleTimer(id(last_active));
+                  id(is_booting) = true;
+    - priority: -200        # runs after all sensors/components are initialised
+      then:
+        - if:
+            condition: { lambda: 'return id(is_timer_wake);' }
+            then:
+              # Timer wake: read battery, wait for WiFi + API to publish, sleep again
+              - component.update: battery_raw
+              - wait_until:
+                  api.connected:
+                  timeout: 30s
+              - delay: 2s   # ensure the value is flushed to HA
+              - deep_sleep.enter:
+                  sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
 
 esp32:
   board: ${BOARD}
@@ -91,7 +112,6 @@ output:
 
 deep_sleep:
   id: go_sleep
-  sleep_duration: 4320min
   wakeup_pin:
     number: ${PIN_WAKE}
     allow_other_uses: true
@@ -147,6 +167,10 @@ globals:
     type: bool
     initial_value: 'false'
 
+  - id: is_timer_wake      # true when woken by RTC timer (battery check only)
+    type: bool
+    initial_value: 'false'
+
 # ── core scripts ──────────────────────────────────────────────────────────────
 script:
 
@@ -161,7 +185,8 @@ script:
       - delay: 500ms
       - output.turn_off: oled_power
       - delay: 5ms
-      - deep_sleep.enter: go_sleep
+      - deep_sleep.enter:
+          sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
 
   - id: boot_screen
     then:
@@ -202,7 +227,10 @@ interval:
   - interval: 500ms
     then:
       - if:
-          condition:
-            lambda: 'return RemoteCore::isIdle(id(last_active));'
-          then: [ script.execute: turn_off ]
-          else: [ script.execute: main_update ]
+          condition: { lambda: 'return !id(is_timer_wake);' }
+          then:
+            - if:
+                condition:
+                  lambda: 'return RemoteCore::isIdle(id(last_active), id(sleep_timeout_mins) * 60);'
+                then: [ script.execute: turn_off ]
+                else: [ script.execute: main_update ]
