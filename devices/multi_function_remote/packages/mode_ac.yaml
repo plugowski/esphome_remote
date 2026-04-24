@@ -1,0 +1,324 @@
+# ── mode_ac.yaml ─────────────────────────────────────────────────────────────
+# AC-specific sensors, globals, and scripts.
+# All logic lives in ac_controller.h (which includes ac_entities.h).
+#
+# Button entry points called from remote.yaml:
+#   ac_btn_left  → cycle through AC units (previous)
+#   ac_btn_right → cycle through AC units (next)
+#   ac_btn_fan   → cycle fan speed
+#   ac_btn_mode  → cycle HVAC mode
+#   ac_btn_temp_up / ac_btn_temp_down
+# Main update called by main_update: ac_update
+
+esphome:
+  includes:
+    - src/ac_entities.h     # must come before ac_controller.h (struct definition)
+    - src/ac_controller.h
+
+# ── AC-specific symbol fonts ──────────────────────────────────────────────────
+font:
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: ac_symbols
+    size: 24
+    glyphs:
+      - "\uf168"  # fan
+      - "\ueb3b"  # ac_unit
+      - "\uf164"  # dry
+      - "\ue8ac"  # power_off
+      - "\uec12"  # curtain (reused by cover_controller)
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 700
+    id: ac_symbols_big
+    size: 36
+    glyphs:
+      - "\ue8ac"  # power_off (shown when AC is off)
+
+# ── HA sensors ────────────────────────────────────────────────────────────────
+sensor:
+  - platform: homeassistant
+    id: living_room_ac_temp
+    entity_id: climate.living_room_ac
+    attribute: temperature
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: office_ac_temp
+    entity_id: climate.office_ac
+    attribute: temperature
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: bedroom_ac_temp
+    entity_id: climate.bedroom_ac
+    attribute: temperature
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+text_sensor:
+  - platform: homeassistant
+    id: living_room_ac_mode
+    entity_id: climate.living_room_ac
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: office_ac_mode
+    entity_id: climate.office_ac
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: bedroom_ac_mode
+    entity_id: climate.bedroom_ac
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: living_room_fan_mode
+    entity_id: climate.living_room_ac
+    attribute: fan_mode
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: office_fan_mode
+    entity_id: climate.office_ac
+    attribute: fan_mode
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+  - platform: homeassistant
+    id: bedroom_fan_mode
+    entity_id: climate.bedroom_ac
+    attribute: fan_mode
+    on_value: { then: [ script.execute: ac_sync_states ] }
+
+# ── AC globals ────────────────────────────────────────────────────────────────
+globals:
+  - id: selected_ac_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: selected_ac
+    type: std::string
+    initial_value: '"climate.living_room_ac"'
+    restore_value: true
+
+  - id: selected_ac_name
+    type: std::string
+    initial_value: '"Living"'
+    restore_value: true
+
+  - id: selected_ac_mode_index
+    type: int
+    initial_value: '0'
+
+  - id: current_ac_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: selected_ac_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: current_temp
+    type: int
+    initial_value: '-1'
+
+  - id: selected_temp
+    type: int
+    initial_value: '-1'
+
+  - id: selected_fan_index
+    type: int
+    initial_value: '0'
+
+  - id: current_fan_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: selected_fan_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+# ── AC scripts ────────────────────────────────────────────────────────────────
+script:
+
+  # ── button actions ────────────────────────────────────────────────────────
+
+  - id: ac_btn_left
+    then:
+      - lambda: 'ACController::prevUnit(id(selected_ac_index));'
+      - script.execute: ac_select_unit
+
+  - id: ac_btn_right
+    then:
+      - lambda: 'ACController::nextUnit(id(selected_ac_index));'
+      - script.execute: ac_select_unit
+
+  - id: ac_btn_power
+    then:
+      - lambda: >-
+          ACController::togglePower(id(selected_ac_index), id(selected_ac_mode_index),
+                                    id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_fan
+    then:
+      - lambda: >-
+          ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
+                                 id(selected_fan_mode), id(updated_ui));
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_mode
+    then:
+      - lambda: 'ACController::cycleMode(id(selected_ac_index), id(selected_ac_mode_index));'
+      - lambda: >-
+          ACController::applyMode(id(selected_ac_index), id(selected_ac_mode_index),
+                                  id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_await
+
+  - id: ac_btn_temp_up
+    then:
+      - lambda: 'ACController::tempUp(id(selected_temp), id(updated_ui));'
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_temp_down
+    then:
+      - lambda: 'ACController::tempDown(id(selected_temp), id(updated_ui));'
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  # ── state management ──────────────────────────────────────────────────────
+
+  # Reads raw sensor values for the selected AC and updates current_* globals.
+  # This script is ESPHome-specific: it must access sensor IDs by name.
+  # The pure logic (populating globals) is delegated to ACController.
+  - id: ac_set_current_states
+    mode: restart
+    then:
+      - lambda: |-
+          int idx = id(selected_ac_index);
+          float       temp = NAN;
+          std::string mode, fan;
+
+          if (idx == 0) {
+            temp = id(living_room_ac_temp).state;
+            mode = id(living_room_ac_mode).state;
+            fan  = id(living_room_fan_mode).state;
+          } else if (idx == 1) {
+            temp = id(office_ac_temp).state;
+            mode = id(office_ac_mode).state;
+            fan  = id(office_fan_mode).state;
+          } else if (idx == 2) {
+            temp = id(bedroom_ac_temp).state;
+            mode = id(bedroom_ac_mode).state;
+            fan  = id(bedroom_fan_mode).state;
+          }
+
+          ACController::applyCurrentStates(temp, mode, fan,
+            id(current_ac_mode), id(current_fan_mode),
+            id(current_temp), id(is_booting));
+
+  # Syncs selected_* from current_* when HA state changes externally
+  - id: ac_set_selections
+    mode: restart
+    then:
+      - lambda: >-
+          ACController::syncSelections(
+            id(current_ac_mode), id(current_fan_mode), id(current_temp),
+            id(selected_ac_mode), id(selected_ac_mode_index),
+            id(selected_fan_mode), id(selected_fan_index),
+            id(selected_temp), id(selected_ac_index), id(updated_ui));
+
+  - id: ac_sync_states
+    mode: restart
+    then:
+      - script.execute: ac_set_current_states
+      - script.execute: ac_set_selections
+
+  - id: ac_select_unit
+    then:
+      - lambda: >-
+          ACController::selectUnit(id(selected_ac_index),
+                                   id(selected_ac), id(selected_ac_name));
+      - lambda: |-
+          ACController::resetUnit(id(selected_ac_index),
+            id(selected_ac_mode_index), id(selected_ac_mode),
+            id(selected_fan_index), id(selected_fan_mode), id(selected_temp));
+          id(updated_ui) = true;
+      - script.execute: ac_set_current_states
+      - script.execute: ac_set_selections
+      - script.execute: ac_draw
+
+  # ── HA service calls ──────────────────────────────────────────────────────
+
+  - id: ac_send_mode_update
+    mode: queued
+    then:
+      - homeassistant.service:
+          service: climate.set_hvac_mode
+          data:
+            entity_id: !lambda 'return id(selected_ac);'
+            hvac_mode: !lambda 'return id(selected_ac_mode);'
+
+  - id: ac_send_temp_update
+    mode: queued
+    then:
+      - homeassistant.service:
+          service: climate.set_temperature
+          data:
+            entity_id: !lambda 'return id(selected_ac);'
+            temperature: !lambda 'return id(selected_temp);'
+
+  - id: ac_send_fan_update
+    mode: queued
+    then:
+      - homeassistant.service:
+          service: climate.set_fan_mode
+          data:
+            entity_id: !lambda 'return id(selected_ac);'
+            fan_mode: !lambda 'return id(selected_fan_mode);'
+
+  # ── debounce (1 s settle before sending to HA) ───────────────────────────
+
+  - id: ac_await
+    mode: restart
+    then:
+      - lambda: 'id(debounce_active) = true;'
+      - delay: 1s
+      - lambda: 'id(debounce_active) = false;'
+
+  # ── main AC update (called from main_update every 500 ms) ────────────────
+
+  - id: ac_update
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(debounce_active) && id(selected_ac_mode) != id(current_ac_mode);'
+          then: [ script.execute: ac_send_mode_update ]
+      - if:
+          condition:
+            lambda: 'return !id(debounce_active) && id(selected_fan_mode) != id(current_fan_mode);'
+          then: [ script.execute: ac_send_fan_update ]
+      - if:
+          condition:
+            lambda: 'return !id(debounce_active) && id(selected_temp) != id(current_temp);'
+          then: [ script.execute: ac_send_temp_update ]
+      - script.execute: ac_set_current_states
+      - script.execute: ac_draw
+
+  # ── display rendering ─────────────────────────────────────────────────────
+
+  - id: ac_draw
+    then:
+      - lambda: >-
+          ACController::draw(id(oled_display),
+            id(ac_symbols), id(ac_symbols_big),
+            id(font_big), id(font_bigger), id(font_base), id(font_small),
+            id(selected_ac_mode), id(selected_fan_mode),
+            id(selected_ac_name), id(selected_temp), id(updated_ui));

@@ -1,0 +1,1011 @@
+# ── remote_demo.yaml ─────────────────────────────────────────────────────────
+# DEMO MODE — no WiFi / HA required.
+# Tests all display rendering and button navigation offline.
+# AC state is hardcoded; buttons change it locally (nothing sent to HA).
+# Automations show the confirmation screen but don't fire any HA service.
+
+esphome:
+  name: oled-remote-demo
+  friendly_name: "OLED Remote Demo"
+  min_version: 2024.11.0
+  name_add_mac_suffix: false
+  platformio_options:
+    build_flags:
+      - -DDEMO_MODE
+  includes:
+    - src/display_utils.h
+    - src/menu_entities.h         # APP_* IDs + MENU_LIST — edit here to configure carousel
+    - src/ac_entities.h           # must come before ac_controller.h
+    - src/ac_controller.h
+    - src/menu_controller.h
+    - src/light_entities.h        # must come before lights_controller.h
+    - src/lights_controller.h
+    - src/cover_entities.h        # must come before cover_controller.h
+    - src/cover_controller.h
+    - src/automation_entities.h   # must come before automation_controller.h
+    - src/automation_controller.h
+    - src/settings_controller.h
+  on_boot:
+    - priority: 700           # power OLED MOSFET before display init
+      then:
+        - output.turn_on: oled_power
+        - delay: 10ms
+    - priority: 250
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+    - priority: -100          # fires after the main loop starts
+      then:
+        - delay: 1500ms       # show boot screen for 1.5 s
+        - lambda: 'id(is_booting) = false; id(updated_ui) = true;'
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+
+# ── No wifi / api / ota ───────────────────────────────────────────────────────
+
+output:
+  - platform: gpio
+    pin: 15
+    id: oled_power
+
+deep_sleep:
+  id: go_sleep
+  sleep_duration: 4320min
+  wakeup_pin:
+    number: 0
+    allow_other_uses: true
+  wakeup_pin_mode: INVERT_WAKEUP
+
+i2c:
+  sda: 27
+  scl: 25
+  frequency: 400kHz
+  scan: false
+
+qr_code:
+  - id: homepage_qr
+    value: http://tech.lugowski.dev/remote
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1106 128x64"
+    address: 0x3C
+    rotation: 180
+    contrast: 0.5
+    id: oled_display
+
+# ── Fonts ─────────────────────────────────────────────────────────────────────
+font:
+  - file: "fonts/arial_bold.ttf"
+    id: font_base
+    size: 14
+    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:"
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_small
+    size: 10
+    glyphs:
+      - "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890.%/:!- <>"
+      - "\u25b2"  # ▲ (list up)
+      - "\u25bc"  # ▼ (list down)
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_bigger
+    size: 28
+    glyphs: "ADEGHILMOTUWRY0123456789%"
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_big
+    size: 40
+    glyphs: "ADEGHILMOTUWRY0123456789%"
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: menu_icon_big
+    size: 32
+    glyphs:
+      - "\ue88a" # home
+      - "\ue83e" # remote
+      - "\uec12" # curtain
+      - "\ueb3b" # AC
+      - "\ue0f0" # lightbulb
+      - "\uea0b"  # bolt  (automations)
+      - "\ue88b"  # hourglass_empty (boot screen)
+      - "\ue8b8"  # settings  (cog)
+      - "\ue88e"  # info
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: menu_icon_small
+    size: 18
+    glyphs:
+      - "\ue88a"  # home
+      - "\ue83e"  # remote
+      - "\uec12"  # curtain
+      - "\ueb3b"  # AC
+      - "\ue0f0"  # lightbulb
+      - "\uea0b"  # bolt  (automations)
+      - "\ue88b"  # hourglass_empty (boot screen)
+      - "\ue8b8"  # settings  (cog)
+      - "\ue5d8"  # open_in_full      (cover: open)
+      - "\ue5d1"  # close_fullscreen  (cover: closed)
+      - "\ue5ce"  # unfold_more       (cover: opening)
+      - "\ue5cc"  # unfold_less       (cover: closing)
+      - "\ue034"  # pause             (cover: stopped)
+      - "\ue88e"  # info
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: ac_symbols
+    size: 24
+    glyphs:
+      - "\uf168"  # fan
+      - "\ueb3b"  # ac_unit
+      - "\uf164"  # dry
+      - "\ue8ac"  # power_off
+      - "\uec12"  # curtain (cover mode)
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 700
+    id: ac_symbols_big
+    size: 36
+    glyphs:
+      - "\ue8ac"  # power_off
+
+# ── Globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: app_mode      # 0=AC  1=Lights  2=Covers  3=Automations
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: menu_active
+    type: bool
+    initial_value: 'false'
+
+  - id: menu_index
+    type: int
+    initial_value: '0'
+
+  - id: debounce_active
+    type: bool
+    initial_value: 'false'
+
+  - id: last_active
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: updated_ui
+    type: bool
+    initial_value: 'true'
+
+  - id: is_booting
+    type: bool
+    initial_value: 'true'
+
+  - id: is_shutting_down
+    type: bool
+    initial_value: 'false'
+
+  # ── Lights ──────────────────────────────────────────────────────────────────
+  - id: selected_light_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  # ── AC (seeded with demo values) ────────────────────────────────────────────
+  - id: selected_ac_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: selected_ac
+    type: std::string
+    initial_value: '"climate.living_room_ac"'
+    restore_value: true
+
+  - id: selected_ac_name
+    type: std::string
+    initial_value: '"Living"'
+    restore_value: true
+
+  - id: selected_ac_mode_index
+    type: int
+    initial_value: '0'
+
+  - id: current_ac_mode
+    type: std::string
+    initial_value: '"cool"'
+
+  - id: selected_ac_mode
+    type: std::string
+    initial_value: '"cool"'
+
+  - id: current_temp
+    type: int
+    initial_value: '22'
+
+  - id: selected_temp
+    type: int
+    initial_value: '22'
+
+  - id: selected_fan_index
+    type: int
+    initial_value: '0'
+
+  - id: current_fan_mode
+    type: std::string
+    initial_value: '"low"'
+
+  - id: selected_fan_mode
+    type: std::string
+    initial_value: '"low"'
+
+  # ── Covers (seeded with demo values) ───────────────────────────────────────
+  - id: selected_cover_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: selected_cover
+    type: std::string
+    initial_value: '"cover.living_room_curtain"'
+
+  - id: selected_cover_name
+    type: std::string
+    initial_value: '"Living"'
+
+  - id: cover_position
+    type: int
+    initial_value: '75'
+
+  - id: cover_state
+    type: std::string
+    initial_value: '"open"'
+
+  # ── Automations ─────────────────────────────────────────────────────────────
+  - id: selected_auto_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: auto_slot
+    type: std::string
+    initial_value: '""'
+
+  - id: auto_entity
+    type: std::string
+    initial_value: '""'
+
+  - id: auto_service
+    type: std::string
+    initial_value: '""'
+
+  # ── Settings ─────────────────────────────────────────────────────────────────
+  - id: selected_setting_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: contrast_level
+    type: int
+    initial_value: '5'
+    restore_value: true
+
+  - id: battery_pct
+    type: int
+    initial_value: '72'   # demo: hardcoded 72 %
+
+  - id: info_page      # 0 = thank-you slide, 1 = QR code slide
+    type: int
+    initial_value: '0'
+
+# ── Buttons (layout_v2: 6-button directional pad) ────────────────────────────
+binary_sensor:
+
+  # ── power off ──────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      allow_other_uses: true
+      number: 0
+      mode: { input: true, pullup: true }
+    name: "Power Off"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then: [ script.execute: turn_off ]
+
+  # ── ← left — menu prev / AC prev unit / Lights bri– / Covers prev / Autos L
+  - platform: gpio
+    pin:
+      number: 14
+      mode: { input: true, pullup: true }
+    name: "Button Left"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_left ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_brightness_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_left ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_l ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_left ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: info_btn_prev ]
+
+  # ── → right — menu next / AC next unit / Lights bri+ / Covers next / Autos R
+  - platform: gpio
+    pin:
+      number: 26
+      mode: { input: true, pullup: true }
+    name: "Button Right"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_right ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_brightness_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_right ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_r ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_right ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: info_btn_next ]
+
+  # ── OK — menu confirm / AC mode / Lights toggle / Covers open↔close / Autos trigger
+  - platform: gpio
+    pin:
+      number: 23
+      mode: { input: true, pullup: true }
+    name: "Button OK"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_confirm ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_mode ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_toggle ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_ok ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_trigger ]
+
+  # ── ↑ up — AC temp+ / Lights scroll▲ / Covers pos+10% / Autos scroll▲
+  - platform: gpio
+    pin:
+      number: 17
+      mode: { input: true, pullup: true }
+    name: "Button Up"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_temp_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_pos_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: info_btn_prev ]
+
+  # ── ↓ down — AC temp– / Lights scroll▼ / Covers pos–10% / Autos scroll▼
+  - platform: gpio
+    pin:
+      number: 18
+      mode: { input: true, pullup: true }
+    name: "Button Down"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_temp_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_pos_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: info_btn_next ]
+
+  # ── ⏸ stop / menu — short: stop action; long (≥800ms): open menu ─────────
+  - platform: gpio
+    pin:
+      number: 19
+      mode: { input: true, pullup: true }
+    name: "Button Stop"
+    internal: true
+    filters: [ invert: ]
+    on_click:
+      - min_length: 50ms
+        max_length: 700ms
+        then:
+          - lambda: 'id(last_active) = millis() / 1000;'
+          - if:
+              condition: { lambda: 'return id(menu_active);' }
+              then: [ script.execute: menu_cancel ]
+          - if:
+              condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+              then: [ script.execute: ac_btn_power ]
+          - if:
+              condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+              then: [ script.execute: covers_btn_stop ]
+      - min_length: 800ms
+        max_length: 3000ms
+        then:
+          - lambda: 'id(last_active) = millis() / 1000;'
+          - script.execute: menu_open
+
+  # ── ☰ menu (pin 5) — open menu / confirm selection ───────────────────────
+  - platform: gpio
+    pin:
+      number: 5
+      mode: { input: true, pullup: true }
+    name: "Button Menu"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_confirm ]
+            else: [ script.execute: menu_open ]
+
+  # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: prev ─────────
+  # Covers: close | Autos: L slot
+  - platform: gpio
+    pin:
+      number: 22
+      mode: { input: true, pullup: true }
+    name: "Button Mode"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_mode ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_close ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_l ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: info_btn_prev ]
+
+  # ── FAN / >> (pin 33) — menu next | AC: fan speed | Covers: open ──────────
+  # Autos: R slot
+  - platform: gpio
+    pin:
+      number: 33
+      mode: { input: true, pullup: true }
+    name: "Button Fan"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'id(last_active) = millis() / 1000;'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_fan ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_open ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_r ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
+            then: [ script.execute: info_btn_next ]
+
+# ── Scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  # ── Power off ───────────────────────────────────────────────────────────────
+  - id: turn_off
+    mode: single
+    then:
+      - lambda: |-
+          id(is_shutting_down) = true;
+          auto it = id(oled_display);
+          it->clear();
+          it->print(64, 32, id(font_base), COLOR_ON, display::TextAlign::CENTER, "POWER OFF");
+          it->display();
+      - delay: 1s
+      - lambda: 'id(oled_display)->clear(); id(oled_display)->display();'
+      - delay: 500ms
+      - output.turn_off: oled_power
+      - delay: 5ms
+      - deep_sleep.enter: go_sleep
+
+  - id: boot_screen
+    then:
+      - lambda: |-
+          auto it = id(oled_display);
+          it->clear();
+          it->print(64, 22, id(menu_icon_big), COLOR_ON, display::TextAlign::CENTER, "\ue88b");
+          it->print(64, 50, id(font_small), COLOR_ON, display::TextAlign::CENTER, "DEMO MODE");
+          it->display();
+
+  # ── Menu ────────────────────────────────────────────────────────────────────
+  - id: menu_open
+    then:
+      - lambda: 'MenuController::open(id(menu_index), id(app_mode), id(menu_active));'
+      - script.execute: menu_draw
+
+  - id: menu_confirm
+    then:
+      - lambda: 'MenuController::confirm(id(app_mode), id(menu_index), id(menu_active), id(updated_ui));'
+
+  - id: menu_prev
+    then:
+      - lambda: 'MenuController::prev(id(menu_index));'
+      - script.execute: menu_draw
+
+  - id: menu_next
+    then:
+      - lambda: 'MenuController::next(id(menu_index));'
+      - script.execute: menu_draw
+
+  - id: menu_cancel
+    then:
+      - lambda: 'id(menu_active) = false; id(updated_ui) = true;'
+
+  - id: menu_draw
+    then:
+      - lambda: >-
+          MenuController::draw(id(oled_display),
+            id(menu_icon_big), id(menu_icon_small),
+            id(font_base), id(font_small), id(menu_index));
+
+  # ── AC ──────────────────────────────────────────────────────────────────────
+  - id: ac_btn_left
+    then:
+      - lambda: 'ACController::prevUnit(id(selected_ac_index));'
+      - script.execute: ac_select_unit
+
+  - id: ac_btn_right
+    then:
+      - lambda: 'ACController::nextUnit(id(selected_ac_index));'
+      - script.execute: ac_select_unit
+
+  - id: ac_btn_power
+    then:
+      - lambda: >-
+          ACController::togglePower(id(selected_ac_index), id(selected_ac_mode_index),
+                                    id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_draw
+
+  - id: ac_btn_fan
+    then:
+      - lambda: >-
+          ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
+                                 id(selected_fan_mode), id(updated_ui));
+      - script.execute: ac_draw
+
+  - id: ac_btn_mode
+    then:
+      - lambda: 'ACController::cycleMode(id(selected_ac_index), id(selected_ac_mode_index));'
+      - lambda: >-
+          ACController::applyMode(id(selected_ac_index), id(selected_ac_mode_index),
+                                  id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_draw
+
+  - id: ac_btn_temp_up
+    then:
+      - lambda: 'ACController::tempUp(id(selected_temp), id(updated_ui));'
+      - script.execute: ac_draw
+
+  - id: ac_btn_temp_down
+    then:
+      - lambda: 'ACController::tempDown(id(selected_temp), id(updated_ui));'
+      - script.execute: ac_draw
+
+  - id: ac_select_unit
+    then:
+      - lambda: >-
+          ACController::selectUnit(id(selected_ac_index),
+                                   id(selected_ac), id(selected_ac_name));
+      - lambda: |-
+          ACController::resetUnit(id(selected_ac_index),
+            id(selected_ac_mode_index), id(selected_ac_mode),
+            id(selected_fan_index),     id(selected_fan_mode),
+            id(selected_temp));
+          id(updated_ui) = true;
+      - script.execute: ac_draw
+
+  - id: ac_draw
+    then:
+      - lambda: >-
+          ACController::draw(id(oled_display),
+            id(ac_symbols), id(ac_symbols_big),
+            id(font_big), id(font_bigger), id(font_base), id(font_small),
+            id(selected_ac_mode), id(selected_fan_mode),
+            id(selected_ac_name), id(selected_temp), id(updated_ui));
+
+  - id: ac_update
+    then:
+      - script.execute: ac_draw
+
+  # ── Lights ──────────────────────────────────────────────────────────────────
+  - id: lights_btn_prev
+    then:
+      - lambda: 'LightsController::prevLight(id(selected_light_index)); id(updated_ui) = true;'
+      - script.execute: lights_draw
+
+  - id: lights_btn_next
+    then:
+      - lambda: 'LightsController::nextLight(id(selected_light_index)); id(updated_ui) = true;'
+      - script.execute: lights_draw
+
+  - id: lights_btn_toggle
+    then:
+      - lambda: 'LightsController::toggleLight(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_draw
+
+  - id: lights_btn_brightness_up
+    then:
+      - lambda: 'LightsController::brightnessUp(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_draw
+
+  - id: lights_btn_brightness_down
+    then:
+      - lambda: 'LightsController::brightnessDown(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_draw
+
+  - id: lights_update
+    then: [ script.execute: lights_draw ]
+
+  - id: lights_draw
+    then:
+      - lambda: >-
+          LightsController::draw(id(oled_display), id(font_small),
+                                 id(selected_light_index), id(updated_ui));
+
+  # ── Covers ────────────────────────────────────────────────────────────────
+  - id: covers_btn_left
+    then:
+      - lambda: 'CoverController::prevCover(id(selected_cover_index));'
+      - script.execute: covers_select
+
+  - id: covers_btn_right
+    then:
+      - lambda: 'CoverController::nextCover(id(selected_cover_index));'
+      - script.execute: covers_select
+
+  - id: covers_select
+    then:
+      - lambda: >-
+          CoverController::selectCover(id(selected_cover_index),
+                                       id(selected_cover), id(selected_cover_name));
+      - lambda: |-
+          id(cover_position) = 75;
+          id(cover_state)    = "open";
+          id(updated_ui)     = true;
+      - script.execute: covers_draw
+
+  - id: covers_btn_open
+    then:
+      - lambda: >-
+          CoverController::actionOpen(id(cover_position), id(cover_state), id(updated_ui));
+      - script.execute: covers_draw
+
+  - id: covers_btn_close
+    then:
+      - lambda: >-
+          CoverController::actionClose(id(cover_position), id(cover_state), id(updated_ui));
+      - script.execute: covers_draw
+
+  - id: covers_btn_stop
+    then:
+      - lambda: >-
+          CoverController::actionStop(id(cover_state), id(updated_ui));
+      - script.execute: covers_draw
+
+  - id: covers_btn_ok
+    then:
+      - if:
+          condition:
+            lambda: >-
+              return id(cover_state) == "closed" ||
+                     id(cover_state) == "stopped" ||
+                     id(cover_state) == "unknown";
+          then: [ script.execute: covers_btn_open ]
+          else: [ script.execute: covers_btn_close ]
+
+  - id: covers_btn_pos_up
+    then:
+      - lambda: >-
+          CoverController::positionUp(id(cover_position), id(cover_state), id(updated_ui));
+      - script.execute: covers_draw
+
+  - id: covers_btn_pos_down
+    then:
+      - lambda: >-
+          CoverController::positionDown(id(cover_position), id(cover_state), id(updated_ui));
+      - script.execute: covers_draw
+
+  - id: covers_update
+    then: [ script.execute: covers_draw ]
+
+  - id: covers_draw
+    then:
+      - lambda: >-
+          CoverController::draw(id(oled_display),
+            id(ac_symbols), id(menu_icon_small),
+            id(font_big), id(font_base), id(font_small),
+            id(selected_cover_name), id(cover_state),
+            id(cover_position), id(updated_ui));
+
+  # ── Automations ──────────────────────────────────────────────────────────────
+  - id: automations_btn_prev
+    then:
+      - lambda: 'AutomationController::prevAuto(id(selected_auto_index)); id(updated_ui) = true;'
+      - script.execute: automations_draw
+
+  - id: automations_btn_next
+    then:
+      - lambda: 'AutomationController::nextAuto(id(selected_auto_index)); id(updated_ui) = true;'
+      - script.execute: automations_draw
+
+  - id: automations_btn_trigger
+    then:
+      - lambda: >-
+          AutomationController::triggerSelected(id(selected_auto_index),
+                                                id(auto_entity), id(auto_service));
+      - script.execute: auto_do_trigger
+
+  - id: automations_btn_menu_l
+    then:
+      - lambda: >-
+          AutomationController::triggerMenuSlot("L", id(auto_entity), id(auto_service));
+      - script.execute: auto_do_trigger
+
+  - id: automations_btn_menu_r
+    then:
+      - lambda: >-
+          AutomationController::triggerMenuSlot("R", id(auto_entity), id(auto_service));
+      - script.execute: auto_do_trigger
+
+  - id: auto_do_trigger
+    mode: single
+    then:
+      - if:
+          condition: { lambda: 'return !id(auto_entity).empty();' }
+          then:
+            - lambda: >-
+                AutomationController::drawConfirmation(id(oled_display),
+                  id(font_base), id(auto_entity));
+            # Demo: confirmation screen shown, no HA call fired
+            - delay: 600ms
+            - lambda: 'id(updated_ui) = true;'
+
+  - id: automations_update
+    then: [ script.execute: automations_draw ]
+
+  - id: automations_draw
+    then:
+      - lambda: >-
+          AutomationController::draw(id(oled_display), id(font_small),
+                                     id(selected_auto_index), id(updated_ui));
+
+  # ── Settings ──────────────────────────────────────────────────────────────────
+  - id: settings_btn_up
+    then:
+      - lambda: 'SettingsController::prevSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - script.execute: settings_draw
+
+  - id: settings_btn_down
+    then:
+      - lambda: 'SettingsController::nextSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - script.execute: settings_draw
+
+  - id: settings_btn_left
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_CONTRAST;' }
+          then:
+            - lambda: 'SettingsController::contrastDown(id(contrast_level), id(updated_ui));'
+            - script.execute: settings_apply_contrast
+      - script.execute: settings_draw
+
+  - id: settings_btn_right
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_CONTRAST;' }
+          then:
+            - lambda: 'SettingsController::contrastUp(id(contrast_level), id(updated_ui));'
+            - script.execute: settings_apply_contrast
+      - script.execute: settings_draw
+
+  - id: settings_apply_contrast
+    then:
+      - lambda: 'id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));'
+
+  - id: settings_update
+    then: [ script.execute: settings_draw ]
+
+  - id: settings_draw
+    then:
+      - lambda: >-
+          SettingsController::draw(id(oled_display), id(font_small),
+            id(selected_setting_index), id(contrast_level),
+            std::string("DEMO"), std::string("0.0.0.0"),
+            id(battery_pct), id(updated_ui));
+
+  # ── Info pages (thank-you + QR) ─────────────────────────────────────────────
+  - id: info_btn_prev
+    then:
+      - lambda: 'if (id(info_page) > 0) id(info_page)--; id(updated_ui) = true;'
+      - script.execute: info_draw
+
+  - id: info_btn_next
+    then:
+      - lambda: 'if (id(info_page) < 1) id(info_page)++; id(updated_ui) = true;'
+      - script.execute: info_draw
+
+  - id: info_update
+    then: [ script.execute: info_draw ]
+
+  - id: info_draw
+    then:
+      - lambda: |-
+          if (!id(updated_ui)) return;
+          id(updated_ui) = false;
+          auto it = id(oled_display);
+          it->clear();
+          if (id(info_page) == 0) {
+            it->print(64, 5, id(font_small), COLOR_ON, display::TextAlign::CENTER, "THANK YOU!");
+            it->line(0, 17, 128, 17);
+            it->print(0, 22, id(font_small), COLOR_ON, "Configuration and setup:");
+            it->print(64, 41, id(font_small), COLOR_ON, display::TextAlign::CENTER, "tech.lugowski.dev/remote");
+            it->rectangle(0, 52, 128, 1);
+            it->rectangle(42, 52, 44, 13);
+            it->print(21, 58, id(font_small), COLOR_ON, display::TextAlign::CENTER, "PREV");
+            it->print(64, 58, id(font_small), COLOR_ON, display::TextAlign::CENTER, "v3.1");
+            it->print(107, 58, id(font_small), COLOR_ON, display::TextAlign::CENTER, "NEXT");
+          } else {
+            auto size = id(homepage_qr)->get_size() * 2;
+            auto x = (it->get_width() / 2) - (size / 2);
+            auto y = (it->get_height() / 2) - (size / 2);
+            it->qr_code(x, y, id(homepage_qr), COLOR_ON, 2);
+          }
+          it->display();
+
+  # ── Main dispatcher ─────────────────────────────────────────────────────────
+  - id: main_update
+    then:
+      - if:
+          condition: { lambda: 'return !id(is_shutting_down);' }
+          then:
+            - if:
+                condition: { lambda: 'return id(is_booting);' }
+                then: [ script.execute: boot_screen ]
+                else:
+                  - if:
+                      condition: { lambda: 'return id(menu_active);' }
+                      then: [ script.execute: menu_draw ]
+                      else:
+                        - if:
+                            condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                            then: [ script.execute: ac_update ]
+                        - if:
+                            condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                            then: [ script.execute: lights_update ]
+                        - if:
+                            condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                            then: [ script.execute: covers_update ]
+                        - if:
+                            condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
+                            then: [ script.execute: automations_update ]
+                        - if:
+                            condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
+                            then: [ script.execute: settings_update ]
+                        - if:
+                            condition: { lambda: 'return id(app_mode) == APP_INFO;' }
+                            then: [ script.execute: info_update ]
+
+# ── Main loop (500 ms tick, 120 s idle → sleep) ───────────────────────────────
+interval:
+  - interval: 500ms
+    then:
+      - if:
+          condition:
+            lambda: 'return (millis() / 1000) - id(last_active) >= 120;'
+          then: [ script.execute: turn_off ]
+          else: [ script.execute: main_update ]

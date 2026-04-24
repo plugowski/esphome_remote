@@ -1,0 +1,248 @@
+# ── layout_v1.yaml ────────────────────────────────────────────────────────────
+# Physical button layout for v1 hardware — original board.
+#
+# Pin assignment:
+#    0  power off       (shared with deep-sleep wake pin)
+#    5  ☰  menu         dedicated open / confirm menu button
+#   14  SELECT          AC: cycle entity  | Lights: next | Covers: next | Autos: next
+#   24  TOGGLE          AC: on/off        | Lights: toggle | Covers: open↔close | Autos: trigger
+#   22  MODE / <<       menu prev | AC: cycle HVAC mode | Lights: prev | Covers: close | Autos: L slot
+#   33  FAN  / >>       menu next | AC: cycle fan speed | Covers: open | Autos: R slot
+#   23  TEMP ↑  (primary)   AC: temp+ | Lights: brightness+ | Covers: pos+ | Autos: scroll▲
+#   17  TEMP ↑  (secondary) same as 23
+#   19  TEMP ↓  (primary)   AC: temp– | Lights: brightness– | Covers: pos– | Autos: scroll▼
+#   18  TEMP ↓  (secondary) same as 19
+#
+# This layout is SELF-CONTAINED — it dispatches directly to mode scripts.
+# It does NOT depend on packages/buttons.yaml (button semantics differ from v2).
+
+binary_sensor:
+
+  # ── power off ──────────────────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      allow_other_uses: true   # shared with deep_sleep wakeup_pin
+      number: 0
+      mode: { input: true, pullup: true }
+    name: "Power Off"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then: [ script.execute: turn_off ]
+
+  # ── SELECT — AC: cycle entity | Lights: next | Covers: next | Autos: next ──
+  - platform: gpio
+    pin:
+      number: 14
+      mode: { input: true, pullup: true }
+    name: "Button Select"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_right ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_right ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_next ]
+
+  # ── TOGGLE — AC: on/off | Lights: toggle | Covers: open↔close | Autos: trigger
+  - platform: gpio
+    pin:
+      number: 24
+      mode: { input: true, pullup: true }
+    name: "Button Toggle"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_mode ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_toggle ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_ok ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_trigger ]
+
+  # ── ☰ menu — open menu / confirm selection ────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 5
+      mode: { input: true, pullup: true }
+    name: "Button Menu"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_confirm ]
+            else: [ script.execute: menu_open ]
+
+  # ── FAN / >> — menu next / AC fan / Covers open / Autos R ────────────────
+  - platform: gpio
+    pin:
+      number: 33
+      mode: { input: true, pullup: true }
+    name: "Button Fan"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_next ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_fan ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_open ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_r ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_down ]
+
+  # ── MODE / << — menu prev / AC HVAC mode / Lights prev / Covers close / Autos L
+  - platform: gpio
+    pin:
+      number: 22
+      mode: { input: true, pullup: true }
+    name: "Button Mode"
+    internal: true
+    filters: [ invert:, delayed_on: 30ms ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return id(menu_active);' }
+            then: [ script.execute: menu_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_mode ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_prev ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_close ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_menu_l ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+            then: [ script.execute: settings_btn_up ]
+
+  # ── TEMP ↑ primary (23) ───────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 23
+      mode: { input: true, pullup: true }
+    name: "Button Temp Up"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_temp_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_brightness_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_pos_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_prev ]
+
+  # ── TEMP ↑ secondary (17) — same actions as pin 23 ───────────────────────
+  - platform: gpio
+    pin:
+      number: 17
+      mode: { input: true, pullup: true }
+    name: "Button Temp Up 2"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_temp_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_brightness_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_pos_up ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_prev ]
+
+  # ── TEMP ↓ primary (19) ───────────────────────────────────────────────────
+  - platform: gpio
+    pin:
+      number: 19
+      mode: { input: true, pullup: true }
+    name: "Button Temp Down"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_temp_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_brightness_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_pos_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_next ]
+
+  # ── TEMP ↓ secondary (18) — same actions as pin 19 ───────────────────────
+  - platform: gpio
+    pin:
+      number: 18
+      mode: { input: true, pullup: true }
+    name: "Button Temp Down 2"
+    internal: true
+    filters: [ invert: ]
+    on_press:
+      then:
+        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+            then: [ script.execute: ac_btn_temp_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+            then: [ script.execute: lights_btn_brightness_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+            then: [ script.execute: covers_btn_pos_down ]
+        - if:
+            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+            then: [ script.execute: automations_btn_next ]

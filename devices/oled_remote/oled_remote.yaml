@@ -84,6 +84,7 @@ esphome:
             id(last_active) = millis() / 1000;
   includes:
     - ac_entities.h
+    - display_utils.h
 
 esp32:
   board: ${BOARD}
@@ -519,27 +520,17 @@ script:
                 }
 
                 if (mode != "off") {
-                  
+
                   if (fan_mode == "auto") {
                     it->filled_rectangle(0, 38, 128, 14, COLOR_ON);
                     it->print(64, 45, id(basic), COLOR_OFF, display::TextAlign::CENTER, upper_selected_ac.c_str());
-                    it->rectangle(42, 51, 44, 21);
                   } else {
                     it->rectangle(0, 38, 128, 1);
                     it->print(64, 46, id(basic), COLOR_ON, display::TextAlign::CENTER, upper_selected_ac.c_str());
-
-                    // draw button guides on UI
-                    it->rectangle(0, 53, 128, 1);
-                    it->rectangle(42, 53, 44, 19);
                   }
-                  
-                  
 
-                  it->print(21, 59, id(small), COLOR_ON, display::TextAlign::CENTER, "MODE");
-                  
-                  if (mode == "cool" or mode == "fan_only") {
-                    it->print(107, 59, id(small), COLOR_ON, display::TextAlign::CENTER, "FAN");
-                  }
+                  bool show_fan = (mode == "cool" || mode == "fan_only");
+                  draw_bottom_menu(it, id(small), "MODE", "MENU", show_fan ? "FAN" : nullptr);
                 }
 
                 it->display();
