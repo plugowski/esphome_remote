@@ -1,16 +1,19 @@
 # ── mode_settings.yaml ───────────────────────────────────────────────────────
-# Settings mode — contrast adjustment, WiFi SSID/IP info, battery level.
+# Settings mode — contrast, WiFi SSID/IP info, sleep timeout, battery interval.
 # Display + interaction logic lives in src/settings_controller.h.
 #
 # Button entry points (called via buttons.yaml / layout files):
 #   settings_btn_up    → previous setting row  (↑ / pin22)
 #   settings_btn_down  → next setting row      (↓ / pin33)
-#   settings_btn_left  → contrast −            (← / pin14)
-#   settings_btn_right → contrast +            (→ / pin26)
+#   settings_btn_left  → decrease value        (← / pin14)
+#   settings_btn_right → increase value        (→ / pin26)
 # Main update loop: settings_update
 #
 # Battery sensor: reads raw ADC on GPIO34 through a 1:2 voltage divider.
-# Adjust PIN_BATTERY_ADC or replace with a homeassistant sensor as needed.
+# Adjust the pin or replace with a homeassistant sensor as needed.
+#
+# Note: on_value gates settings_draw on !id(is_timer_wake), which is expected
+# to be defined in the main remote.yaml.
 
 esphome:
   includes:
@@ -35,13 +38,12 @@ text_sensor:
 # ── Battery sensor ────────────────────────────────────────────────────────────
 # Assumes a 100 kΩ / 100 kΩ voltage divider: Vbatt → [100k] → GPIO34 → [100k] → GND
 # Multiply by 2 to recover full voltage; LiPo range 3.2 V (0 %) → 4.2 V (100 %).
-# Replace this block with a homeassistant sensor if you prefer to pull from HA.
 sensor:
   - platform: adc
     pin: GPIO34
     id: battery_raw
     name: "Battery"
-    internal: true
+    internal: false
     attenuation: 11db
     update_interval: 60s
     filters:
@@ -52,7 +54,9 @@ sensor:
     on_value:
       then:
         - lambda: 'id(battery_pct) = static_cast<int>(x); id(updated_ui) = true;'
-        - script.execute: settings_draw
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then: [ script.execute: settings_draw ]
 
 # ── globals ───────────────────────────────────────────────────────────────────
 globals:
@@ -69,6 +73,16 @@ globals:
   - id: battery_pct         # 0–100, or -1 when not yet read
     type: int
     initial_value: '-1'
+
+  - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
+    type: int
+    initial_value: '2'
+    restore_value: true
+
+  - id: battery_interval_mins  # timer-wake interval for battery check (15–1440 min)
+    type: int
+    initial_value: '60'
+    restore_value: true
 
 # ── scripts ───────────────────────────────────────────────────────────────────
 script:
@@ -90,6 +104,14 @@ script:
           then:
             - lambda: 'SettingsController::contrastDown(id(contrast_level), id(updated_ui));'
             - script.execute: settings_apply_contrast
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_SLEEP;' }
+          then:
+            - lambda: 'SettingsController::sleepDown(id(sleep_timeout_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
+          then:
+            - lambda: 'SettingsController::battIntervalDown(id(battery_interval_mins), id(updated_ui));'
       - script.execute: settings_draw
 
   - id: settings_btn_right
@@ -99,6 +121,14 @@ script:
           then:
             - lambda: 'SettingsController::contrastUp(id(contrast_level), id(updated_ui));'
             - script.execute: settings_apply_contrast
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_SLEEP;' }
+          then:
+            - lambda: 'SettingsController::sleepUp(id(sleep_timeout_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
+          then:
+            - lambda: 'SettingsController::battIntervalUp(id(battery_interval_mins), id(updated_ui));'
       - script.execute: settings_draw
 
   - id: settings_apply_contrast
@@ -114,4 +144,5 @@ script:
           SettingsController::draw(id(oled_display), id(font_small),
             id(selected_setting_index), id(contrast_level),
             id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
-            id(battery_pct), id(updated_ui));
+            id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+            id(updated_ui));
