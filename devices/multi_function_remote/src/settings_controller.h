@@ -189,11 +189,11 @@ private:
   // Narrow battery icon: 16×6 body + 2×3 terminal nub on the right
   template<class D>
   static void drawBattery(D* it, int x, int y_c, int pct, Color fg) {
-    it->rectangle(x, y_c - 3, 16, 6, fg);             // body  16×6
-    it->filled_rectangle(x + 16, y_c - 1, 2, 3, fg);  // nub    2×3
+    it->rectangle(x, y_c - 4, 14, 8, fg);             // body  16×8
+    it->filled_rectangle(x + 14, y_c - 2, 2, 4, fg);  // nub    2×4
     if (pct > 0) {
-      int fill = (pct * 14) / 100;                     // max 14 px inside body
-      it->filled_rectangle(x + 1, y_c - 2, fill, 4, fg);
+      int fill = (pct * 12) / 100;                     // max 14 px inside body
+      it->filled_rectangle(x + 1, y_c - 3, fill, 6, fg);
     }
   }
 };

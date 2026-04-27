@@ -54,26 +54,3 @@ inline void draw_bottom_menu(
         it->print(105, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, right);
     }
 }
-
-// Draws the top menu bar — same three buttons, mirrored to the top of the screen.
-// Content below starts at y=11.
-inline void draw_top_menu(
-    esphome::display::DisplayBuffer *it,
-    esphome::font::Font *font,
-    const char *left,
-    const char *center,
-    const char *right
-) {
-    it->rectangle(0, 10, 128, 1);
-    it->rectangle(42, 0, 44, 11);
-
-    if (left && left[0] != '\0') {
-        it->print(21, 5, font, COLOR_ON, esphome::display::TextAlign::CENTER, left);
-    }
-    if (center && center[0] != '\0') {
-        it->print(64, 5, font, COLOR_ON, esphome::display::TextAlign::CENTER, center);
-    }
-    if (right && right[0] != '\0') {
-        it->print(107, 5, font, COLOR_ON, esphome::display::TextAlign::CENTER, right);
-    }
-}
