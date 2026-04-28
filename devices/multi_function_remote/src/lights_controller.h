@@ -79,9 +79,11 @@ public:
 
   // ── HA state sync ──────────────────────────────────────────────────────────
 
-  static void syncLight(int idx, const std::string& ha_state, float ha_brightness,
-                        bool& updated_ui) {
-    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+  // Looks up the light by entity_id so YAML lambdas never need a hardcoded index.
+  static void syncLight(const char* entity_id, const std::string& ha_state,
+                        float ha_brightness, bool& updated_ui) {
+    int idx = indexForEntity(entity_id);
+    if (idx < 0) return;
     bool changed = false;
     bool new_on  = (ha_state == "on");
     if (lightOn(idx) != new_on) { lightOn(idx) = new_on; changed = true; }
@@ -174,6 +176,12 @@ public:
   }
 
 private:
+
+  static int indexForEntity(const char* entity_id) {
+    for (int i = 0; i < LIGHTS_LIST_COUNT; i++)
+      if (strcmp(LIGHTS_LIST[i].entity_id, entity_id) == 0) return i;
+    return -1;
+  }
 
   // Per-light state stored in static locals (survives mode switches)
   static bool& lightOn(int idx) {

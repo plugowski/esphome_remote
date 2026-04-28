@@ -29,79 +29,37 @@ globals:
 
 text_sensor:
   - platform: homeassistant
-    id: sofa_light
-    entity_id: light.sofa
+    id: desk_monitor_light
+    entity_id: light.desk_monitor_light
     on_value:
       then:
-        - lambda: 'LightsController::syncLight(0, x, NAN, id(updated_ui));'
+        - lambda: 'LightsController::syncLight("light.desk_monitor_light", x, NAN, id(updated_ui));'
         - script.execute: lights_draw
 
   - platform: homeassistant
-    id: table_light
-    entity_id: light.table
+    id: office_main_light
+    entity_id: light.office_main
     on_value:
       then:
-        - lambda: 'LightsController::syncLight(1, x, NAN, id(updated_ui));'
+        - lambda: 'LightsController::syncLight("light.office_main", x, NAN, id(updated_ui));'
         - script.execute: lights_draw
 
   - platform: homeassistant
-    id: desk_light
-    entity_id: light.desk
+    id: skadis_strip_light
+    entity_id: light.skadis_strip_light
     on_value:
       then:
-        - lambda: 'LightsController::syncLight(2, x, NAN, id(updated_ui));'
-        - script.execute: lights_draw
-
-  - platform: homeassistant
-    id: workshop_light
-    entity_id: light.workshop
-    on_value:
-      then:
-        - lambda: 'LightsController::syncLight(3, x, NAN, id(updated_ui));'
-        - script.execute: lights_draw
-
-  - platform: homeassistant
-    id: bed_lights_light
-    entity_id: light.bed_lights
-    on_value:
-      then:
-        - lambda: 'LightsController::syncLight(4, x, NAN, id(updated_ui));'
-        - script.execute: lights_draw
-
-  - platform: homeassistant
-    id: printers_light
-    entity_id: light.printers
-    on_value:
-      then:
-        - lambda: 'LightsController::syncLight(5, x, NAN, id(updated_ui));'
+        - lambda: 'LightsController::syncLight("light.skadis_strip_light", x, NAN, id(updated_ui));'
         - script.execute: lights_draw
 
 sensor:
   - platform: homeassistant
-    id: sofa_brightness
-    entity_id: light.sofa
+    id: skadis_strip_brightness
+    entity_id: light.skadis_strip_light
     attribute: brightness
     on_value:
       then:
-        - lambda: 'LightsController::syncLight(0, id(sofa_light).state, x * 100.0f / 255.0f, id(updated_ui));'
-        - script.execute: lights_draw
-
-  - platform: homeassistant
-    id: desk_brightness
-    entity_id: light.desk
-    attribute: brightness
-    on_value:
-      then:
-        - lambda: 'LightsController::syncLight(2, id(desk_light).state, x * 100.0f / 255.0f, id(updated_ui));'
-        - script.execute: lights_draw
-
-  - platform: homeassistant
-    id: bed_lights_brightness
-    entity_id: light.bed_lights
-    attribute: brightness
-    on_value:
-      then:
-        - lambda: 'LightsController::syncLight(4, id(bed_lights_light).state, x * 100.0f / 255.0f, id(updated_ui));'
+        - lambda: 'LightsController::syncLight("light.skadis_strip_light", id(skadis_strip_light).state, x * 100.0f / 255.0f, id(updated_ui));'
         - script.execute: lights_draw
 
 # ── scripts ───────────────────────────────────────────────────────────────────
@@ -162,6 +120,10 @@ script:
 
   - id: lights_draw
     then:
-      - lambda: >-
-          LightsController::draw(id(oled_display), id(font_small),
-                                 id(selected_light_index), id(updated_ui));
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_LIGHTS && !id(menu_active) && !id(is_booting);'
+          then:
+            - lambda: >-
+                LightsController::draw(id(oled_display), id(font_small),
+                                       id(selected_light_index), id(updated_ui));

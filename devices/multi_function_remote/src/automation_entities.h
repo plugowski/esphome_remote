@@ -17,14 +17,8 @@ struct AutomationEntity {
 };
 
 static const AutomationEntity AUTOMATION_LIST[] = {
-  { "Good Morning", "MORN",  "scene.good_morning",          "scene.turn_on",                nullptr },
-  { "Good Night",   "NIGHT", "scene.good_night",            "scene.turn_on",                "L"     },
-  { "Away Mode",    "AWAY",  "automation.away_mode",        "automation.trigger",           nullptr },
-  { "Movie Time",   "MOVIE", "scene.movie_time",            "scene.turn_on",                "R"     },
-  { "Boost Heat",   "BOOST", "input_boolean.boost_heat",    "input_boolean.toggle",         nullptr },
-  { "Eco Mode",     "ECO",   "input_boolean.eco_mode",      "input_boolean.toggle",         nullptr },
-  { "Lock Door",    "LOCK",  "lock.front_door",             "lock.lock",                    nullptr },
-  { "Arm Alarm",    "ALARM", "alarm_control_panel.home",    "alarm_control_panel.arm_away", nullptr },
+  { "Empty Office", "EMPTY", "automation.empty_office",     "automation.trigger",           nullptr },
+  { "Sofa Half",    "HALF",  "script.toggle_sofa_half_mode","script.turn_on",               nullptr },
 };
 
 static const int AUTOMATION_LIST_COUNT = sizeof(AUTOMATION_LIST) / sizeof(AUTOMATION_LIST[0]);

@@ -74,7 +74,7 @@ script:
           then: [ script.execute: settings_btn_right ]
 
   # ── btn_ok ────────────────────────────────────────────────────────────────
-  # Menu: confirm  |  AC: cycle HVAC mode  |  Lights: toggle on/off
+  # Menu: confirm  |  AC: turn ON  |  Lights: toggle on/off
   # Covers: toggle open ↔ close  |  Automations: trigger selected
 
   - id: btn_ok
@@ -84,7 +84,7 @@ script:
           then: [ script.execute: menu_confirm ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-          then: [ script.execute: ac_btn_mode ]
+          then: [ script.execute: ac_btn_power_on ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
           then: [ script.execute: lights_btn_toggle ]
@@ -140,7 +140,7 @@ script:
           then: [ script.execute: settings_btn_down ]
 
   # ── btn_stop ──────────────────────────────────────────────────────────────
-  # Menu: cancel (close without confirming)  |  AC: toggle power on/off
+  # Menu: cancel (close without confirming)  |  AC: turn OFF
   # Lights: —  |  Covers: stop  |  Automations: —
 
   - id: btn_stop
@@ -150,7 +150,7 @@ script:
           then: [ script.execute: menu_cancel ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-          then: [ script.execute: ac_btn_power ]
+          then: [ script.execute: ac_btn_power_off ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
           then: [ script.execute: covers_btn_stop ]
