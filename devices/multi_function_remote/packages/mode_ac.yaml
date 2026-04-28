@@ -303,6 +303,9 @@ script:
 
   - id: ac_update
     then:
+      - lambda: |-
+          if (id(selected_ac_index) >= AC_LIST_COUNT) id(selected_ac_index) = 0;
+          ACController::selectUnit(id(selected_ac_index), id(selected_ac), id(selected_ac_name));
       - if:
           condition:
             lambda: 'return !id(debounce_active) && id(selected_ac_mode) != id(current_ac_mode);'
