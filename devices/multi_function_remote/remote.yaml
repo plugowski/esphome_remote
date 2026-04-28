@@ -50,6 +50,7 @@ esphome:
   name_add_mac_suffix: false
   includes:
     - src/menu_entities.h
+    - src/quick_action_entities.h
     - src/remote_core.h
     - src/wake_utils.h
     - src/display_utils.h

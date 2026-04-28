@@ -126,7 +126,7 @@ public:
   }
 
   static void tempDown(int& temp, bool& updated_ui) {
-    if (temp > 20) temp--;
+    if (temp > 16) temp--;
     updated_ui = true;
   }
 

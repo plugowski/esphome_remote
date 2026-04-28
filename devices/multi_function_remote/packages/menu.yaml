@@ -1,10 +1,11 @@
 # ── menu.yaml ────────────────────────────────────────────────────────────────
-# Carousel mode-selector overlay.
-# All logic lives in menu_controller.h / menu_entities.h.
+# Mode-selector carousel + quick-action overlay.
+# menu_quick_index == -1 → carousel view  |  >= 0 → quick-action view
 
 esphome:
   includes:
     - src/menu_controller.h
+    - src/quick_action_entities.h
 
 font:
   - file:
@@ -40,34 +41,89 @@ font:
       - "\ue5cc"  # unfold_less       (cover: closing)
       - "\ue034"  # pause             (cover: stopped)
 
+  # ── Quick-action icon font (32 px — matches carousel icon size) ──────────
+  # Add a glyph here for every icon codepoint used in quick_action_entities.h.
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: menu_action_icon
+    size: 32
+    glyphs:
+      - "\ue7fb"  # person_off  (Empty Office)
+      - "\ue02e"  # weekend     (Sofa Half)
+      - "\ue8f9"  # work        (Start Work)
+
+globals:
+  - id: menu_quick_index
+    type: int
+    initial_value: '-1'
+    restore_value: false
+
 script:
 
   - id: menu_open
     then:
-      - lambda: 'MenuController::open(id(menu_index), id(app_mode), id(menu_active));'
+      - lambda: |-
+          MenuController::open(id(menu_index), id(app_mode), id(menu_active));
+          id(menu_quick_index) = -1;
       - script.execute: menu_draw
 
   - id: menu_confirm
     then:
       - lambda: 'MenuController::confirm(id(app_mode), id(menu_index), id(menu_active), id(updated_ui));'
 
+  - id: menu_cancel
+    then:
+      - lambda: 'id(menu_active) = false; id(updated_ui) = true;'
+
   - id: menu_prev
     then:
-      - lambda: 'MenuController::prev(id(menu_index));'
+      - lambda: |-
+          MenuController::prev(id(menu_index));
+          id(menu_quick_index) = -1;
       - script.execute: menu_draw
 
   - id: menu_next
     then:
-      - lambda: 'MenuController::next(id(menu_index));'
+      - lambda: |-
+          MenuController::next(id(menu_index));
+          id(menu_quick_index) = -1;
       - script.execute: menu_draw
 
-  - id: menu_cancel
+  - id: menu_quick_up
     then:
-      - lambda: 'id(menu_active) = false; id(updated_ui) = true;'
+      - lambda: 'MenuController::scrollUp(id(menu_quick_index));'
+      - script.execute: menu_draw
+
+  - id: menu_quick_down
+    then:
+      - lambda: 'MenuController::scrollDown(id(menu_quick_index));'
+      - script.execute: menu_draw
+
+  - id: menu_back_to_carousel
+    then:
+      - lambda: 'id(menu_quick_index) = -1;'
+      - script.execute: menu_draw
+
+  # Trigger selected quick action — reuses auto_entity / auto_service / auto_call_ha
+  # from mode_automations.yaml (merged globals accessible across all packages).
+  - id: menu_quick_trigger
+    then:
+      - lambda: |-
+          const auto& qa   = QUICK_ACTION_LIST[id(menu_quick_index)];
+          id(auto_entity)  = qa.entity_id;
+          id(auto_service) = qa.service;
+      - script.execute: auto_call_ha
+      - lambda: |-
+          MenuController::drawTriggered(id(oled_display), id(menu_action_icon),
+            id(font_base), id(font_small), id(menu_quick_index));
+      - delay: 800ms
+      - script.execute: menu_draw
 
   - id: menu_draw
     then:
       - lambda: >-
           MenuController::draw(id(oled_display),
-            id(menu_icon_big), id(menu_icon_small),
-            id(font_base), id(font_small), id(menu_index));
+            id(menu_icon_big), id(menu_icon_small), id(menu_action_icon),
+            id(font_base), id(font_small), id(menu_index), id(menu_quick_index));

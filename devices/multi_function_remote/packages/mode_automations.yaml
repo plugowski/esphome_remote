@@ -89,7 +89,7 @@ script:
           condition: { lambda: 'return id(auto_service) == "scene.turn_on";' }
           then:
             - homeassistant.service:
-                service: scene.turn_on
+                service: homeassistant.turn_on
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
