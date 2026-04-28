@@ -11,6 +11,10 @@
 # Main update called by main_update: ac_update
 
 esphome:
+  on_boot:
+    - priority: 249
+      then:
+        - lambda: 'id(selected_ac_index) = ACController::indexForEntity(id(selected_ac));'
   includes:
     - src/ac_entities.h     # must come before ac_controller.h (struct definition)
     - src/ac_controller.h
@@ -98,16 +102,11 @@ globals:
   - id: selected_ac_index
     type: int
     initial_value: '0'
-    restore_value: true
+    restore_value: false
 
   - id: selected_ac
     type: std::string
     initial_value: '"climate.living_room_ac"'
-    restore_value: true
-
-  - id: selected_ac_name
-    type: std::string
-    initial_value: '"Living"'
     restore_value: true
 
   - id: selected_ac_mode_index
@@ -249,9 +248,7 @@ script:
 
   - id: ac_select_unit
     then:
-      - lambda: >-
-          ACController::selectUnit(id(selected_ac_index),
-                                   id(selected_ac), id(selected_ac_name));
+      - lambda: 'ACController::selectUnit(id(selected_ac_index), id(selected_ac));'
       - lambda: |-
           ACController::resetUnit(id(selected_ac_index),
             id(selected_ac_mode_index), id(selected_ac_mode),
@@ -303,9 +300,6 @@ script:
 
   - id: ac_update
     then:
-      - lambda: |-
-          if (id(selected_ac_index) >= AC_LIST_COUNT) id(selected_ac_index) = 0;
-          ACController::selectUnit(id(selected_ac_index), id(selected_ac), id(selected_ac_name));
       - if:
           condition:
             lambda: 'return !id(debounce_active) && id(selected_ac_mode) != id(current_ac_mode);'
@@ -330,4 +324,4 @@ script:
             id(ac_symbols), id(ac_symbols_big),
             id(font_big), id(font_bigger), id(font_base), id(font_small),
             id(selected_ac_mode), id(selected_fan_mode),
-            id(selected_ac_name), id(selected_temp), id(updated_ui));
+            id(selected_ac_index), id(selected_temp), id(updated_ui));
