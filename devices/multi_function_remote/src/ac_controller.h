@@ -12,7 +12,8 @@
 // Typical YAML usage (one-liners):
 //   ACController::prevUnit(id(selected_ac_index));
 //   ACController::nextUnit(id(selected_ac_index));
-//   ACController::selectUnit(id(selected_ac_index), id(selected_ac), id(selected_ac_name));
+//   ACController::indexForEntity(id(selected_ac));   // → int index
+//   ACController::selectUnit(id(selected_ac_index), id(selected_ac));
 //   ACController::cycleMode(id(selected_ac_index), id(selected_ac_mode_index));
 //   ACController::applyMode(id(selected_ac_index), id(selected_ac_mode_index),
 //                           id(selected_ac_mode), id(updated_ui));
@@ -31,7 +32,7 @@
 //                   id(ac_symbols), id(ac_symbols_big), id(font_big), id(font_bigger),
 //                   id(font_base), id(font_small),
 //                   id(selected_ac_mode), id(selected_fan_mode),
-//                   id(selected_ac_name), id(selected_temp), id(updated_ui));
+//                   id(selected_ac_index), id(selected_temp), id(updated_ui));
 
 class ACController {
 public:
@@ -46,10 +47,16 @@ public:
     idx = (idx + 1) % AC_LIST_COUNT;
   }
 
-  // Update entity_id and name globals to match the selected unit index
-  static void selectUnit(int idx, std::string& entity, std::string& name) {
+  // Reverse-lookup: find the index for a given entity_id string (fallback 0)
+  static int indexForEntity(const std::string& entity_id) {
+    for (int i = 0; i < AC_LIST_COUNT; i++)
+      if (entity_id == AC_LIST[i].entity_id) return i;
+    return 0;
+  }
+
+  // Update entity_id global to match the selected unit index
+  static void selectUnit(int idx, std::string& entity) {
     entity = AC_LIST[idx].entity_id;
-    name   = AC_LIST[idx].name;
   }
 
   // Reset mode/fan/temp to the unit's own array defaults (index 0 of each list).
@@ -201,7 +208,7 @@ public:
                    F* symbols, F* symbols_big,
                    F* font_big, F* font_bigger, F* font_base, F* font_small,
                    const std::string& mode, const std::string& fan_mode,
-                   const std::string& ac_name, int temp,
+                   int ac_idx, int temp,
                    bool& updated_ui)
   {
     if (!updated_ui) return;
@@ -209,8 +216,7 @@ public:
 
     it->clear();
 
-    // Uppercase AC name label
-    std::string label = ac_name;
+    std::string label = AC_LIST[ac_idx].name;
     for (auto& c : label) c = toupper(static_cast<unsigned char>(c));
 
     // ── mode-specific upper area ──────────────────────────────────────────────
@@ -248,6 +254,11 @@ public:
 
       it->print(5, 8, symbols, "\uf164");    // dry icon
       it->print(80, 22, font_bigger, COLOR_ON, display::TextAlign::CENTER, "DRY");
+
+    } else {
+
+      // unknown / loading — waiting for HA state
+      it->print(64, 22, font_bigger, COLOR_ON, display::TextAlign::CENTER, "...");
 
     }
 

@@ -111,12 +111,13 @@ esphome:
                     - wait_until:
                         condition:
                           lambda: 'return !id(is_booting);'
-                        timeout: 5s
+                        timeout: 10s
                     - if:
                         condition:
-                          lambda: 'return id(is_booting);'
+                          lambda: 'return id(is_booting) && id(conn_status) != 0;'
                         then:
-                          - lambda: 'id(conn_status) = 2; id(is_booting) = false;'
+                          - lambda: 'id(conn_status) = 2;'
+                    - lambda: 'id(is_booting) = false;'
 
 esp32:
   board: ${BOARD}
