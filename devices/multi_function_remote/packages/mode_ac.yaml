@@ -261,7 +261,7 @@ script:
   # ── HA service calls ──────────────────────────────────────────────────────
 
   - id: ac_send_mode_update
-    mode: queued
+    mode: single
     then:
       - homeassistant.service:
           service: climate.set_hvac_mode
@@ -270,7 +270,7 @@ script:
             hvac_mode: !lambda 'return id(selected_ac_mode);'
 
   - id: ac_send_temp_update
-    mode: queued
+    mode: single
     then:
       - homeassistant.service:
           service: climate.set_temperature
@@ -279,7 +279,7 @@ script:
             temperature: !lambda 'return id(selected_temp);'
 
   - id: ac_send_fan_update
-    mode: queued
+    mode: single
     then:
       - homeassistant.service:
           service: climate.set_fan_mode
@@ -287,13 +287,13 @@ script:
             entity_id: !lambda 'return id(selected_ac);'
             fan_mode: !lambda 'return id(selected_fan_mode);'
 
-  # ── debounce (1 s settle before sending to HA) ───────────────────────────
+  # ── debounce (300 ms settle before sending to HA) ────────────────────────
 
   - id: ac_await
     mode: restart
     then:
       - lambda: 'id(debounce_active) = true;'
-      - delay: 1s
+      - delay: 300ms
       - lambda: 'id(debounce_active) = false;'
 
   # ── main AC update (called from main_update every 500 ms) ────────────────
