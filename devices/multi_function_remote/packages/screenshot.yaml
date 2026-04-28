@@ -1,14 +1,8 @@
 button:
   - platform: template
     name: "Screenshot"
-    entity_category: diagnostic
+    id: screenshot_btn
     on_press:
-      then:
-        - script.execute: screenshot
-
-script:
-  - id: screenshot
-    then:
       - lambda: |-
           const uint8_t* buf = grab_raw_buffer(id(oled_display));
           char line[257];
