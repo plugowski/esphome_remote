@@ -78,6 +78,7 @@ esphome:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then:
               - lambda: |-
+                  if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
                   RemoteCore::resetIdleTimer(id(last_active));
                   id(is_booting) = true;
     - priority: -200        # runs after all sensors/components are initialised

@@ -153,7 +153,9 @@ script:
   # ── display ───────────────────────────────────────────────────────────────
 
   - id: covers_update
-    then: [ script.execute: covers_draw ]
+    then:
+      - lambda: 'if (id(selected_cover_index) >= COVER_LIST_COUNT) id(selected_cover_index) = 0;'
+      - script.execute: covers_draw
 
   - id: covers_draw
     then:

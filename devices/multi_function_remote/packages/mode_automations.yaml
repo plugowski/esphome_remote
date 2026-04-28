@@ -152,7 +152,9 @@ script:
   # ── display ──────────────────────────────────────────────────────────────
 
   - id: automations_update
-    then: [ script.execute: automations_draw ]
+    then:
+      - lambda: 'if (id(selected_auto_index) >= AUTOMATION_LIST_COUNT) id(selected_auto_index) = 0;'
+      - script.execute: automations_draw
 
   - id: automations_draw
     then:

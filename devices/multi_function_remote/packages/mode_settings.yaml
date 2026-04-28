@@ -136,7 +136,9 @@ script:
       - lambda: 'id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));'
 
   - id: settings_update
-    then: [ script.execute: settings_draw ]
+    then:
+      - lambda: 'if (id(selected_setting_index) >= SETTING_COUNT) id(selected_setting_index) = 0;'
+      - script.execute: settings_draw
 
   - id: settings_draw
     then:

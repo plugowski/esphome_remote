@@ -1,0 +1,2713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESPHome Multi-Function Remote - Config Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #191a23;
+      --surface: #21222e;
+      --surface2: #292a38;
+      --surface3: #31323f;
+      --border: #3a3b4a;
+      --border2: #484958;
+      --accent: #6c72ff;
+      --accent-glow: rgba(108,114,255,0.18);
+      --accent-dim: rgba(108,114,255,0.08);
+      --purple: #a78bfa;
+      --danger: #ff5252;
+      --success: #2ecc71;
+      --warning: #f59e0b;
+      --text: #e3e4f0;
+      --text-muted: #a0a1b6;
+      --text-dim: #6e6f86;
+      --code-bg: rgba(0,0,0,0.28);
+      --code-color: #a8b5ff;
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px 16px 80px;
+      line-height: 1.5;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    /* --- Header ------------------------------------------- */
+    .page-header { text-align: center; padding: 40px 0 36px; }
+    .page-header h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; }
+    .page-header p  { color: var(--text-muted); margin-top: 8px; font-size: 0.95rem; }
+
+    /* --- Step labels -------------------------------------- */
+    .step-number {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 0.76rem; font-weight: 700; flex-shrink: 0;
+    }
+
+    /* --- Cards / cfg-sections ----------------------------- */
+    .cfg-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+    .cfg-section-title {
+      padding: 15px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+      justify-content: space-between;
+      cursor: pointer; user-select: none; gap: 12px;
+    }
+    .cfg-section-title:hover { background: rgba(255,255,255,0.02); }
+    .cfg-section-title h2 { font-size: 0.98rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .badge {
+      font-size: 0.72rem; background: var(--accent); color: #fff;
+      padding: 2px 8px; border-radius: 20px; font-weight: 600; line-height: 1.6;
+    }
+    .cfg-collapsible-body {
+      padding: 20px;
+      overflow: hidden;
+      max-height: 4000px;
+      transition: max-height 0.35s ease;
+    }
+    .cfg-collapsible-body.collapsed { max-height: 0; padding-top: 0; padding-bottom: 0; }
+
+    /* --- Chevron ------------------------------------------- */
+    .chevron { font-size: 20px; color: var(--text-muted); transition: transform 0.25s; }
+    .chevron.open { transform: rotate(180deg); }
+
+    /* --- Form elements ------------------------------------ */
+    .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .cfg-grid.cols-1 { grid-template-columns: 1fr; }
+    .cfg-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .cfg-group { display: flex; flex-direction: column; gap: 5px; }
+    .cfg-label {
+      font-size: 0.78rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .cfg-input,
+    input[type="text"], input[type="number"], select {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 8px 11px;
+      color: var(--text); font-size: 0.9rem; font-family: inherit;
+      width: 100%; transition: border-color 0.15s;
+    }
+    .cfg-input:focus,
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    input::placeholder { color: var(--text-muted); opacity: 0.6; }
+    select option { background: var(--surface2); }
+    select.cfg-input {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a1b6' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 11px center;
+      background-size: 10px 6px;
+      padding-right: 30px;
+    }
+    .cfg-input:placeholder-shown {
+      border-color: rgba(245,158,11,0.4);
+      border-style: dashed;
+    }
+
+    /* --- Slider ------------------------------------------- */
+    .slider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .slider-val {
+      background: var(--accent); color: #fff; border-radius: var(--radius-sm);
+      padding: 4px 10px; font-size: 0.82rem; font-weight: 600;
+      min-width: 72px; text-align: center; flex-shrink: 0;
+    }
+    .slider-ticks { display: flex; justify-content: space-between; padding: 0 2px; margin-bottom: 10px; }
+    .slider-ticks span { font-size: 0.68rem; color: var(--text-dim); }
+    input[type="range"].cfg-slider {
+      -webkit-appearance: none; appearance: none; flex: 1;
+      height: 4px; border-radius: 2px; outline: none; cursor: pointer;
+      background: var(--border); padding: 0; border: none;
+    }
+    input[type="range"].cfg-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: var(--accent);
+      cursor: pointer; border: 2px solid var(--surface);
+    }
+
+    /* --- Inner section title (mono divider label) ---------- */
+    .cfg-inner-title {
+      font-size: 0.72rem; font-weight: 700; font-family: var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .cfg-inner-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* --- Pin grid ----------------------------------------- */
+    .pin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+    /* --- Info box ----------------------------------------- */
+    .info-box {
+      background: rgba(108,114,255,0.07); border: 1px solid rgba(108,114,255,0.22);
+      border-radius: 7px; padding: 11px 14px;
+      font-size: 0.84rem; color: var(--text-muted);
+    }
+    .info-box + .info-box { margin-top: 10px; }
+    .info-box strong { color: var(--text); }
+    .info-box code {
+      background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+      font-size: 0.82em; color: var(--code-color);
+    }
+
+    /* --- Section label ------------------------------------ */
+    .section-label {
+      font-size: 0.76rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 9px;
+    }
+
+    /* --- Mode toggle tiles -------------------------------- */
+    .mode-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .mode-tile {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      background: var(--bg); border: 2px solid var(--border);
+      border-radius: 10px; padding: 14px 8px; cursor: pointer;
+      transition: all 0.15s; user-select: none;
+    }
+    .mode-tile .tile-icon {
+      font-size: 28px; color: var(--text-muted); transition: color 0.15s;
+    }
+    .mode-tile .tile-label {
+      font-size: 0.78rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.06em; transition: color 0.15s;
+    }
+    .mode-tile.active {
+      border-color: var(--accent); background: rgba(108,114,255,0.1);
+    }
+    .mode-tile.active .tile-icon { color: var(--accent); }
+    .mode-tile.active .tile-label { color: var(--text); }
+
+    /* --- Pill selectors ---------------------------------- */
+    .pill-group { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 11px; border-radius: 20px; cursor: pointer;
+      font-size: 0.82rem; font-weight: 500;
+      background: var(--surface2); border: 1px solid var(--border2);
+      color: var(--text-muted); user-select: none; transition: all 0.12s;
+    }
+    .pill input[type="checkbox"] { accent-color: var(--accent); width: 12px; height: 12px; cursor: pointer; }
+    .pill:has(input:checked) { border-color: var(--accent); background: rgba(108,114,255,0.12); color: var(--text); }
+
+    /* --- Entity items (ac-item) --------------------------- */
+    .entity-list { margin-bottom: 12px; }
+    .ac-item {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 10px;
+    }
+    .ac-item-hd {
+      padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+    }
+    .entity-drag {
+      cursor: grab;
+      color: var(--text-dim);
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .entity-drag:active { cursor: grabbing; }
+    .ac-item.dragging { opacity: 0.45; }
+    .ac-item.drop-target {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-glow) inset;
+    }
+    .entity-index {
+      width: 24px; height: 24px; background: var(--accent); color: #fff;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    }
+    .ac-item-bd {
+      border-top: 1px solid var(--border); padding: 12px 14px 14px;
+    }
+
+    /* --- Buttons ------------------------------------------ */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 7px; border: none;
+      cursor: pointer; font-size: 0.88rem; font-weight: 600;
+      font-family: inherit; transition: all 0.15s;
+    }
+    .btn .material-icons-round { font-size: 18px; }
+    .btn-secondary {
+      background: transparent; border: 1px solid var(--border); color: var(--text);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger {
+      background: transparent; border: 1px solid transparent;
+      color: var(--text-muted); padding: 5px 8px; font-size: 0.8rem;
+    }
+    .btn-danger:hover { color: var(--danger); background: rgba(255,82,82,0.08); }
+    .btn-generate {
+      background: linear-gradient(135deg, #6c72ff 0%, #9b59ff 100%);
+      color: #fff; padding: 14px 48px; font-size: 1.05rem; border-radius: 9px;
+      box-shadow: 0 4px 22px rgba(108,114,255,0.3); border: none; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: inherit; font-weight: 600;
+    }
+    .btn-generate:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(108,114,255,0.4); }
+    .btn-generate:active { transform: translateY(0); }
+    .btn-generate .material-icons-round { font-size: 22px; }
+    .btn-generate:disabled { opacity: 0.65; cursor: default; transform: none; }
+
+    /* --- Toggle switch ------------------------------------ */
+    .toggle-label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; user-select: none; }
+    .toggle-input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-sw { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle-sw::before {
+      content: ''; position: absolute; inset: 0;
+      background: var(--border); border-radius: 12px; transition: background 0.2s;
+    }
+    .toggle-sw::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; background: var(--text-muted);
+      border-radius: 50%; transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-input:checked + .toggle-sw::before { background: var(--accent); }
+    .toggle-input:checked + .toggle-sw::after { transform: translateX(20px); background: #fff; }
+
+    /* --- Menu order --------------------------------------- */
+    .order-list { display: flex; flex-direction: column; gap: 8px; }
+    .order-item {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+    }
+    .order-item .mode-icon { font-size: 22px; color: var(--accent); }
+    .order-item-label { flex: 1; font-size: 0.92rem; font-weight: 600; }
+    .order-btns { display: flex; gap: 4px; }
+    .btn-order {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 3px 7px; border-radius: 5px;
+      cursor: pointer; display: flex; align-items: center;
+      transition: all 0.12s; font-size: 0;
+    }
+    .btn-order:hover { color: var(--text); border-color: var(--accent); }
+    .btn-order:disabled { opacity: 0.25; cursor: default; }
+    .btn-order .material-icons-round { font-size: 16px; }
+
+    /* --- Validation error panel -------------------------------- */
+    .error-panel {
+      background: rgba(255,82,82,0.07);
+      border: 1px solid rgba(255,82,82,0.35);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 18px;
+    }
+    .error-panel-title {
+      display: flex; align-items: center; gap: 8px;
+      color: var(--danger); font-size: 0.9rem; font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .error-panel-title .material-icons-round { font-size: 20px; }
+    .error-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+    .error-list li {
+      display: flex; align-items: flex-start; gap: 7px;
+      font-size: 0.85rem; color: var(--text-muted);
+    }
+    .error-list li .material-icons-round { font-size: 15px; color: var(--danger); flex-shrink: 0; margin-top: 1px; }
+
+    .generate-section { text-align: center; padding: 20px 0; }
+    .generate-section p { color: var(--text-muted); margin-top: 14px; font-size: 0.85rem; }
+    .generate-section code {
+      background: var(--code-bg); padding: 2px 6px; border-radius: 3px; color: var(--code-color);
+    }
+
+    /* --- Mode-specific sections --------------------------- */
+    .mode-section { display: none; }
+    .mode-section.visible { display: block; }
+
+    /* --- Spinner ------------------------------------------ */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+
+    /* --- Responsive --------------------------------------- */
+    @media (max-width: 600px) {
+      .cfg-grid { grid-template-columns: 1fr; }
+      .cfg-grid.cols-3 { grid-template-columns: 1fr 1fr; }
+      .pin-grid { grid-template-columns: repeat(2, 1fr); }
+      .mode-tiles { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .mode-tile { padding: 12px 6px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- --- Header ------------------------------------------- -->
+  <div class="page-header">
+    <h1>Multi-Function OLED Remote</h1>
+    <p>Configure your ESPHome OLED remote, then download a ready-to-flash configuration ZIP.</p>
+  </div>
+
+  <!-- --- Step 1: Device Config ----------------------------- -->
+  <div class="cfg-section">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2><span class="step-number">1</span> Device Configuration</h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="cfg-grid">
+        <div class="cfg-group">
+          <label class="cfg-label">Device Name (ESPHome ID)</label>
+          <input type="text" class="cfg-input" id="device_name" value="oled-remote" placeholder="oled-remote">
+        </div>
+        <div class="cfg-group">
+          <label class="cfg-label">Friendly Name</label>
+          <input type="text" class="cfg-input" id="friendly_name" value="OLED Remote" placeholder="OLED Remote">
+        </div>
+        <div class="cfg-group">
+          <label class="cfg-label">HA API Encryption Key</label>
+          <div style="display:flex;gap:6px;align-items:stretch">
+            <input type="text" class="cfg-input" id="api_key"
+                   placeholder="Base64-encoded 32-byte key"
+                   style="flex:1;font-family:var(--font-mono);font-size:0.82rem;letter-spacing:0.02em">
+            <button type="button" class="btn btn-secondary" onclick="generateApiKey()"
+                    title="Generate a random 32-byte key" style="white-space:nowrap;padding:7px 12px;font-size:0.82rem;flex-shrink:0">
+              <span class="material-icons-round" style="font-size:15px">casino</span>
+              Generate key
+            </button>
+          </div>
+        </div>
+        <div class="cfg-group">
+          <label class="cfg-label">Button Layout</label>
+          <select class="cfg-input" id="layout">
+            <option value="layout_v2" selected>v2 (recommended)</option>
+            <option value="layout_v1">v1 (legacy)</option>
+          </select>
+        </div>
+      </div>
+      <div class="info-box" style="margin-top:4px;margin-bottom:18px">
+        <span class="material-icons-round" style="font-size:16px;vertical-align:-3px;margin-right:4px">wifi</span>
+        <strong>Wi-Fi credentials</strong> are not included in the generated files.
+        Set <code>wifi_ssid</code> and <code>wifi_password</code> directly in
+        <code>secrets.yaml</code> inside your ESPHome builder after flashing.
+      </div>
+
+      <!-- Battery monitoring sub-section -->
+      <div style="margin-bottom:18px">
+        <div class="cfg-inner-title">Battery Monitoring</div>
+        <label class="toggle-label">
+          <input type="checkbox" class="toggle-input" id="bat_enabled" checked onchange="toggleBat()">
+          <span class="toggle-sw"></span>
+          Enable battery monitoring
+        </label>
+        <div id="bat-settings">
+          <label class="cfg-label" style="display:block;margin-bottom:6px;margin-top:10px">Push battery state every</label>
+          <div class="slider-row">
+            <input type="range" id="battery_interval" class="cfg-slider" min="0" max="9" value="7"
+                   oninput="updateBatteryLabel(this.value)">
+            <div class="slider-val" id="battery-interval-badge">1 day</div>
+          </div>
+          <div class="slider-ticks">
+            <span>15 min</span><span>1 hour</span><span>6 hours</span><span>1 day</span><span>3 days</span>
+          </div>
+          <div class="info-box">Device wakes from deep sleep at this interval to push battery state to Home Assistant, then sleeps until a button press.</div>
+        </div>
+        <div id="bat-off" style="display:none">
+          <div class="info-box" style="margin-top:10px">Battery sensors won't be included. Deep sleep still works — wakes on button press only.</div>
+        </div>
+      </div>
+
+      <div style="margin-top:0">
+        <div class="cfg-section-title" style="border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:0"
+             onclick="togglePins(this)">
+          <span style="font-size:0.85rem;font-weight:600;display:flex;align-items:center;gap:8px">
+            <span class="material-icons-round" style="font-size:18px">settings_input_component</span>
+            GPIO Pin Configuration
+            <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(v2 defaults)</span>
+          </span>
+          <span class="material-icons-round chevron" id="pin-chevron">expand_more</span>
+        </div>
+        <div id="pin-config-body" class="cfg-collapsible-body collapsed" style="padding:0 2px">
+          <div class="pin-grid" style="margin-top:12px" id="pin-grid-container"></div>
+          <div class="info-box" style="margin-top:10px;font-size:0.8rem">
+            Button pins are written into a generated <code>packages/layouts/layout_custom.yaml</code>.
+            The battery ADC pin is used by <code>packages/mode_settings.yaml</code> (update manually if changed).
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- Step 2: Mode Selection ---------------------------- -->
+  <div class="cfg-section">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2><span class="step-number">2</span> Select Modes</h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="info-box" style="margin-bottom:16px">
+        Choose which controllers to include. Each selected mode will appear in the
+        remote's menu carousel and get its own entity configuration section below.
+      </div>
+      <div class="mode-tiles">
+        <div class="mode-tile" id="tile-ac" onclick="toggleMode('ac')">
+          <span class="material-icons-round tile-icon">ac_unit</span>
+          <span class="tile-label">AC</span>
+        </div>
+        <div class="mode-tile" id="tile-lights" onclick="toggleMode('lights')">
+          <span class="material-icons-round tile-icon">lightbulb</span>
+          <span class="tile-label">Lights</span>
+        </div>
+        <div class="mode-tile" id="tile-covers" onclick="toggleMode('covers')">
+          <span class="material-icons-round tile-icon">roller_shades</span>
+          <span class="tile-label">Covers</span>
+        </div>
+        <div class="mode-tile" id="tile-automations" onclick="toggleMode('automations')">
+          <span class="material-icons-round tile-icon">bolt</span>
+          <span class="tile-label">Automations</span>
+        </div>
+        <div class="mode-tile active" id="tile-settings" onclick="toggleMode('settings')">
+          <span class="material-icons-round tile-icon">settings</span>
+          <span class="tile-label">Settings</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- Step 3a: AC Entities ------------------------------ -->
+  <div class="cfg-section mode-section" id="section-ac">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2>
+        <span class="material-icons-round" style="font-size:20px;color:var(--accent)">ac_unit</span>
+        AC Units
+        <span class="badge" id="badge-ac">0</span>
+      </h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="info-box" style="margin-bottom:16px">
+        Add one entry per HA <code>climate.*</code> entity.
+        Enter the <strong>Entity ID</strong> exactly as it appears in Home Assistant (e.g. <code>climate.living_room_ac</code>)
+        and a short <strong>Display Name</strong> shown on the remote screen (max 8 chars, enforced).
+        Then pick the <strong>HVAC Modes</strong> and <strong>Fan Modes</strong> your unit supports -
+        the remote will cycle through them in the order you select them.
+      </div>
+      <div class="entity-list" id="ac-list"></div>
+      <button class="btn btn-secondary" onclick="addEntity('ac')">
+        <span class="material-icons-round">add</span> Add AC Unit
+      </button>
+    </div>
+  </div>
+
+  <!-- --- Step 3b: Light Entities --------------------------- -->
+  <div class="cfg-section mode-section" id="section-lights">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2>
+        <span class="material-icons-round" style="font-size:20px;color:var(--accent)">lightbulb</span>
+        Lights
+        <span class="badge" id="badge-lights">0</span>
+      </h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="info-box" style="margin-bottom:16px">
+        Add one entry per HA <code>light.*</code> entity. Enable <strong>Dimmable</strong>
+        for lights that support brightness (0-100 %) control.
+      </div>
+      <div class="entity-list" id="lights-list"></div>
+      <button class="btn btn-secondary" onclick="addEntity('lights')">
+        <span class="material-icons-round">add</span> Add Light
+      </button>
+    </div>
+  </div>
+
+  <!-- --- Step 3c: Cover Entities --------------------------- -->
+  <div class="cfg-section mode-section" id="section-covers">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2>
+        <span class="material-icons-round" style="font-size:20px;color:var(--accent)">roller_shades</span>
+        Covers
+        <span class="badge" id="badge-covers">0</span>
+      </h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="info-box" style="margin-bottom:16px">
+        Add one entry per HA <code>cover.*</code> entity (curtain, blind, roller, etc.).
+      </div>
+      <div class="entity-list" id="covers-list"></div>
+      <button class="btn btn-secondary" onclick="addEntity('covers')">
+        <span class="material-icons-round">add</span> Add Cover
+      </button>
+    </div>
+  </div>
+
+  <!-- --- Step 3d: Automation Entities ---------------------- -->
+  <div class="cfg-section mode-section" id="section-automations">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2>
+        <span class="material-icons-round" style="font-size:20px;color:var(--accent)">bolt</span>
+        Automations
+        <span class="badge" id="badge-automations">0</span>
+      </h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="info-box" style="margin-bottom:16px">
+        Add scenes, automations, scripts and toggles. Up to two can be pinned as
+        bottom-bar shortcuts via <strong>Menu Slot L / R</strong>.
+        <strong>Short Name</strong> (max 5 chars) is shown on the shortcut button.
+      </div>
+      <div class="entity-list" id="automations-list"></div>
+      <button class="btn btn-secondary" onclick="addEntity('automations')">
+        <span class="material-icons-round">add</span> Add Automation
+      </button>
+    </div>
+  </div>
+
+  <!-- --- Step 4: Menu Order -------------------------------- -->
+  <div class="cfg-section">
+    <div class="cfg-section-title" onclick="toggleCard(this)">
+      <h2><span class="step-number">3</span> Menu Order</h2>
+      <span class="material-icons-round chevron open">expand_more</span>
+    </div>
+    <div class="cfg-collapsible-body">
+      <div class="info-box" style="margin-bottom:16px">
+        Set the order modes appear in the remote's menu carousel.
+        Only selected modes are shown here.
+      </div>
+      <div class="order-list" id="order-list"></div>
+    </div>
+  </div>
+
+  <!-- --- Validation errors ---------------------------------- -->
+  <div id="validation-errors" class="error-panel" style="display:none">
+    <div class="error-panel-title">
+      <span class="material-icons-round">error</span>
+      Please fix the following before generating:
+    </div>
+    <ul class="error-list" id="error-list"></ul>
+  </div>
+
+  <!-- --- Generate ------------------------------------------ -->
+  <div class="generate-section">
+    <button class="btn-generate" id="gen-btn" onclick="generate()">
+      <span class="material-icons-round">download</span>
+      Download Configuration ZIP
+    </button>
+    <p style="margin-top:10px">
+      If opened as <code>file://</code>, a system folder picker appears after click.
+      Select <code>devices/multi_function_remote</code> (or <code>tools/templates</code>).
+    </p>
+    <p>
+      Unzip and place files into your
+      <code>devices/multi_function_remote/</code>
+      directory - see the included <code>SETUP.md</code>.
+    </p>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+'use strict';
+
+/* ===========================================================================
+   Mode definitions
+=========================================================================== */
+const TILE_ORDER    = ['ac', 'lights', 'covers', 'automations', 'settings'];
+const AC_HVAC_MODES = ['cool', 'dry', 'fan_only', 'heat', 'heat_cool', 'auto'];
+const AC_FAN_MODES  = ['auto', 'low', 'medium', 'high', 'turbo', 'quiet'];
+
+const BATTERY_STEPS = [
+  { s: 900,    l: '15 min' },
+  { s: 1800,   l: '30 min' },
+  { s: 3600,   l: '1 hour' },
+  { s: 7200,   l: '2 hours' },
+  { s: 10800,  l: '3 hours' },
+  { s: 21600,  l: '6 hours' },
+  { s: 43200,  l: '12 hours' },
+  { s: 86400,  l: '1 day' },
+  { s: 172800, l: '2 days' },
+  { s: 259200, l: '3 days' },
+];
+
+const GPIO_PINS = [
+  { key: 'pin_wake',    label: 'Wake / Power Off', default: 0  },
+  { key: 'pin_sda',     label: 'I2C SDA (OLED)',   default: 27 },
+  { key: 'pin_scl',     label: 'I2C SCL (OLED)',   default: 25 },
+  { key: 'pin_oled_en', label: 'OLED Enable',      default: 15 },
+  { key: 'pin_bat_adc', label: 'Battery ADC',      default: 32 },
+  { key: 'pin_left',    label: 'Btn Left (<)',      default: 14 },
+  { key: 'pin_right',   label: 'Btn Right (>)',     default: 26 },
+  { key: 'pin_ok',      label: 'Btn OK',            default: 23 },
+  { key: 'pin_up',      label: 'Btn Up',            default: 17 },
+  { key: 'pin_down',    label: 'Btn Down',          default: 18 },
+  { key: 'pin_stop',    label: 'Btn Stop',          default: 19 },
+  { key: 'pin_menu',    label: 'Btn Menu',          default: 5  },
+  { key: 'pin_mode',    label: 'Btn Mode / <<',     default: 22 },
+  { key: 'pin_fan',     label: 'Btn Fan / >>',      default: 33 },
+];
+
+const MODE_DEFS = {
+  ac:          { label: 'AC',          icon: 'ac_unit',       appConst: 'APP_AC',          menuIcon: '\\ueb3b', menuName: 'AC'          },
+  lights:      { label: 'Lights',      icon: 'lightbulb',     appConst: 'APP_LIGHTS',      menuIcon: '\\ue0f0', menuName: 'LIGHTS'      },
+  covers:      { label: 'Covers',      icon: 'roller_shades', appConst: 'APP_COVERS',      menuIcon: '\\uec12', menuName: 'COVERS'      },
+  automations: { label: 'Automations', icon: 'bolt',          appConst: 'APP_AUTOMATIONS', menuIcon: '\\uea0b', menuName: 'AUTOMATIONS' },
+  settings:    { label: 'Settings',    icon: 'settings',      appConst: 'APP_SETTINGS',    menuIcon: '\\ue8b8', menuName: 'SETTINGS'    },
+};
+
+const STATIC_ALWAYS_FILES = [
+  'src/display_utils.h',
+  'src/menu_controller.h',
+  'src/remote_core.h',
+  'src/settings_controller.h',
+  'src/wake_utils.h',
+  'packages/buttons.yaml',
+  'packages/menu.yaml',
+  'packages/mode_settings.yaml',
+];
+
+const STATIC_MODE_FILES = {
+  ac: [
+    'src/ac_controller.h',
+  ],
+  lights: [
+    'src/lights_controller.h',
+  ],
+  covers: [
+    'src/cover_controller.h',
+  ],
+  automations: [
+    'src/automation_controller.h',
+    'packages/mode_automations.yaml',
+  ],
+};
+
+/* ===========================================================================
+   State
+=========================================================================== */
+const state = {
+  modes:     new Set(['settings']),
+  menuOrder: ['settings'],
+  entities:  { ac: [], lights: [], covers: [], automations: [] },
+  counters:  { ac: 0, lights: 0, covers: 0, automations: 0 },
+};
+const dndState = { type: null, id: null };
+var localTemplateFiles = null;
+var localTemplateLoadPromise = null;
+
+/* ===========================================================================
+   Utilities
+=========================================================================== */
+function toId(entityId) {
+  return String(entityId).replace(/^[^.]+\./, '').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+}
+
+function esc(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function decodeBase64(input) {
+  try {
+    return atob(input);
+  } catch (e) {
+    return null;
+  }
+}
+
+function isValidApiKey(key) {
+  if (!key) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(key) || key.length % 4 !== 0) return false;
+  var decoded = decodeBase64(key);
+  return decoded !== null && decoded.length === 32;
+}
+
+function generateApiKey() {
+  var bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  var binary = '';
+  for (var i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  var key = btoa(binary);
+  var input = document.getElementById('api_key');
+  input.value = key;
+  input.focus();
+  input.select();
+}
+
+function toggleCard(header) {
+  var body    = header.nextElementSibling;
+  var chevron = header.querySelector('.chevron');
+  body.classList.toggle('collapsed');
+  chevron.classList.toggle('open', !body.classList.contains('collapsed'));
+}
+
+function updateBatteryLabel(idx) {
+  idx = parseInt(idx);
+  document.getElementById('battery-interval-badge').textContent = BATTERY_STEPS[idx].l;
+  var pct = (idx / (BATTERY_STEPS.length - 1)) * 100;
+  var sl  = document.getElementById('battery_interval');
+  if (sl) sl.style.background = 'linear-gradient(to right, var(--accent) ' + pct + '%, var(--border) ' + pct + '%)';
+}
+
+function toggleBat() {
+  var on = document.getElementById('bat_enabled').checked;
+  document.getElementById('bat-settings').style.display = on ? '' : 'none';
+  document.getElementById('bat-off').style.display      = on ? 'none' : '';
+}
+
+function buildPinGrid() {
+  var container = document.getElementById('pin-grid-container');
+  GPIO_PINS.forEach(function(pin) {
+    var group = document.createElement('div');
+    group.className = 'cfg-group';
+    group.innerHTML = '<label class="cfg-label">' + pin.label + '</label>'
+      + '<input type="number" class="cfg-input" id="' + pin.key + '" value="' + pin.default + '" min="0" max="39">';
+    container.appendChild(group);
+  });
+}
+
+function enforceSlotUniqueness(selectEl, changedId) {
+  var chosen = selectEl.value;
+  if (chosen === 'none') return;
+  state.entities.automations.forEach(function(e) {
+    if (e._id === changedId) return;
+    var other = document.getElementById('automations-' + e._id + '-menu_slot');
+    if (other && other.value === chosen) { other.value = 'none'; }
+  });
+}
+
+function togglePins(header) {
+  var body    = document.getElementById('pin-config-body');
+  var chevron = document.getElementById('pin-chevron');
+  body.classList.toggle('collapsed');
+  chevron.style.transform = body.classList.contains('collapsed') ? '' : 'rotate(180deg)';
+}
+
+/* ===========================================================================
+   Mode toggle
+=========================================================================== */
+function toggleMode(mode) {
+  const tile = document.getElementById('tile-' + mode);
+  const isOn = state.modes.has(mode);
+
+  if (isOn) {
+    state.modes.delete(mode);
+    state.menuOrder = state.menuOrder.filter(m => m !== mode);
+    tile.classList.remove('active');
+  } else {
+    state.modes.add(mode);
+    // Insert at the position that preserves the canonical tile order
+    var insertAt = TILE_ORDER.indexOf(mode);
+    var pos = state.menuOrder.length;
+    for (var i = 0; i < state.menuOrder.length; i++) {
+      if (TILE_ORDER.indexOf(state.menuOrder[i]) > insertAt) { pos = i; break; }
+    }
+    state.menuOrder.splice(pos, 0, mode);
+    tile.classList.add('active');
+  }
+
+  const section = document.getElementById('section-' + mode);
+  if (section) section.classList.toggle('visible', !isOn);
+
+  renderMenuOrder();
+}
+
+/* ===========================================================================
+   Entity management
+=========================================================================== */
+function addEntity(type, data) {
+  const id     = ++state.counters[type];
+  const entity = { _id: id, ...defaultEntity(type, data) };
+  state.entities[type].push(entity);
+  renderEntityRow(type, entity);
+  updateBadge(type);
+}
+
+function defaultEntity(type, data) {
+  if (type === 'ac') return {
+    name:      data && data.name      || '',
+    entity_id: data && data.entity_id || '',
+    modes:     data && data.modes     || [],
+    fan_modes: data && data.fan_modes || [],
+  };
+  if (type === 'lights') return {
+    name:      data && data.name      || '',
+    entity_id: data && data.entity_id || '',
+    dimmable:  data && data.dimmable !== undefined ? data.dimmable : false,
+  };
+  if (type === 'covers') return {
+    name:      data && data.name      || '',
+    entity_id: data && data.entity_id || '',
+  };
+  if (type === 'automations') return {
+    name:       data && data.name       || '',
+    short_name: data && data.short_name || '',
+    entity_id:  data && data.entity_id  || '',
+    service:    data && data.service    || 'scene.turn_on',
+    menu_slot:  data && data.menu_slot  || 'none',
+  };
+  return {};
+}
+
+function removeEntity(type, id) {
+  state.entities[type] = state.entities[type].filter(function(e) { return e._id !== id; });
+  var el = document.getElementById('entity-' + type + '-' + id);
+  if (el) el.remove();
+  updateEntityIndices(type);
+  updateBadge(type);
+}
+
+function updateEntityIndices(type) {
+  var list = document.getElementById(type + '-list');
+  if (!list) return;
+  list.querySelectorAll('.entity-index').forEach(function(el, i) { el.textContent = i + 1; });
+}
+
+function reorderEntities(type, fromId, toId) {
+  if (fromId === toId) return;
+  var arr = state.entities[type];
+  var fromIdx = arr.findIndex(function(e) { return e._id === fromId; });
+  var toIdx = arr.findIndex(function(e) { return e._id === toId; });
+  if (fromIdx < 0 || toIdx < 0) return;
+  var moved = arr.splice(fromIdx, 1)[0];
+  arr.splice(toIdx, 0, moved);
+  var list = document.getElementById(type + '-list');
+  arr.forEach(function(e) {
+    var row = document.getElementById('entity-' + type + '-' + e._id);
+    if (row) list.appendChild(row);
+  });
+  updateEntityIndices(type);
+}
+
+function wireEntityDragAndDrop(type, id, rowEl) {
+  var handle = rowEl.querySelector('.entity-drag');
+  if (!handle) return;
+  handle.draggable = true;
+  handle.addEventListener('dragstart', function(ev) {
+    dndState.type = type;
+    dndState.id = id;
+    rowEl.classList.add('dragging');
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', type + ':' + id);
+    }
+  });
+  handle.addEventListener('dragend', function() {
+    rowEl.classList.remove('dragging');
+    dndState.type = null;
+    dndState.id = null;
+    document.querySelectorAll('.ac-item.drop-target').forEach(function(el) {
+      el.classList.remove('drop-target');
+    });
+  });
+  rowEl.addEventListener('dragover', function(ev) {
+    if (dndState.type !== type) return;
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    rowEl.classList.add('drop-target');
+  });
+  rowEl.addEventListener('dragleave', function() {
+    rowEl.classList.remove('drop-target');
+  });
+  rowEl.addEventListener('drop', function(ev) {
+    ev.preventDefault();
+    rowEl.classList.remove('drop-target');
+    if (dndState.type !== type || !dndState.id) return;
+    reorderEntities(type, dndState.id, id);
+  });
+}
+
+function getVal(type, id, field) {
+  var el = document.getElementById(type + '-' + id + '-' + field);
+  if (!el) return '';
+  if (el.type === 'checkbox') return el.checked;
+  return el.value.trim();
+}
+
+function getPillValues(groupId) {
+  var container = document.getElementById(groupId);
+  if (!container) return [];
+  return Array.prototype.slice.call(
+    container.querySelectorAll('input[type="checkbox"]:checked')
+  ).map(function(cb) { return cb.value; });
+}
+
+function collectEntities(type) {
+  return state.entities[type].map(function(e) {
+    var obj = { _id: e._id };
+    if (type === 'ac') {
+      obj.name      = getVal(type, e._id, 'name');
+      obj.entity_id = getVal(type, e._id, 'entity_id');
+      obj.modes     = getPillValues(type + '-' + e._id + '-modes-pills');
+      obj.fan_modes = getPillValues(type + '-' + e._id + '-fan_modes-pills');
+    } else {
+      var fields = {
+        lights:      ['name', 'entity_id', 'dimmable'],
+        covers:      ['name', 'entity_id'],
+        automations: ['name', 'short_name', 'entity_id', 'service', 'menu_slot'],
+      }[type] || [];
+      fields.forEach(function(f) { obj[f] = getVal(type, e._id, f); });
+    }
+    return obj;
+  });
+}
+
+function updateBadge(type) {
+  var badge = document.getElementById('badge-' + type);
+  if (badge) badge.textContent = state.entities[type].length;
+}
+
+/* --- Render entity row ----------------------------------- */
+function renderEntityRow(type, entity) {
+  var list = document.getElementById(type + '-list');
+  var idx  = state.entities[type].length;
+  var id   = entity._id;
+
+  var div = document.createElement('div');
+  div.className = 'ac-item';
+  div.id = 'entity-' + type + '-' + id;
+  div.innerHTML = buildEntityHTML(type, id, idx, entity);
+  wireEntityDragAndDrop(type, id, div);
+  list.appendChild(div);
+}
+
+function buildEntityHTML(type, id, idx, entity) {
+  var p = type + '-' + id;
+  var nameVal   = esc(entity.name);
+  var entityVal = esc(entity.entity_id);
+
+  var entityPlaceholder = {
+    ac: 'climate.entity_id', lights: 'light.entity_id',
+    covers: 'cover.entity_id', automations: 'domain.entity_id'
+  }[type] || 'domain.entity_id';
+
+  var header = '<div class="ac-item-hd">'
+    + '<span class="material-icons-round entity-drag" title="Drag to reorder">drag_indicator</span>'
+    + '<span class="entity-index">' + idx + '</span>'
+    + '<div style="flex:1;display:grid;grid-template-columns:140px 1fr;gap:8px">'
+    + '<input type="text" class="cfg-input" id="' + p + '-name" value="' + nameVal + '" placeholder="Name (max 8)" maxlength="8" style="font-size:.87rem;padding:7px 10px">'
+    + '<input type="text" class="cfg-input" id="' + p + '-entity_id" value="' + entityVal + '" placeholder="' + entityPlaceholder + '" style="font-size:.87rem;padding:7px 10px">'
+    + '</div>'
+    + '<button class="btn btn-danger" onclick="removeEntity(\'' + type + '\',' + id + ')" title="Remove">'
+    + '<span class="material-icons-round" style="font-size:18px">delete</span></button>'
+    + '</div>';
+
+  var body = '';
+
+  if (type === 'ac') {
+    var hvacPills = AC_HVAC_MODES.map(function(m) {
+      var chk = entity.modes.indexOf(m) !== -1 ? ' checked' : '';
+      return '<label class="pill"><input type="checkbox" value="' + m + '"' + chk + '> ' + m + '</label>';
+    }).join('');
+    var fanPills = AC_FAN_MODES.map(function(m) {
+      var chk = entity.fan_modes.indexOf(m) !== -1 ? ' checked' : '';
+      return '<label class="pill"><input type="checkbox" value="' + m + '"' + chk + '> ' + m + '</label>';
+    }).join('');
+    body = '<div class="ac-item-bd">'
+      + '<div style="margin-bottom:10px">'
+      + '<div class="cfg-label" style="margin-bottom:6px">HVAC Modes</div>'
+      + '<div class="pill-group" id="' + p + '-modes-pills">' + hvacPills + '</div></div>'
+      + '<div>'
+      + '<div class="cfg-label" style="margin-bottom:6px">Fan Modes</div>'
+      + '<div class="pill-group" id="' + p + '-fan_modes-pills">' + fanPills + '</div></div>'
+      + '</div>';
+  } else if (type === 'lights') {
+    var chk = entity.dimmable ? 'checked' : '';
+    body = '<div class="ac-item-bd">'
+      + '<label class="toggle-label">'
+      + '<input type="checkbox" id="' + p + '-dimmable" class="toggle-input" ' + chk + '>'
+      + '<span class="toggle-sw"></span>'
+      + 'Dimmable (supports brightness control)'
+      + '</label></div>';
+  } else if (type === 'automations') {
+    var services = [
+      'scene.turn_on', 'automation.trigger', 'script.turn_on',
+      'input_boolean.toggle', 'switch.toggle',
+      'lock.lock', 'lock.unlock',
+      'alarm_control_panel.arm_away', 'alarm_control_panel.disarm',
+    ];
+    var svcOpts = services.map(function(s) {
+      return '<option value="' + s + '"' + (entity.service === s ? ' selected' : '') + '>' + s + '</option>';
+    }).join('');
+    var slotOpts = [
+      { v: 'none', l: 'None (list only)' },
+      { v: 'L',    l: 'Slot L (left shortcut)' },
+      { v: 'R',    l: 'Slot R (right shortcut)' },
+    ].map(function(o) {
+      return '<option value="' + o.v + '"' + (entity.menu_slot === o.v ? ' selected' : '') + '>' + o.l + '</option>';
+    }).join('');
+
+    body = '<div class="ac-item-bd">'
+      + '<div class="cfg-grid cols-3">'
+      + '<div class="cfg-group"><label class="cfg-label">Short Name (max 5 chars)</label>'
+      + '<input type="text" class="cfg-input" id="' + p + '-short_name" value="' + esc(entity.short_name) + '" placeholder="SCENE" maxlength="6"></div>'
+      + '<div class="cfg-group"><label class="cfg-label">Service</label>'
+      + '<select class="cfg-input" id="' + p + '-service">' + svcOpts + '</select></div>'
+      + '<div class="cfg-group"><label class="cfg-label">Menu Slot</label>'
+      + '<select class="cfg-input" id="' + p + '-menu_slot" onchange="enforceSlotUniqueness(this,' + id + ')">' + slotOpts + '</select></div>'
+      + '</div></div>';
+  }
+  // covers: header only (name + entity_id is sufficient)
+
+  return header + body;
+}
+
+/* ===========================================================================
+   Menu order
+=========================================================================== */
+function renderMenuOrder() {
+  var list = document.getElementById('order-list');
+  list.innerHTML = '';
+  state.menuOrder.forEach(function(mode, i) {
+    var def = MODE_DEFS[mode];
+    var div = document.createElement('div');
+    div.className = 'order-item';
+    div.innerHTML =
+      '<span class="material-icons-round mode-icon">' + def.icon + '</span>'
+      + '<span class="order-item-label">' + def.label + '</span>'
+      + '<div class="order-btns">'
+      + '<button class="btn-order" onclick="moveMode(' + i + ',-1)" ' + (i === 0 ? 'disabled' : '') + ' title="Move up">'
+      + '<span class="material-icons-round">arrow_upward</span></button>'
+      + '<button class="btn-order" onclick="moveMode(' + i + ',1)" ' + (i === state.menuOrder.length - 1 ? 'disabled' : '') + ' title="Move down">'
+      + '<span class="material-icons-round">arrow_downward</span></button>'
+      + '</div>';
+    list.appendChild(div);
+  });
+}
+
+function moveMode(idx, dir) {
+  var arr    = state.menuOrder;
+  var newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  var tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+  renderMenuOrder();
+}
+
+/* ===========================================================================
+   File generators
+=========================================================================== */
+
+/* -- remote.yaml ----------------------------------------------------------- */
+function genRemoteYaml(cfg) {
+  var d = cfg.device;
+  var modes = cfg.menuOrder;
+
+  var pkgMap = {
+    ac:          'packages/mode_ac.yaml',
+    lights:      'packages/mode_lights.yaml',
+    covers:      'packages/mode_covers.yaml',
+    automations: 'packages/mode_automations.yaml',
+    settings:    'packages/mode_settings.yaml',
+  };
+
+  var pkgLines = '  menu:        !include packages/menu.yaml\n';
+  modes.forEach(function(m) {
+    pkgLines += '  ' + m + Array(Math.max(1, 13 - m.length)).join(' ') + ': !include ' + pkgMap[m] + '\n';
+  });
+  pkgLines += '  buttons:     !include packages/buttons.yaml\n';
+  pkgLines += '  layout:      !include packages/layouts/layout_custom.yaml';
+
+  var updateLines = modes.map(function(m) {
+    var def    = MODE_DEFS[m];
+    var script = m + '_update';
+    return '                        - if:\n'
+         + '                            condition: { lambda: \'return id(app_mode) == ' + def.appConst + ';\' }\n'
+         + '                            then: [ script.execute: ' + script + ' ]';
+  }).join('\n');
+
+  return 'substitutions:\n'
+    + '  DEVICE_NAME: "' + esc(d.device_name) + '"\n'
+    + '  FRIENDLY_NAME: "' + esc(d.friendly_name) + '"\n'
+    + '  API_KEY: "' + esc(d.api_key || 'REPLACE_WITH_YOUR_HA_KEY') + '"\n'
+    + '  PIN_WAKE: "' + d.pin_wake + '"\n'
+    + '  PIN_I2C_SDA: "' + d.pin_sda + '"\n'
+    + '  PIN_I2C_SCL: "' + d.pin_scl + '"\n'
+    + '  PIN_OLED_EN: "' + d.pin_oled_en + '"\n'
+    + '  BATTERY_INTERVAL_MINS: "' + d.battery_interval_mins + '"\n'
+    + '\n'
+    + 'packages:\n'
+    + pkgLines + '\n'
+    + '\n'
+    + '# -- fonts shared across all modes --------------------------------------------\n'
+    + 'font:\n'
+    + '  - file: "fonts/arial_bold.ttf"\n'
+    + '    id: font_base\n'
+    + '    size: 14\n'
+    + '    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:"\n'
+    + '\n'
+    + '  - file: "fonts/arial_bold.ttf"\n'
+    + '    id: font_small\n'
+    + '    size: 10\n'
+    + '    glyphs:\n'
+    + '      - "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890.%- <>"\n'
+    + '      - "\\u25b2"  # (up)\n'
+    + '      - "\\u25bc"  # (down)\n'
+    + '\n'
+    + '  - file: "fonts/arial_bold.ttf"\n'
+    + '    id: font_bigger\n'
+    + '    size: 28\n'
+    + '    glyphs: "ADEGHILMOTUWRY0123456789%"\n'
+    + '\n'
+    + '  - file: "fonts/arial_bold.ttf"\n'
+    + '    id: font_big\n'
+    + '    size: 40\n'
+    + '    glyphs: "ADEGHILMOTUWRY0123456789%"\n'
+    + '\n'
+    + '# -- core ESPHome config -------------------------------------------------------\n'
+    + 'esphome:\n'
+    + '  name: ${DEVICE_NAME}\n'
+    + '  friendly_name: ${FRIENDLY_NAME}\n'
+    + '  min_version: 2024.11.0\n'
+    + '  name_add_mac_suffix: false\n'
+    + '  includes:\n'
+    + '    - src/menu_entities.h\n'
+    + '    - src/remote_core.h\n'
+    + '    - src/wake_utils.h\n'
+    + '  on_boot:\n'
+    + '    - priority: 700\n'
+    + '      then:\n'
+    + '        - lambda: \'id(is_timer_wake) = is_timer_wakeup();\'\n'
+    + '        - if:\n'
+    + '            condition: { lambda: \'return !id(is_timer_wake);\' }\n'
+    + '            then:\n'
+    + '              - output.turn_on: oled_power\n'
+    + '              - delay: 10ms\n'
+    + '    - priority: 250\n'
+    + '      then:\n'
+    + '        - if:\n'
+    + '            condition: { lambda: \'return !id(is_timer_wake);\' }\n'
+    + '            then:\n'
+    + '              - lambda: |-\n'
+    + '                  RemoteCore::resetIdleTimer(id(last_active));\n'
+    + '                  id(is_booting) = true;\n'
+    + '    - priority: -200\n'
+    + '      then:\n'
+    + '        - if:\n'
+    + '            condition: { lambda: \'return id(is_timer_wake);\' }\n'
+    + '            then:\n'
+    + '              - component.update: battery_raw\n'
+    + '              - wait_until:\n'
+    + '                  api.connected:\n'
+    + '                  timeout: 30s\n'
+    + '              - delay: 2s\n'
+    + '              - deep_sleep.enter:\n'
+    + '                  sleep_duration: !lambda \'return (uint32_t)id(battery_interval_mins) * 60000;\'\n'
+    + '\n'
+    + 'esp32:\n'
+    + '  board: esp32dev\n'
+    + '  framework:\n'
+    + '    type: arduino\n'
+    + '\n'
+    + 'wifi:\n'
+    + '  ssid: !secret wifi_ssid\n'
+    + '  password: !secret wifi_password\n'
+    + '  output_power: 10dB\n'
+    + '  fast_connect: true\n'
+    + '  power_save_mode: LIGHT\n'
+    + '\n'
+    + 'api:\n'
+    + '  reboot_timeout: 0s\n'
+    + '  encryption:\n'
+    + '    key: ${API_KEY}\n'
+    + '\n'
+    + 'ota:\n'
+    + '  - platform: esphome\n'
+    + '\n'
+    + 'logger:\n'
+    + '\n'
+    + 'output:\n'
+    + '  - platform: gpio\n'
+    + '    pin: ${PIN_OLED_EN}\n'
+    + '    id: oled_power\n'
+    + '\n'
+    + 'deep_sleep:\n'
+    + '  id: go_sleep\n'
+    + '  wakeup_pin:\n'
+    + '    number: ${PIN_WAKE}\n'
+    + '    allow_other_uses: true\n'
+    + '  wakeup_pin_mode: INVERT_WAKEUP\n'
+    + '\n'
+    + 'i2c:\n'
+    + '  sda: ${PIN_I2C_SDA}\n'
+    + '  scl: ${PIN_I2C_SCL}\n'
+    + '  frequency: 400kHz\n'
+    + '  scan: false\n'
+    + '\n'
+    + 'display:\n'
+    + '  - platform: ssd1306_i2c\n'
+    + '    model: "SH1106 128x64"\n'
+    + '    address: 0x3C\n'
+    + '    rotation: 180\n'
+    + '    contrast: 0.5\n'
+    + '    id: oled_display\n'
+    + '\n'
+    + '# -- shared globals ------------------------------------------------------------\n'
+    + 'globals:\n'
+    + '  - id: app_mode\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '    restore_value: true\n'
+    + '\n'
+    + '  - id: menu_active\n'
+    + '    type: bool\n'
+    + '    initial_value: \'false\'\n'
+    + '\n'
+    + '  - id: menu_index\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '\n'
+    + '  - id: debounce_active\n'
+    + '    type: bool\n'
+    + '    initial_value: \'false\'\n'
+    + '\n'
+    + '  - id: last_active\n'
+    + '    type: int\n'
+    + '    restore_value: no\n'
+    + '    initial_value: \'0\'\n'
+    + '\n'
+    + '  - id: updated_ui\n'
+    + '    type: bool\n'
+    + '    initial_value: \'true\'\n'
+    + '\n'
+    + '  - id: is_booting\n'
+    + '    type: bool\n'
+    + '    initial_value: \'true\'\n'
+    + '\n'
+    + '  - id: is_shutting_down\n'
+    + '    type: bool\n'
+    + '    initial_value: \'false\'\n'
+    + '\n'
+    + '  - id: is_timer_wake\n'
+    + '    type: bool\n'
+    + '    initial_value: \'false\'\n'
+    + '\n'
+    + '# -- core scripts --------------------------------------------------------------\n'
+    + 'script:\n'
+    + '\n'
+    + '  - id: turn_off\n'
+    + '    mode: single\n'
+    + '    then:\n'
+    + '      - lambda: \'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));\'\n'
+    + '      - delay: 1s\n'
+    + '      - lambda: |-\n'
+    + '          id(oled_display)->clear();\n'
+    + '          id(oled_display)->display();\n'
+    + '      - delay: 500ms\n'
+    + '      - output.turn_off: oled_power\n'
+    + '      - delay: 5ms\n'
+    + '      - deep_sleep.enter:\n'
+    + '          sleep_duration: !lambda \'return (uint32_t)id(battery_interval_mins) * 60000;\'\n'
+    + '\n'
+    + '  - id: boot_screen\n'
+    + '    then:\n'
+    + '      - lambda: \'RemoteCore::drawBoot(id(oled_display), id(menu_icon_big), id(font_small));\'\n'
+    + '\n'
+    + '  - id: main_update\n'
+    + '    then:\n'
+    + '      - if:\n'
+    + '          condition: { lambda: \'return !id(is_shutting_down);\' }\n'
+    + '          then:\n'
+    + '            - if:\n'
+    + '                condition: { lambda: \'return id(is_booting);\' }\n'
+    + '                then: [ script.execute: boot_screen ]\n'
+    + '                else:\n'
+    + '                  - if:\n'
+    + '                      condition: { lambda: \'return id(menu_active);\' }\n'
+    + '                      then: [ script.execute: menu_draw ]\n'
+    + '                      else:\n'
+    + updateLines + '\n'
+    + '\n'
+    + '# -- main loop -----------------------------------------------------------------\n'
+    + 'interval:\n'
+    + '  - interval: 500ms\n'
+    + '    then:\n'
+    + '      - if:\n'
+    + '          condition: { lambda: \'return !id(is_timer_wake);\' }\n'
+    + '          then:\n'
+    + '            - if:\n'
+    + '                condition:\n'
+    + '                  lambda: \'return RemoteCore::isIdle(id(last_active), id(sleep_timeout_mins) * 60);\'\n'
+    + '                then: [ script.execute: turn_off ]\n'
+    + '                else: [ script.execute: main_update ]\n';
+}
+
+/* -- secrets.yaml ----------------------------------------------------------- */
+function genSecretsYaml() {
+  return 'wifi_ssid: "YOUR_WIFI_SSID"\n'
+       + 'wifi_password: "YOUR_WIFI_PASSWORD"\n';
+}
+
+/* -- src/menu_entities.h ---------------------------------------------------- */
+function genMenuEntities(cfg) {
+  var entries = cfg.menuOrder.map(function(m) {
+    var def = MODE_DEFS[m];
+    var pad = Array(Math.max(1, 17 - def.appConst.length)).join(' ');
+    return '  { ' + def.appConst + pad + ', "' + def.menuIcon + '", "' + def.menuName + '" },';
+  }).join('\n');
+
+  return '#pragma once\n'
+    + '\n'
+    + '// -- Controller IDs ------------------------------------------------------------\n'
+    + 'static const int APP_AC          = 0;\n'
+    + 'static const int APP_LIGHTS      = 1;\n'
+    + 'static const int APP_COVERS      = 2;\n'
+    + 'static const int APP_AUTOMATIONS = 3;\n'
+    + 'static const int APP_SETTINGS    = 4;\n'
+    + '\n'
+    + '// -- Menu entry ----------------------------------------------------------------\n'
+    + 'struct MenuEntry {\n'
+    + '  int         id;\n'
+    + '  const char* icon;\n'
+    + '  const char* name;\n'
+    + '};\n'
+    + '\n'
+    + '// -- Configurable carousel -----------------------------------------------------\n'
+    + 'static const MenuEntry MENU_LIST[] = {\n'
+    + entries + '\n'
+    + '};\n'
+    + 'static const int MENU_LIST_COUNT = sizeof(MENU_LIST) / sizeof(MENU_LIST[0]);\n';
+}
+
+/* -- src/ac_entities.h ----------------------------------------------------- */
+function genAcEntities(entities) {
+  if (!entities.length) return '// No AC units configured\n';
+
+  var modeArrays = entities.map(function(e, i) {
+    var modes = e.modes.map(function(m) { return '"' + m + '"'; }).join(', ');
+    return 'static const char* AC_MODES_' + i + '[] = { ' + modes + ' };';
+  }).join('\n');
+
+  var fanArrays = entities.map(function(e, i) {
+    var fans = e.fan_modes.map(function(f) { return '"' + f + '"'; }).join(', ');
+    return 'static const char* AC_FAN_' + i + '[]   = { ' + fans + ' };';
+  }).join('\n');
+
+  var list = entities.map(function(e, i) {
+    var base       = toId(e.entity_id);
+    var modesCount = e.modes.length;
+    var fanCount   = e.fan_modes.length;
+    return '  {\n'
+      + '    "' + esc(e.name) + '", "' + esc(e.entity_id) + '",\n'
+      + '    "' + base + '_temp", "' + base + '_mode", "' + base + '_fan_mode",\n'
+      + '    AC_MODES_' + i + ', ' + modesCount + ', AC_FAN_' + i + ', ' + fanCount + '\n'
+      + '  },';
+  }).join('\n');
+
+  return '#pragma once\n'
+    + '\n'
+    + '// -- AC entity configuration ---------------------------------------------------\n'
+    + '\n'
+    + 'struct ACEntity {\n'
+    + '  const char*  name;\n'
+    + '  const char*  entity_id;\n'
+    + '  const char*  temp_sensor_id;\n'
+    + '  const char*  mode_sensor_id;\n'
+    + '  const char*  fan_mode_sensor_id;\n'
+    + '  const char** modes;\n'
+    + '  int          modes_count;\n'
+    + '  const char** fan_modes;\n'
+    + '  int          fan_modes_count;\n'
+    + '};\n'
+    + '\n'
+    + '// -- per-unit mode / fan-speed arrays -----------------------------------------\n'
+    + modeArrays + '\n'
+    + '\n'
+    + fanArrays + '\n'
+    + '\n'
+    + '// -- unit list -----------------------------------------------------------------\n'
+    + 'static const ACEntity AC_LIST[] = {\n'
+    + list + '\n'
+    + '};\n'
+    + '\n'
+    + 'static const int AC_LIST_COUNT = sizeof(AC_LIST) / sizeof(AC_LIST[0]);\n';
+}
+
+/* -- src/light_entities.h -------------------------------------------------- */
+function genLightEntities(entities) {
+  if (!entities.length) return '// No lights configured\n';
+
+  var list = entities.map(function(e) {
+    var base    = toId(e.entity_id);
+    var stateId = base + '_state';
+    var brightId = e.dimmable ? '"' + base + '_brightness"' : 'nullptr';
+    return '  { "' + esc(e.name) + '", "' + esc(e.entity_id) + '", "' + stateId + '", ' + brightId + ', ' + (e.dimmable ? 'true ' : 'false') + ' },';
+  }).join('\n');
+
+  return '#pragma once\n'
+    + '\n'
+    + '// -- Light entity configuration ------------------------------------------------\n'
+    + '\n'
+    + 'struct LightEntity {\n'
+    + '  const char* name;\n'
+    + '  const char* entity_id;\n'
+    + '  const char* state_sensor_id;\n'
+    + '  const char* brightness_sensor_id;\n'
+    + '  bool        dimmable;\n'
+    + '};\n'
+    + '\n'
+    + 'static const LightEntity LIGHTS_LIST[] = {\n'
+    + list + '\n'
+    + '};\n'
+    + '\n'
+    + 'static const int LIGHTS_LIST_COUNT = sizeof(LIGHTS_LIST) / sizeof(LIGHTS_LIST[0]);\n';
+}
+
+/* -- src/cover_entities.h -------------------------------------------------- */
+function genCoverEntities(entities) {
+  if (!entities.length) return '// No covers configured\n';
+
+  var list = entities.map(function(e) {
+    var base = toId(e.entity_id);
+    return '  { "' + esc(e.name) + '", "' + esc(e.entity_id) + '", "' + base + '_state", "' + base + '_pos" },';
+  }).join('\n');
+
+  return '#pragma once\n'
+    + '\n'
+    + '// -- Cover entity configuration ------------------------------------------------\n'
+    + '\n'
+    + 'struct CoverEntity {\n'
+    + '  const char* name;\n'
+    + '  const char* entity_id;\n'
+    + '  const char* state_sensor_id;\n'
+    + '  const char* position_sensor_id;\n'
+    + '};\n'
+    + '\n'
+    + 'static const CoverEntity COVER_LIST[] = {\n'
+    + list + '\n'
+    + '};\n'
+    + '\n'
+    + 'static const int COVER_LIST_COUNT = sizeof(COVER_LIST) / sizeof(COVER_LIST[0]);\n';
+}
+
+/* -- src/automation_entities.h --------------------------------------------- */
+function genAutomationEntities(entities) {
+  if (!entities.length) return '// No automations configured\n';
+
+  var list = entities.map(function(e) {
+    var slot = (e.menu_slot === 'none' || !e.menu_slot) ? 'nullptr' : '"' + e.menu_slot + '"';
+    return '  { "' + esc(e.name) + '", "' + esc(e.short_name) + '", "' + esc(e.entity_id) + '", "' + esc(e.service) + '", ' + slot + ' },';
+  }).join('\n');
+
+  return '#pragma once\n'
+    + '\n'
+    + '// -- Automation entity configuration ------------------------------------------\n'
+    + '\n'
+    + 'struct AutomationEntity {\n'
+    + '  const char* name;\n'
+    + '  const char* short_name;\n'
+    + '  const char* entity_id;\n'
+    + '  const char* service;\n'
+    + '  const char* menu_slot;  // "L", "R", or nullptr\n'
+    + '};\n'
+    + '\n'
+    + 'static const AutomationEntity AUTOMATION_LIST[] = {\n'
+    + list + '\n'
+    + '};\n'
+    + '\n'
+    + 'static const int AUTOMATION_LIST_COUNT = sizeof(AUTOMATION_LIST) / sizeof(AUTOMATION_LIST[0]);\n';
+}
+
+/* -- packages/mode_ac.yaml ------------------------------------------------- */
+function genModeAcYaml(entities) {
+  var first     = entities[0] || { entity_id: 'climate.unit', name: 'Unit' };
+  var firstBase = toId(first.entity_id);
+
+  var tempSensors = entities.map(function(e) {
+    var base = toId(e.entity_id);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_temp\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    attribute: temperature\n'
+      + '    on_value: { then: [ script.execute: ac_sync_states ] }';
+  }).join('\n\n');
+
+  var modeSensors = entities.map(function(e) {
+    var base = toId(e.entity_id);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_mode\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    on_value: { then: [ script.execute: ac_sync_states ] }';
+  }).join('\n\n');
+
+  var fanSensors = entities.map(function(e) {
+    var base = toId(e.entity_id);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_fan_mode\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    attribute: fan_mode\n'
+      + '    on_value: { then: [ script.execute: ac_sync_states ] }';
+  }).join('\n\n');
+
+  var ifChain = entities.map(function(e, i) {
+    var base = toId(e.entity_id);
+    var kw   = i === 0 ? 'if' : '} else if';
+    return '          ' + kw + ' (idx == ' + i + ') {\n'
+      + '            temp = id(' + base + '_temp).state;\n'
+      + '            mode = id(' + base + '_mode).state;\n'
+      + '            fan  = id(' + base + '_fan_mode).state;';
+  }).join('\n');
+
+  return '# -- mode_ac.yaml -------------------------------------------------------------\n'
+    + '# Generated by ESPHome Remote Config Generator\n'
+    + '\n'
+    + 'esphome:\n'
+    + '  includes:\n'
+    + '    - src/ac_entities.h\n'
+    + '    - src/ac_controller.h\n'
+    + '\n'
+    + '# -- AC-specific symbol fonts --------------------------------------------------\n'
+    + 'font:\n'
+    + '  - file:\n'
+    + '      type: gfonts\n'
+    + '      family: Material+Symbols+Rounded\n'
+    + '      weight: 400\n'
+    + '    id: ac_symbols\n'
+    + '    size: 24\n'
+    + '    glyphs:\n'
+    + '      - "\\uf168"  # fan\n'
+    + '      - "\\ueb3b"  # ac_unit\n'
+    + '      - "\\uf164"  # dry\n'
+    + '      - "\\ue8ac"  # power_off\n'
+    + '      - "\\uec12"  # curtain\n'
+    + '\n'
+    + '  - file:\n'
+    + '      type: gfonts\n'
+    + '      family: Material+Symbols+Rounded\n'
+    + '      weight: 700\n'
+    + '    id: ac_symbols_big\n'
+    + '    size: 36\n'
+    + '    glyphs:\n'
+    + '      - "\\ue8ac"  # power_off\n'
+    + '\n'
+    + '# -- HA sensors ----------------------------------------------------------------\n'
+    + 'sensor:\n'
+    + tempSensors + '\n'
+    + '\n'
+    + 'text_sensor:\n'
+    + modeSensors + '\n'
+    + '\n'
+    + fanSensors + '\n'
+    + '\n'
+    + '# -- AC globals ----------------------------------------------------------------\n'
+    + 'globals:\n'
+    + '  - id: selected_ac_index\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '    restore_value: true\n'
+    + '\n'
+    + '  - id: selected_ac\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"' + esc(first.entity_id) + '"\'\n'
+    + '    restore_value: true\n'
+    + '\n'
+    + '  - id: selected_ac_name\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"' + esc(first.name) + '"\'\n'
+    + '    restore_value: true\n'
+    + '\n'
+    + '  - id: selected_ac_mode_index\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '\n'
+    + '  - id: current_ac_mode\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"unknown"\'\n'
+    + '\n'
+    + '  - id: selected_ac_mode\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"unknown"\'\n'
+    + '\n'
+    + '  - id: current_temp\n'
+    + '    type: int\n'
+    + '    initial_value: \'-1\'\n'
+    + '\n'
+    + '  - id: selected_temp\n'
+    + '    type: int\n'
+    + '    initial_value: \'-1\'\n'
+    + '\n'
+    + '  - id: selected_fan_index\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '\n'
+    + '  - id: current_fan_mode\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"unknown"\'\n'
+    + '\n'
+    + '  - id: selected_fan_mode\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"unknown"\'\n'
+    + '\n'
+    + '# -- AC scripts ----------------------------------------------------------------\n'
+    + 'script:\n'
+    + '\n'
+    + '  - id: ac_btn_left\n'
+    + '    then:\n'
+    + '      - lambda: \'ACController::prevUnit(id(selected_ac_index));\'\n'
+    + '      - script.execute: ac_select_unit\n'
+    + '\n'
+    + '  - id: ac_btn_right\n'
+    + '    then:\n'
+    + '      - lambda: \'ACController::nextUnit(id(selected_ac_index));\'\n'
+    + '      - script.execute: ac_select_unit\n'
+    + '\n'
+    + '  - id: ac_btn_power\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          ACController::togglePower(id(selected_ac_index), id(selected_ac_mode_index),\n'
+    + '                                    id(selected_ac_mode), id(updated_ui));\n'
+    + '      - script.execute: ac_draw\n'
+    + '      - script.execute: ac_await\n'
+    + '\n'
+    + '  - id: ac_btn_fan\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),\n'
+    + '                                 id(selected_fan_mode), id(updated_ui));\n'
+    + '      - script.execute: ac_draw\n'
+    + '      - script.execute: ac_await\n'
+    + '\n'
+    + '  - id: ac_btn_mode\n'
+    + '    then:\n'
+    + '      - lambda: \'ACController::cycleMode(id(selected_ac_index), id(selected_ac_mode_index));\'\n'
+    + '      - lambda: >-\n'
+    + '          ACController::applyMode(id(selected_ac_index), id(selected_ac_mode_index),\n'
+    + '                                  id(selected_ac_mode), id(updated_ui));\n'
+    + '      - script.execute: ac_await\n'
+    + '\n'
+    + '  - id: ac_btn_temp_up\n'
+    + '    then:\n'
+    + '      - lambda: \'ACController::tempUp(id(selected_temp), id(updated_ui));\'\n'
+    + '      - script.execute: ac_draw\n'
+    + '      - script.execute: ac_await\n'
+    + '\n'
+    + '  - id: ac_btn_temp_down\n'
+    + '    then:\n'
+    + '      - lambda: \'ACController::tempDown(id(selected_temp), id(updated_ui));\'\n'
+    + '      - script.execute: ac_draw\n'
+    + '      - script.execute: ac_await\n'
+    + '\n'
+    + '  - id: ac_set_current_states\n'
+    + '    mode: restart\n'
+    + '    then:\n'
+    + '      - lambda: |-\n'
+    + '          int idx = id(selected_ac_index);\n'
+    + '          float       temp = NAN;\n'
+    + '          std::string mode, fan;\n'
+    + '\n'
+    + ifChain + '\n'
+    + '          }\n'
+    + '\n'
+    + '          ACController::applyCurrentStates(temp, mode, fan,\n'
+    + '            id(current_ac_mode), id(current_fan_mode),\n'
+    + '            id(current_temp), id(is_booting));\n'
+    + '\n'
+    + '  - id: ac_set_selections\n'
+    + '    mode: restart\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          ACController::syncSelections(\n'
+    + '            id(current_ac_mode), id(current_fan_mode), id(current_temp),\n'
+    + '            id(selected_ac_mode), id(selected_ac_mode_index),\n'
+    + '            id(selected_fan_mode), id(selected_fan_index),\n'
+    + '            id(selected_temp), id(selected_ac_index), id(updated_ui));\n'
+    + '\n'
+    + '  - id: ac_sync_states\n'
+    + '    mode: restart\n'
+    + '    then:\n'
+    + '      - script.execute: ac_set_current_states\n'
+    + '      - script.execute: ac_set_selections\n'
+    + '\n'
+    + '  - id: ac_select_unit\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          ACController::selectUnit(id(selected_ac_index),\n'
+    + '                                   id(selected_ac), id(selected_ac_name));\n'
+    + '      - lambda: |-\n'
+    + '          ACController::resetUnit(id(selected_ac_index),\n'
+    + '            id(selected_ac_mode_index), id(selected_ac_mode),\n'
+    + '            id(selected_fan_index), id(selected_fan_mode), id(selected_temp));\n'
+    + '          id(updated_ui) = true;\n'
+    + '      - script.execute: ac_set_current_states\n'
+    + '      - script.execute: ac_set_selections\n'
+    + '      - script.execute: ac_draw\n'
+    + '\n'
+    + '  - id: ac_send_mode_update\n'
+    + '    mode: queued\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: climate.set_hvac_mode\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_ac);\'\n'
+    + '            hvac_mode: !lambda \'return id(selected_ac_mode);\'\n'
+    + '\n'
+    + '  - id: ac_send_temp_update\n'
+    + '    mode: queued\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: climate.set_temperature\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_ac);\'\n'
+    + '            temperature: !lambda \'return id(selected_temp);\'\n'
+    + '\n'
+    + '  - id: ac_send_fan_update\n'
+    + '    mode: queued\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: climate.set_fan_mode\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_ac);\'\n'
+    + '            fan_mode: !lambda \'return id(selected_fan_mode);\'\n'
+    + '\n'
+    + '  - id: ac_await\n'
+    + '    mode: restart\n'
+    + '    then:\n'
+    + '      - lambda: \'id(debounce_active) = true;\'\n'
+    + '      - delay: 1s\n'
+    + '      - lambda: \'id(debounce_active) = false;\'\n'
+    + '\n'
+    + '  - id: ac_update\n'
+    + '    then:\n'
+    + '      - if:\n'
+    + '          condition:\n'
+    + '            lambda: \'return !id(debounce_active) && id(selected_ac_mode) != id(current_ac_mode);\'\n'
+    + '          then: [ script.execute: ac_send_mode_update ]\n'
+    + '      - if:\n'
+    + '          condition:\n'
+    + '            lambda: \'return !id(debounce_active) && id(selected_fan_mode) != id(current_fan_mode);\'\n'
+    + '          then: [ script.execute: ac_send_fan_update ]\n'
+    + '      - if:\n'
+    + '          condition:\n'
+    + '            lambda: \'return !id(debounce_active) && id(selected_temp) != id(current_temp);\'\n'
+    + '          then: [ script.execute: ac_send_temp_update ]\n'
+    + '      - script.execute: ac_set_current_states\n'
+    + '      - script.execute: ac_draw\n'
+    + '\n'
+    + '  - id: ac_draw\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          ACController::draw(id(oled_display),\n'
+    + '            id(ac_symbols), id(ac_symbols_big),\n'
+    + '            id(font_big), id(font_bigger), id(font_base), id(font_small),\n'
+    + '            id(selected_ac_mode), id(selected_fan_mode),\n'
+    + '            id(selected_ac_name), id(selected_temp), id(updated_ui));\n';
+}
+
+/* -- packages/mode_lights.yaml --------------------------------------------- */
+function genModeLightsYaml(entities) {
+  var stateSensors = entities.map(function(e, i) {
+    var base = toId(e.entity_id);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_state\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    on_value:\n'
+      + '      then:\n'
+      + '        - lambda: \'LightsController::syncLight(' + i + ', x, NAN, id(updated_ui));\'\n'
+      + '        - script.execute: lights_draw';
+  }).join('\n\n');
+
+  var dimmable = entities.filter(function(e) { return e.dimmable; });
+  var brightSensors = dimmable.map(function(e) {
+    var base = toId(e.entity_id);
+    var idx  = entities.indexOf(e);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_brightness\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    attribute: brightness\n'
+      + '    on_value:\n'
+      + '      then:\n'
+      + '        - lambda: \'LightsController::syncLight(' + idx + ', id(' + base + '_state).state, x * 100.0f / 255.0f, id(updated_ui));\'\n'
+      + '        - script.execute: lights_draw';
+  }).join('\n\n');
+
+  return '# -- mode_lights.yaml ---------------------------------------------------------\n'
+    + '# Generated by ESPHome Remote Config Generator\n'
+    + '\n'
+    + 'esphome:\n'
+    + '  includes:\n'
+    + '    - src/light_entities.h\n'
+    + '    - src/lights_controller.h\n'
+    + '\n'
+    + '# -- globals -------------------------------------------------------------------\n'
+    + 'globals:\n'
+    + '  - id: selected_light_index\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '    restore_value: true\n'
+    + '\n'
+    + '# -- HA sensors ----------------------------------------------------------------\n'
+    + 'text_sensor:\n'
+    + stateSensors + '\n'
+    + '\n'
+    + (brightSensors ? 'sensor:\n' + brightSensors + '\n\n' : '')
+    + '# -- scripts -------------------------------------------------------------------\n'
+    + 'script:\n'
+    + '\n'
+    + '  - id: lights_btn_prev\n'
+    + '    then:\n'
+    + '      - lambda: \'LightsController::prevLight(id(selected_light_index)); id(updated_ui) = true;\'\n'
+    + '      - script.execute: lights_draw\n'
+    + '\n'
+    + '  - id: lights_btn_next\n'
+    + '    then:\n'
+    + '      - lambda: \'LightsController::nextLight(id(selected_light_index)); id(updated_ui) = true;\'\n'
+    + '      - script.execute: lights_draw\n'
+    + '\n'
+    + '  - id: lights_btn_toggle\n'
+    + '    then:\n'
+    + '      - lambda: \'LightsController::toggleLight(id(selected_light_index), id(updated_ui));\'\n'
+    + '      - script.execute: lights_do_toggle\n'
+    + '      - script.execute: lights_draw\n'
+    + '\n'
+    + '  - id: lights_btn_brightness_up\n'
+    + '    then:\n'
+    + '      - lambda: \'LightsController::brightnessUp(id(selected_light_index), id(updated_ui));\'\n'
+    + '      - script.execute: lights_do_brightness\n'
+    + '      - script.execute: lights_draw\n'
+    + '\n'
+    + '  - id: lights_btn_brightness_down\n'
+    + '    then:\n'
+    + '      - lambda: \'LightsController::brightnessDown(id(selected_light_index), id(updated_ui));\'\n'
+    + '      - script.execute: lights_do_brightness\n'
+    + '      - script.execute: lights_draw\n'
+    + '\n'
+    + '  - id: lights_do_toggle\n'
+    + '    mode: queued\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: light.toggle\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return LIGHTS_LIST[id(selected_light_index)].entity_id;\'\n'
+    + '\n'
+    + '  - id: lights_do_brightness\n'
+    + '    mode: restart\n'
+    + '    then:\n'
+    + '      - delay: 300ms\n'
+    + '      - homeassistant.service:\n'
+    + '          service: light.turn_on\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return LIGHTS_LIST[id(selected_light_index)].entity_id;\'\n'
+    + '            brightness_pct: !lambda \'return LightsController::getBrightness(id(selected_light_index));\'\n'
+    + '\n'
+    + '  - id: lights_update\n'
+    + '    then: [ script.execute: lights_draw ]\n'
+    + '\n'
+    + '  - id: lights_draw\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          LightsController::draw(id(oled_display), id(font_small),\n'
+    + '                                 id(selected_light_index), id(updated_ui));\n';
+}
+
+/* -- packages/mode_covers.yaml --------------------------------------------- */
+function genModeCoversYaml(entities) {
+  var first     = entities[0] || { entity_id: 'cover.curtain', name: 'Cover' };
+
+  var stateSensors = entities.map(function(e, i) {
+    var base = toId(e.entity_id);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_state\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    on_value:\n'
+      + '      then:\n'
+      + '        - lambda: \'CoverController::syncCoverState(' + i + ', x, id(selected_cover_index), id(cover_state), id(updated_ui));\'\n'
+      + '        - script.execute: covers_draw';
+  }).join('\n\n');
+
+  var posSensors = entities.map(function(e, i) {
+    var base = toId(e.entity_id);
+    return '  - platform: homeassistant\n'
+      + '    id: ' + base + '_pos\n'
+      + '    entity_id: ' + e.entity_id + '\n'
+      + '    attribute: current_position\n'
+      + '    on_value:\n'
+      + '      then:\n'
+      + '        - lambda: \'CoverController::syncCoverPosition(' + i + ', x, id(selected_cover_index), id(cover_position), id(updated_ui));\'\n'
+      + '        - script.execute: covers_draw';
+  }).join('\n\n');
+
+  return '# -- mode_covers.yaml ---------------------------------------------------------\n'
+    + '# Generated by ESPHome Remote Config Generator\n'
+    + '\n'
+    + 'esphome:\n'
+    + '  includes:\n'
+    + '    - src/cover_entities.h\n'
+    + '    - src/cover_controller.h\n'
+    + '\n'
+    + '# -- globals -------------------------------------------------------------------\n'
+    + 'globals:\n'
+    + '  - id: selected_cover_index\n'
+    + '    type: int\n'
+    + '    initial_value: \'0\'\n'
+    + '    restore_value: true\n'
+    + '\n'
+    + '  - id: selected_cover\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"' + esc(first.entity_id) + '"\'\n'
+    + '\n'
+    + '  - id: selected_cover_name\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"' + esc(first.name) + '"\'\n'
+    + '\n'
+    + '  - id: cover_position\n'
+    + '    type: int\n'
+    + '    initial_value: \'-1\'\n'
+    + '\n'
+    + '  - id: cover_state\n'
+    + '    type: std::string\n'
+    + '    initial_value: \'"unknown"\'\n'
+    + '\n'
+    + '# -- HA sensors ----------------------------------------------------------------\n'
+    + 'text_sensor:\n'
+    + stateSensors + '\n'
+    + '\n'
+    + 'sensor:\n'
+    + posSensors + '\n'
+    + '\n'
+    + '# -- scripts -------------------------------------------------------------------\n'
+    + 'script:\n'
+    + '\n'
+    + '  - id: covers_btn_left\n'
+    + '    then:\n'
+    + '      - lambda: \'CoverController::prevCover(id(selected_cover_index));\'\n'
+    + '      - script.execute: covers_select\n'
+    + '\n'
+    + '  - id: covers_btn_right\n'
+    + '    then:\n'
+    + '      - lambda: \'CoverController::nextCover(id(selected_cover_index));\'\n'
+    + '      - script.execute: covers_select\n'
+    + '\n'
+    + '  - id: covers_select\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          CoverController::selectCover(id(selected_cover_index),\n'
+    + '                                       id(selected_cover), id(selected_cover_name));\n'
+    + '          id(cover_state)    = "unknown";\n'
+    + '          id(cover_position) = -1;\n'
+    + '          id(updated_ui)     = true;\n'
+    + '      - script.execute: covers_draw\n'
+    + '\n'
+    + '  - id: covers_btn_open\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: cover.open_cover\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_cover);\'\n'
+    + '\n'
+    + '  - id: covers_btn_close\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: cover.close_cover\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_cover);\'\n'
+    + '\n'
+    + '  - id: covers_btn_stop\n'
+    + '    then:\n'
+    + '      - homeassistant.service:\n'
+    + '          service: cover.stop_cover\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_cover);\'\n'
+    + '\n'
+    + '  - id: covers_btn_ok\n'
+    + '    then:\n'
+    + '      - if:\n'
+    + '          condition:\n'
+    + '            lambda: >-\n'
+    + '              return id(cover_state) == "closed" ||\n'
+    + '                     id(cover_state) == "stopped" ||\n'
+    + '                     id(cover_state) == "unknown";\n'
+    + '          then: [ script.execute: covers_btn_open ]\n'
+    + '          else: [ script.execute: covers_btn_close ]\n'
+    + '\n'
+    + '  - id: covers_btn_pos_up\n'
+    + '    then:\n'
+    + '      - lambda: \'CoverController::positionUp(id(cover_position), id(cover_state), id(updated_ui));\'\n'
+    + '      - script.execute: covers_do_position\n'
+    + '      - script.execute: covers_draw\n'
+    + '\n'
+    + '  - id: covers_btn_pos_down\n'
+    + '    then:\n'
+    + '      - lambda: \'CoverController::positionDown(id(cover_position), id(cover_state), id(updated_ui));\'\n'
+    + '      - script.execute: covers_do_position\n'
+    + '      - script.execute: covers_draw\n'
+    + '\n'
+    + '  - id: covers_do_position\n'
+    + '    mode: restart\n'
+    + '    then:\n'
+    + '      - delay: 300ms\n'
+    + '      - homeassistant.service:\n'
+    + '          service: cover.set_cover_position\n'
+    + '          data:\n'
+    + '            entity_id: !lambda \'return id(selected_cover);\'\n'
+    + '            position: !lambda \'return id(cover_position);\'\n'
+    + '\n'
+    + '  - id: covers_update\n'
+    + '    then: [ script.execute: covers_draw ]\n'
+    + '\n'
+    + '  - id: covers_draw\n'
+    + '    then:\n'
+    + '      - lambda: >-\n'
+    + '          CoverController::draw(id(oled_display),\n'
+    + '            id(ac_symbols), id(menu_icon_small),\n'
+    + '            id(font_big), id(font_base), id(font_small),\n'
+    + '            id(selected_cover_name), id(cover_state),\n'
+    + '            id(cover_position), id(updated_ui));\n';
+}
+
+/* -- packages/layouts/layout_custom.yaml ----------------------------------- */
+function genLayoutYaml(pins) {
+  var q = function(s) { return "'" + s + "'"; };
+  return '# layout_custom.yaml - Generated by ESPHome Remote Config Generator\n'
+    + '# Physical button layout with custom pin assignment.\n'
+    + '\n'
+    + 'binary_sensor:\n'
+    + '\n'
+    + '  # power off\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      allow_other_uses: true\n'
+    + '      number: ' + pins.pin_wake + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Power Off"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert: ]\n'
+    + '    on_press:\n'
+    + '      then: [ script.execute: turn_off ]\n'
+    + '\n'
+    + '  # left\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_left + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Left"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert:, delayed_on: 30ms ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - script.execute: btn_left\n'
+    + '\n'
+    + '  # right\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_right + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Right"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert:, delayed_on: 30ms ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - script.execute: btn_right\n'
+    + '\n'
+    + '  # OK\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_ok + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button OK"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert:, delayed_on: 30ms ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - script.execute: btn_ok\n'
+    + '\n'
+    + '  # up\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_up + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Up"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert: ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - script.execute: btn_up\n'
+    + '\n'
+    + '  # down\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_down + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Down"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert: ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - script.execute: btn_down\n'
+    + '\n'
+    + '  # stop / menu  (short press -> btn_stop, long press -> btn_menu_open)\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_stop + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Stop"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert: ]\n'
+    + '    on_click:\n'
+    + '      - min_length: 50ms\n'
+    + '        max_length: 700ms\n'
+    + '        then:\n'
+    + '          - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '          - script.execute: btn_stop\n'
+    + '      - min_length: 800ms\n'
+    + '        max_length: 3000ms\n'
+    + '        then:\n'
+    + '          - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '          - script.execute: btn_menu_open\n'
+    + '\n'
+    + '  # menu (open menu / confirm selection)\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_menu + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Menu"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert:, delayed_on: 30ms ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return id(menu_active);') + ' }\n'
+    + '            then: [ script.execute: menu_confirm ]\n'
+    + '            else: [ script.execute: menu_open ]\n'
+    + '\n'
+    + '  # MODE / << (menu prev | AC: HVAC mode | Lights: prev | Covers: close | Autos: L slot)\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_mode + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Mode"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert:, delayed_on: 30ms ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return id(menu_active);') + ' }\n'
+    + '            then: [ script.execute: menu_prev ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_AC;') + ' }\n'
+    + '            then: [ script.execute: ac_btn_mode ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_LIGHTS;') + ' }\n'
+    + '            then: [ script.execute: lights_btn_prev ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_COVERS;') + ' }\n'
+    + '            then: [ script.execute: covers_btn_close ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;') + ' }\n'
+    + '            then: [ script.execute: automations_btn_menu_l ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_SETTINGS;') + ' }\n'
+    + '            then: [ script.execute: settings_btn_up ]\n'
+    + '\n'
+    + '  # FAN / >> (menu next | AC: fan speed | Covers: open | Autos: R slot)\n'
+    + '  - platform: gpio\n'
+    + '    pin:\n'
+    + '      number: ' + pins.pin_fan + '\n'
+    + '      mode: { input: true, pullup: true }\n'
+    + '    name: "Button Fan"\n'
+    + '    internal: true\n'
+    + '    filters: [ invert:, delayed_on: 30ms ]\n'
+    + '    on_press:\n'
+    + '      then:\n'
+    + '        - lambda: ' + q('RemoteCore::resetIdleTimer(id(last_active));') + '\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return id(menu_active);') + ' }\n'
+    + '            then: [ script.execute: menu_next ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_AC;') + ' }\n'
+    + '            then: [ script.execute: ac_btn_fan ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_LIGHTS;') + ' }\n'
+    + '            then: [ script.execute: lights_btn_next ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_COVERS;') + ' }\n'
+    + '            then: [ script.execute: covers_btn_open ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;') + ' }\n'
+    + '            then: [ script.execute: automations_btn_menu_r ]\n'
+    + '        - if:\n'
+    + '            condition: { lambda: ' + q('return !id(menu_active) && id(app_mode) == APP_SETTINGS;') + ' }\n'
+    + '            then: [ script.execute: settings_btn_down ]\n';
+}
+
+/* -- SETUP.md -------------------------------------------------------------- */
+function genSetupMd(cfg) {
+  var modes    = cfg.menuOrder;
+  var genFiles = ['remote.yaml', 'secrets.yaml', 'src/menu_entities.h', 'packages/layouts/layout_custom.yaml'];
+  if (modes.indexOf('ac') !== -1)          { genFiles.push('src/ac_entities.h', 'packages/mode_ac.yaml'); }
+  if (modes.indexOf('lights') !== -1)      { genFiles.push('src/light_entities.h', 'packages/mode_lights.yaml'); }
+  if (modes.indexOf('covers') !== -1)      { genFiles.push('src/cover_entities.h', 'packages/mode_covers.yaml'); }
+  if (modes.indexOf('automations') !== -1) { genFiles.push('src/automation_entities.h'); }
+
+  var fileList  = genFiles.map(function(f) { return '- `' + f + '`'; }).join('\n');
+  var modeList  = modes.map(function(m) { return '- **' + MODE_DEFS[m].label + '**'; }).join('\n');
+
+  return '# Setup Instructions\n'
+    + '\n'
+    + '## Generated files\n'
+    + '\n'
+    + 'This ZIP was generated by the ESPHome Remote Config Generator.\n'
+    + 'It contains:\n'
+    + '\n'
+    + fileList + '\n'
+    + '\n'
+    + '## Steps\n'
+    + '\n'
+    + '### 1. Clone the repository\n'
+    + '\n'
+    + '```bash\n'
+    + 'git clone https://github.com/plugowski/esphome_remote.git\n'
+    + 'cd esphome_remote/devices/multi_function_remote\n'
+    + '```\n'
+    + '\n'
+    + '### 2. Copy generated files\n'
+    + '\n'
+    + 'Unzip the downloaded archive and copy **all files** into\n'
+    + '`devices/multi_function_remote/`, preserving directory structure:\n'
+    + '\n'
+    + '```bash\n'
+    + 'cp -r /path/to/unzipped/* .\n'
+    + '```\n'
+    + '\n'
+    + '> This ZIP includes generated files and required static controller/package files\n'
+    + '> so it can be copied into a clean `devices/multi_function_remote/` workspace.\n'
+    + '\n'
+    + '### 3. Verify secrets.yaml\n'
+    + '\n'
+    + 'Open `secrets.yaml` and confirm the Wi-Fi credentials are correct.\n'
+    + '\n'
+    + '### 4. Flash\n'
+    + '\n'
+    + '```bash\n'
+    + 'pip install esphome   # first time only\n'
+    + 'esphome run remote.yaml\n'
+    + '```\n'
+    + '\n'
+    + '### 5. Add to Home Assistant\n'
+    + '\n'
+    + 'Home Assistant will discover the device automatically via the ESPHome integration.\n'
+    + 'Enter the API encryption key if prompted.\n'
+    + '\n'
+    + '---\n'
+    + '\n'
+    + '## Troubleshooting\n'
+    + '\n'
+    + '| Problem | Fix |\n'
+    + '|---------|-----|\n'
+    + '| Build error: unknown sensor ID | Entity ID mismatch - check spelling |\n'
+    + '| Nothing on display | Verify I2C SDA/SCL pins |\n'
+    + '| Buttons unresponsive | Check layout selection (v1 vs v2) |\n'
+    + '| Wi-Fi connection fails | Check `secrets.yaml` credentials |\n'
+    + '\n'
+    + '## Selected modes\n'
+    + '\n'
+    + modeList + '\n';
+}
+
+/* ===========================================================================
+   Main generate action
+=========================================================================== */
+function collectConfig() {
+  var pins = {};
+  GPIO_PINS.forEach(function(p) {
+    pins[p.key] = parseInt(document.getElementById(p.key).value) || p.default;
+  });
+
+  var device = {
+    device_name:          document.getElementById('device_name').value.trim() || 'oled-remote',
+    friendly_name:        document.getElementById('friendly_name').value.trim() || 'OLED Remote',
+    api_key:              document.getElementById('api_key').value.trim(),
+    layout:               document.getElementById('layout').value,
+    pin_wake:             pins.pin_wake,
+    pin_sda:              pins.pin_sda,
+    pin_scl:              pins.pin_scl,
+    pin_oled_en:          pins.pin_oled_en,
+    pin_bat_adc:          pins.pin_bat_adc,
+    pins:                 pins,
+    battery_enabled:       document.getElementById('bat_enabled').checked,
+    battery_interval_mins: document.getElementById('bat_enabled').checked
+      ? Math.round(BATTERY_STEPS[parseInt(document.getElementById('battery_interval').value)].s / 60)
+      : 0,
+  };
+
+  return {
+    device:    device,
+    modes:     Array.from(state.modes),
+    menuOrder: state.menuOrder.slice(),
+    entities: {
+      ac:          collectEntities('ac'),
+      lights:      collectEntities('lights'),
+      covers:      collectEntities('covers'),
+      automations: collectEntities('automations'),
+    },
+  };
+}
+
+/* Returns true if every meaningful field is at its blank/default value. */
+function isEntityEmpty(type, e) {
+  if (type === 'ac')          return !e.name && !e.entity_id && !e.modes.length && !e.fan_modes.length;
+  if (type === 'lights')      return !e.name && !e.entity_id;
+  if (type === 'covers')      return !e.name && !e.entity_id;
+  if (type === 'automations') return !e.name && !e.short_name && !e.entity_id;
+  return false;
+}
+
+/* Filters out fully-empty rows; validates partially-filled ones. */
+function filterAndValidate(type, entities, errors) {
+  return entities.filter(function(e, i) {
+    if (isEntityEmpty(type, e)) return false; // silently skip blank rows
+
+    var ref   = e.name || e.entity_id || ('#' + (i + 1));
+    var label = { ac: 'AC unit', lights: 'Light', covers: 'Cover', automations: 'Automation' }[type] + ' "' + ref + '"';
+
+    if (!e.name)                errors.push(label + ': display name is required (max 8 chars).');
+    else if (e.name.length > 8) errors.push(label + ': name is too long - max 8 chars, got ' + e.name.length + '.');
+
+    if (type === 'ac') {
+      if (!e.entity_id) errors.push(label + ': entity ID is required (e.g. climate.living_room_ac).');
+      if (!e.modes.length)     errors.push(label + ': select at least one HVAC mode.');
+      if (!e.fan_modes.length) errors.push(label + ': select at least one fan mode.');
+    }
+    if (type === 'lights') {
+      if (!e.entity_id) errors.push(label + ': entity ID is required (e.g. light.sofa).');
+    }
+    if (type === 'covers') {
+      if (!e.entity_id) errors.push(label + ': entity ID is required (e.g. cover.living_room_curtain).');
+    }
+    if (type === 'automations') {
+      if (!e.entity_id)                  errors.push(label + ': entity ID is required.');
+      if (!e.short_name)                 errors.push(label + ': short name is required (max 5 chars).');
+      else if (e.short_name.length > 5)  errors.push(label + ': short name "' + e.short_name + '" is too long - max 5 chars, got ' + e.short_name.length + '.');
+    }
+    return true; // keep it (valid or has errors - generators handle only valid data)
+  });
+}
+
+function showErrors(errors) {
+  var panel = document.getElementById('validation-errors');
+  var list  = document.getElementById('error-list');
+  list.innerHTML = errors.map(function(msg) {
+    return '<li><span class="material-icons-round">chevron_right</span>' + msg + '</li>';
+  }).join('');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideErrors() {
+  document.getElementById('validation-errors').style.display = 'none';
+}
+
+function getStaticFilesForConfig(cfg) {
+  var files = STATIC_ALWAYS_FILES.slice();
+  cfg.modes.forEach(function(mode) {
+    var modeFiles = STATIC_MODE_FILES[mode] || [];
+    modeFiles.forEach(function(path) {
+      if (files.indexOf(path) === -1) files.push(path);
+    });
+  });
+  return files;
+}
+
+function fetchText(url) {
+  return fetch(url).then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + url);
+    return res.text();
+  });
+}
+
+function fetchBinary(url) {
+  return fetch(url).then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + url);
+    return res.arrayBuffer();
+  }).then(function(buf) {
+    return new Uint8Array(buf);
+  });
+}
+
+function readBrowserFileAsText(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function() { resolve(String(reader.result)); };
+    reader.onerror = function() { reject(new Error('Failed reading file: ' + file.name)); };
+    reader.readAsText(file);
+  });
+}
+
+function readBrowserFileAsBytes(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function() { resolve(new Uint8Array(reader.result)); };
+    reader.onerror = function() { reject(new Error('Failed reading file: ' + file.name)); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function normalizeLocalTemplatePath(relPath) {
+  var p = String(relPath || '').replace(/\\/g, '/');
+  p = p.replace(/^\.?\//, '');
+  p = p.replace(/^multi_function_remote\//, '');
+  p = p.replace(/^tools\/templates\//, '');
+  p = p.replace(/^templates\//, '');
+  p = p.replace(/^devices\/multi_function_remote\//, '');
+  return p;
+}
+
+function ensureLocalTemplateFiles() {
+  if (localTemplateFiles) return Promise.resolve(localTemplateFiles);
+  if (localTemplateLoadPromise) return localTemplateLoadPromise;
+
+  localTemplateLoadPromise = new Promise(function(resolve, reject) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.setAttribute('webkitdirectory', '');
+    input.style.display = 'none';
+    document.body.appendChild(input);
+
+    input.addEventListener('change', function() {
+      try {
+        var files = Array.prototype.slice.call(input.files || []);
+        document.body.removeChild(input);
+        if (!files.length) {
+          localTemplateLoadPromise = null;
+          reject(new Error('No files selected.'));
+          return;
+        }
+        var map = new Map();
+        files.forEach(function(file) {
+          var rel = normalizeLocalTemplatePath(file.webkitRelativePath || file.name);
+          if (rel) map.set(rel, file);
+        });
+        localTemplateFiles = map;
+        resolve(map);
+      } catch (err) {
+        localTemplateLoadPromise = null;
+        reject(err);
+      }
+    });
+
+    // Ask only as last-resort when direct/template URL loading fails.
+    alert('Select your templates folder (devices/multi_function_remote or tools/templates) so generator can load required files.');
+    input.click();
+  });
+
+  return localTemplateLoadPromise;
+}
+
+function loadStaticFileFromUrls(path) {
+  var templatePath = 'templates/' + path;
+  var legacyRepoPath = 'devices/multi_function_remote/' + path;
+  var overrideBase = window.ESPHOME_REMOTE_STATIC_BASE_URL
+    ? String(window.ESPHOME_REMOTE_STATIC_BASE_URL).replace(/\/+$/, '')
+    : '';
+  var candidates = [];
+
+  if (overrideBase) candidates.push(overrideBase + '/' + path);
+  candidates.push('../' + templatePath);
+  candidates.push('./' + templatePath);
+  candidates.push('/' + templatePath);
+  // Legacy paths for older layouts
+  candidates.push('../' + legacyRepoPath);
+  candidates.push('./' + legacyRepoPath);
+  candidates.push('/' + legacyRepoPath);
+  candidates.push('https://raw.githubusercontent.com/plugowski/esphome_remote/main/' + templatePath);
+  candidates.push('https://raw.githubusercontent.com/plugowski/esphome_remote/master/' + templatePath);
+  candidates.push('https://raw.githubusercontent.com/plugowski/esphome_remote/main/' + legacyRepoPath);
+  candidates.push('https://raw.githubusercontent.com/plugowski/esphome_remote/master/' + legacyRepoPath);
+
+  var idx = 0;
+  function tryNext() {
+    if (idx >= candidates.length) {
+      throw new Error(
+        'Could not load required template "' + path + '". ' +
+        'Host this page together with repository files, set window.ESPHOME_REMOTE_STATIC_BASE_URL, or choose a local templates folder.'
+      );
+    }
+    var url = candidates[idx++];
+    return fetchText(url).catch(function() { return tryNext(); });
+  }
+  return tryNext();
+}
+
+function loadStaticFile(path) {
+  if (window.location && window.location.protocol === 'file:') {
+    return loadStaticFileFromUrls(path).catch(function() {
+      return ensureLocalTemplateFiles().then(function(map) {
+        var file = map.get(path);
+        if (!file) throw new Error('Missing "' + path + '" in selected templates folder.');
+        return readBrowserFileAsText(file);
+      });
+    });
+  }
+  return loadStaticFileFromUrls(path);
+}
+
+function loadBundledFont() {
+  if (window.location && window.location.protocol === 'file:') {
+    return fetchBinary('./templates/fonts/arial_bold.ttf').catch(function() {
+      return ensureLocalTemplateFiles().then(function(map) {
+        var file = map.get('fonts/arial_bold.ttf');
+        if (file) return readBrowserFileAsBytes(file);
+        return fetchBinary('https://raw.githubusercontent.com/google/fonts/main/ofl/lato/Lato-Bold.ttf');
+      });
+    });
+  }
+  var candidates = [
+    '../templates/fonts/arial_bold.ttf',
+    './templates/fonts/arial_bold.ttf',
+    '/templates/fonts/arial_bold.ttf',
+    '../devices/multi_function_remote/fonts/arial_bold.ttf',
+    './devices/multi_function_remote/fonts/arial_bold.ttf',
+    '/devices/multi_function_remote/fonts/arial_bold.ttf',
+    'https://raw.githubusercontent.com/google/fonts/main/ofl/lato/Lato-Bold.ttf',
+  ];
+  var idx = 0;
+  function tryNext() {
+    if (idx >= candidates.length) {
+      throw new Error('Could not load required font "fonts/arial_bold.ttf".');
+    }
+    return fetchBinary(candidates[idx++]).catch(function() { return tryNext(); });
+  }
+  return tryNext();
+}
+
+function generate() {
+  hideErrors();
+  var cfg    = collectConfig();
+  var errors = [];
+
+  if (!cfg.device.api_key) {
+    errors.push('HA API encryption key is required.');
+  } else if (!isValidApiKey(cfg.device.api_key)) {
+    errors.push('HA API encryption key must be a valid Base64-encoded 32-byte key.');
+  }
+
+  if (cfg.menuOrder.length === 0) errors.push('Select at least one mode.');
+
+  // Filter empty rows and collect validation errors for partial ones
+  var acList    = filterAndValidate('ac',          cfg.entities.ac,          errors);
+  var lightList = filterAndValidate('lights',      cfg.entities.lights,      errors);
+  var coverList = filterAndValidate('covers',      cfg.entities.covers,      errors);
+  var autoList  = filterAndValidate('automations', cfg.entities.automations, errors);
+
+  // Require at least one filled entity per enabled mode
+  if (cfg.modes.indexOf('ac') !== -1          && acList.length === 0)    errors.push('AC mode is enabled but has no configured units.');
+  if (cfg.modes.indexOf('lights') !== -1      && lightList.length === 0) errors.push('Lights mode is enabled but has no configured lights.');
+  if (cfg.modes.indexOf('covers') !== -1      && coverList.length === 0) errors.push('Covers mode is enabled but has no configured covers.');
+  if (cfg.modes.indexOf('automations') !== -1 && autoList.length === 0)  errors.push('Automations mode is enabled but has no configured automations.');
+
+  if (errors.length) {
+    showErrors(errors);
+    return;
+  }
+
+  // Build a clean config with only the validated entities
+  cfg.entities = { ac: acList, lights: lightList, covers: coverList, automations: autoList };
+
+  var btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-icons-round spin">refresh</span> Generating\u2026';
+
+  // Async so the UI can update first
+  setTimeout(function() {
+    try {
+      var zip = new JSZip();
+      var staticFiles = getStaticFilesForConfig(cfg);
+
+      Promise.all(staticFiles.map(function(path) {
+        return loadStaticFile(path).then(function(content) {
+          zip.file(path, content);
+        });
+      }).concat([
+        loadBundledFont().then(function(fontData) {
+          zip.file('fonts/arial_bold.ttf', fontData, { binary: true });
+        })
+      ])).then(function() {
+        zip.file('remote.yaml',                          genRemoteYaml(cfg));
+        zip.file('secrets.yaml',                         genSecretsYaml());
+        zip.file('src/menu_entities.h',                  genMenuEntities(cfg));
+        zip.file('packages/layouts/layout_custom.yaml',  genLayoutYaml(cfg.device.pins));
+        zip.file('SETUP.md',                             genSetupMd(cfg));
+
+        var m = cfg.modes;
+        if (m.indexOf('ac') !== -1) {
+          zip.file('src/ac_entities.h',         genAcEntities(cfg.entities.ac));
+          zip.file('packages/mode_ac.yaml',     genModeAcYaml(cfg.entities.ac));
+        }
+        if (m.indexOf('lights') !== -1) {
+          zip.file('src/light_entities.h',      genLightEntities(cfg.entities.lights));
+          zip.file('packages/mode_lights.yaml', genModeLightsYaml(cfg.entities.lights));
+        }
+        if (m.indexOf('covers') !== -1) {
+          zip.file('src/cover_entities.h',      genCoverEntities(cfg.entities.covers));
+          zip.file('packages/mode_covers.yaml', genModeCoversYaml(cfg.entities.covers));
+        }
+        if (m.indexOf('automations') !== -1) {
+          zip.file('src/automation_entities.h', genAutomationEntities(cfg.entities.automations));
+        }
+
+        return zip.generateAsync({ type: 'blob' });
+      }).then(function(blob) {
+        var url  = URL.createObjectURL(blob);
+        var a    = document.createElement('a');
+        a.href     = url;
+        a.download = 'esphome-remote-' + cfg.device.device_name + '.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-icons-round">download</span> Download Configuration ZIP';
+      }).catch(function(err) {
+        alert('Generation failed: ' + err.message);
+        console.error(err);
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-icons-round">download</span> Download Configuration ZIP';
+      });
+    } catch (err) {
+      alert('Generation failed: ' + err.message);
+      console.error(err);
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-icons-round">download</span> Download Configuration ZIP';
+    }
+  }, 50);
+}
+
+/* ===========================================================================
+   Bootstrap - seed with example data
+=========================================================================== */
+(function init() {
+  buildPinGrid();
+  updateBatteryLabel(document.getElementById('battery_interval').value);
+
+  addEntity('ac');
+  addEntity('lights');
+  addEntity('covers');
+  addEntity('automations');
+
+  renderMenuOrder();
+}());
+</script>
+</body>
+</html>

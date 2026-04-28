@@ -116,7 +116,9 @@ script:
   # ── display ───────────────────────────────────────────────────────────────
 
   - id: lights_update
-    then: [ script.execute: lights_draw ]
+    then:
+      - lambda: 'if (id(selected_light_index) >= LIGHTS_LIST_COUNT) id(selected_light_index) = 0;'
+      - script.execute: lights_draw
 
   - id: lights_draw
     then:
