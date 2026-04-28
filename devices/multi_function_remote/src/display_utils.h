@@ -59,9 +59,14 @@ inline void draw_bottom_menu(
     }
 
     if (right && right[0] == '>' && right[1] == '\0') {
-        // ▶ pixel triangle, tip at right, centered at (105, 59)
-        for (int i = 0; i < 5; i++)
-            it->line(107 - i, 59 - i, 107 - i, 59 + i);
+        // ▶ rotated down-arrow; base at left, tip at right; 6×6 px centred at (105, 59)
+        int cx = 102, cy = 59;
+        it->line(cx,     cy - 2, cx,     cy + 3);  // col 0 — base, 6 px
+        it->line(cx + 1, cy - 2, cx + 1, cy + 3);  // col 1 — base, 6 px
+        it->line(cx + 2, cy - 1, cx + 2, cy + 2);  // col 2 — 4 px
+        it->line(cx + 3, cy - 1, cx + 3, cy + 2);  // col 3 — 4 px
+        it->line(cx + 4, cy,     cx + 4, cy + 1);  // col 4 — 2 px
+        it->line(cx + 5, cy,     cx + 5, cy + 1);  // col 5 — tip, 2 px
     } else if (right && right[0] != '\0') {
         it->print(105, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, right);
     }
