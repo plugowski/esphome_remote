@@ -2,7 +2,7 @@ substitutions:
   BOARD: "esp32dev"
   DEVICE_NAME: "oled-remote"
   FRIENDLY_NAME: "OLED Remote"
-  API_KEY: "{API_KEY_PLACEHOLDER}"
+  API_KEY: "8s07kGR8NLaKSRpxpbClUWh9GvY7Afh8qHc4DkyKe4w="
   PIN_WAKE: "0"
   PIN_I2C_SDA: "27"
   PIN_I2C_SCL: "25"
