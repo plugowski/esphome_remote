@@ -83,18 +83,18 @@ public:
   // Toggle power: off → restore last mode (mode_idx preserved); on → "off"
   // mode_idx is intentionally kept when turning off so the next power-on
   // restores the same mode automatically.
-  static void togglePower(int ac_idx, int& mode_idx,
-                          std::string& ac_mode, bool& updated_ui) {
-    if (ac_mode == "off") {
-      if (mode_idx >= 0 && mode_idx < AC_LIST[ac_idx].modes_count)
-        ac_mode = AC_LIST[ac_idx].modes[mode_idx];
-      else {
-        mode_idx = 0;
-        ac_mode  = AC_LIST[ac_idx].modes[0];
-      }
-    } else {
-      ac_mode = "off";   // preserve mode_idx for restore
-    }
+  static void turnOn(int ac_idx, int& mode_idx,
+                     std::string& ac_mode, bool& updated_ui) {
+    if (ac_mode != "off") return;
+    if (mode_idx >= 0 && mode_idx < AC_LIST[ac_idx].modes_count)
+      ac_mode = AC_LIST[ac_idx].modes[mode_idx];
+    else { mode_idx = 0; ac_mode = AC_LIST[ac_idx].modes[0]; }
+    updated_ui = true;
+  }
+
+  static void turnOff(std::string& ac_mode, bool& updated_ui) {
+    if (ac_mode == "off") return;
+    ac_mode    = "off";
     updated_ui = true;
   }
 

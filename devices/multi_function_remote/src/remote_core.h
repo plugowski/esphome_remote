@@ -28,6 +28,29 @@ public:
     it->display();
   }
 
+  // Connection error screen — status: 1=no wifi  2=no HA
+  template<class D, class F>
+  static void drawConnError(D* it, F* font_large, F* font_small, int status) {
+    const char* title = "";
+    const char* line1 = "";
+    const char* line2 = "";
+    if (status == 1) {
+      title = "NO WIFI";
+      line1 = "Check network";
+      line2 = "settings";
+    } else if (status == 2) {
+      title = "HA UNREACHABLE";
+      line1 = "Check API key";
+      line2 = "and permissions";
+    }
+    it->clear();
+    it->print(64,  8, font_large, COLOR_ON, display::TextAlign::CENTER, title);
+    it->rectangle(0, 20, 128, 1);
+    it->print(64, 36, font_small, COLOR_ON, display::TextAlign::CENTER, line1);
+    it->print(64, 49, font_small, COLOR_ON, display::TextAlign::CENTER, line2);
+    it->display();
+  }
+
   // Reset the 120 s idle counter to now
   static void resetIdleTimer(int& last_active) {
     last_active = millis() / 1000;

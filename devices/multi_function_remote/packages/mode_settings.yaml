@@ -140,9 +140,13 @@ script:
 
   - id: settings_draw
     then:
-      - lambda: >-
-          SettingsController::draw(id(oled_display), id(font_small),
-            id(selected_setting_index), id(contrast_level),
-            id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
-            id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
-            id(updated_ui));
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting);'
+          then:
+            - lambda: >-
+                SettingsController::draw(id(oled_display), id(font_small),
+                  id(selected_setting_index), id(contrast_level),
+                  id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
+                  id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+                  id(updated_ui));

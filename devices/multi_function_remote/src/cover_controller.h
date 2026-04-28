@@ -10,32 +10,26 @@
 // ── CoverController ───────────────────────────────────────────────────────────
 // Cover mode: entity selection, open/close/stop/position actions, display.
 //
-// Button mapping:
-//   LEFT  (pin14)    -> prevCover
-//   RIGHT (pin26)    -> actionStop
-//   MODE  (pin22)    -> actionClose
-//   FAN   (pin33)    -> actionOpen
-//   MENU  (pin5)     -> opens mode menu (single click, same as all other modes)
-//   T_UP  (pin23/17) -> positionUp
-//   T_DN  (pin19/18) -> positionDown
+// State and position for every cover are stored in private static arrays so
+// that switching covers immediately shows the last received values instead of
+// reverting to Unknown while waiting for HA to re-push data.
 //
-// YAML usage (one-liners):
+// YAML usage:
 //   CoverController::prevCover(id(selected_cover_index));
 //   CoverController::nextCover(id(selected_cover_index));
 //   CoverController::selectCover(id(selected_cover_index),
 //                                id(selected_cover), id(selected_cover_name));
-//   CoverController::actionOpen(id(cover_position), id(cover_state), id(updated_ui));
-//   CoverController::actionClose(id(cover_position), id(cover_state), id(updated_ui));
-//   CoverController::actionStop(id(cover_state), id(updated_ui));
-//   CoverController::positionUp(id(cover_position), id(cover_state), id(updated_ui));
-//   CoverController::positionDown(id(cover_position), id(cover_state), id(updated_ui));
-//   CoverController::syncState(ha_state, ha_pos,
-//                              id(cover_state), id(cover_position), id(updated_ui));
+//   CoverController::syncCoverState(sensor_idx, x, id(updated_ui));
+//   CoverController::syncCoverPosition(sensor_idx, x, id(updated_ui));
+//   CoverController::positionUp(id(selected_cover_index), id(updated_ui));
+//   CoverController::positionDown(id(selected_cover_index), id(updated_ui));
+//   CoverController::getPosition(id(selected_cover_index))   → int
+//   CoverController::isClosed(id(selected_cover_index))      → bool
 //   CoverController::draw(id(oled_display),
 //                         id(ac_symbols), id(menu_icon_small),
 //                         id(font_big), id(font_base), id(font_small),
-//                         id(selected_cover_name), id(cover_state),
-//                         id(cover_position), id(updated_ui));
+//                         id(selected_cover_index), id(selected_cover_name),
+//                         id(updated_ui));
 
 class CoverController {
 public:
@@ -50,142 +44,99 @@ public:
     idx = (idx + 1) % COVER_LIST_COUNT;
   }
 
-  static void selectCover(int idx, std::string& entity, std::string& name) {
-    entity = COVER_LIST[idx].entity_id;
-    name   = COVER_LIST[idx].name;
+  // ── HA state sync — always stores for every sensor index ──────────────────
+
+  static void syncCoverState(int sensor_idx, const std::string& ha_state,
+                              bool& updated_ui) {
+    if (ha_state.empty()) return;
+    std::string& s = st(sensor_idx);
+    if (s == ha_state) return;
+    s = ha_state;
+    if (ha_state == "unavailable" || ha_state == "unknown") pos(sensor_idx) = -1;
+    updated_ui = true;
+  }
+
+  static void syncCoverPosition(int sensor_idx, float ha_pos_f,
+                                 bool& updated_ui) {
+    int ha_pos = (std::isnan(ha_pos_f) || ha_pos_f < 0) ? -1
+                                                         : static_cast<int>(ha_pos_f);
+    int& p = pos(sensor_idx);
+    if (p == ha_pos) return;
+    p = ha_pos;
+    updated_ui = true;
   }
 
   // ── position control (10 % steps, clamped 0-100) ──────────────────────────
 
-  static void positionUp(int& position, std::string& state, bool& updated_ui) {
-    int p      = (position < 0) ? 0 : position;
-    position   = (p + 10 <= 100) ? p + 10 : 100;
-    state      = (position == 0) ? std::string("closed") : std::string("open");
+  static void positionUp(int idx, bool& updated_ui) {
+    int& p   = pos(idx);
+    int newp = ((p < 0 ? 0 : p) + 10);
+    if (newp > 100) newp = 100;
+    p          = newp;
+    st(idx)    = (p == 0) ? "closed" : "open";
     updated_ui = true;
   }
 
-  static void positionDown(int& position, std::string& state, bool& updated_ui) {
-    int p      = (position < 0) ? 100 : position;
-    position   = (p - 10 >= 0) ? p - 10 : 0;
-    state      = (position == 0) ? std::string("closed") : std::string("open");
+  static void positionDown(int idx, bool& updated_ui) {
+    int& p   = pos(idx);
+    int newp = ((p < 0 ? 100 : p) - 10);
+    if (newp < 0) newp = 0;
+    p          = newp;
+    st(idx)    = (p == 0) ? "closed" : "open";
     updated_ui = true;
   }
 
-  // ── direct actions ─────────────────────────────────────────────────────────
+  // ── helpers for YAML lambdas ───────────────────────────────────────────────
 
-  static void actionOpen(int& position, std::string& state, bool& updated_ui) {
-    position   = 100;
-    state      = "open";
-    updated_ui = true;
-  }
+  static int getPosition(int idx) { return pos(idx); }
 
-  static void actionClose(int& position, std::string& state, bool& updated_ui) {
-    position   = 0;
-    state      = "closed";
-    updated_ui = true;
-  }
-
-  static void actionStop(std::string& state, bool& updated_ui) {
-    state      = "stopped";
-    updated_ui = true;
-  }
-
-  // ── HA state sync ──────────────────────────────────────────────────────────
-
-  // Called from each state text_sensor's on_value.
-  // No-op when sensor_idx does not match the currently selected cover.
-  static void syncCoverState(int sensor_idx, const std::string& ha_state,
-                              int selected_idx, std::string& state, bool& updated_ui) {
-    if (sensor_idx != selected_idx || ha_state.empty() || state == ha_state) return;
-    state      = ha_state;
-    updated_ui = true;
-  }
-
-  // Called from each position sensor's on_value.
-  // No-op when sensor_idx does not match the currently selected cover.
-  static void syncCoverPosition(int sensor_idx, float ha_pos_f,
-                                 int selected_idx, int& position, bool& updated_ui) {
-    if (sensor_idx != selected_idx) return;
-    int ha_pos = (std::isnan(ha_pos_f) || ha_pos_f < 0) ? -1 : static_cast<int>(ha_pos_f);
-    if (position == ha_pos) return;
-    position   = ha_pos;
-    updated_ui = true;
-  }
-
-  // Combined sync — convenience for cases where both values arrive together.
-  static void syncState(const std::string& ha_state, float ha_pos_f,
-                        std::string& state, int& position, bool& updated_ui) {
-    bool changed = false;
-    if (!ha_state.empty() && state != ha_state) {
-      state   = ha_state;
-      changed = true;
-    }
-    int ha_pos = (std::isnan(ha_pos_f) || ha_pos_f < 0)
-                   ? -1 : static_cast<int>(ha_pos_f);
-    if (position != ha_pos) {
-      position = ha_pos;
-      changed  = true;
-    }
-    if (changed) updated_ui = true;
+  static bool isClosed(int idx) {
+    const std::string& s = st(idx);
+    return s == "closed" || s == "stopped" || s == "unknown"
+        || s == "unavailable" || s.empty();
   }
 
   // ── display ────────────────────────────────────────────────────────────────
 
-  // Renders the cover screen.  No-ops when updated_ui is false.
-  //
-  // Layout (128 x 64 OLED) -- mirrors AC cool mode structure:
-  //   top-left  : curtain icon 24 px  (symbols, same position as AC unit icon)
-  //   centre    : position "75%"      (font_big,  same as AC temperature)
-  //   top-right : state icon 18 px    (state_icons, same corner as AC fan bars)
-  //   y=38      : separator line
-  //   y=38-52   : room name centred   (font_base, same as AC unit name bar)
-  //   y=53-63   : CLOSE | HOLD | OPEN
-  //
-  // symbols must include '\uec12' (curtain).
-  // state_icons must include the five cover-state glyphs (see stateIcon()).
-  // font_big must include '%'.
   template<class D, class F>
   static void draw(D* it, F* symbols, F* state_icons,
                    F* font_big, F* font_base, F* font_small,
-                   const std::string& cover_name,
-                   const std::string& state, int position,
+                   int selected_idx,
                    bool& updated_ui)
   {
     if (!updated_ui) return;
     updated_ui = false;
 
+    const std::string& state = st(selected_idx);
+    int position             = pos(selected_idx);
+
     it->clear();
 
     char label[12];
-    strncpy(label, cover_name.c_str(), sizeof(label) - 1);
+    strncpy(label, COVER_LIST[selected_idx].name, sizeof(label) - 1);
     label[sizeof(label) - 1] = '\0';
     for (int i = 0; label[i]; i++) label[i] = toupper((unsigned char)label[i]);
 
-    // ── content area (y=0-37) ─────────────────────────────────────────────────
-    // Curtain icon top-left -- same position as AC unit/fan/dry icons
-    it->print(5, 8, symbols, "\uec12");
+    // Curtain icon top-left
+    it->print(5, 8, symbols, "");
 
-    if (position < 0 || state == "unknown") {
-      it->print(64, 18, font_base, COLOR_ON, display::TextAlign::CENTER, "Unknown");
+    if (position < 0 || state == "unknown" || state == "unavailable" || state.empty()) {
+      // Centred between icon right edge (~29 px) and screen right edge (127 px)
+      it->print(78, 18, font_base, COLOR_ON, display::TextAlign::CENTER, "Unknown");
     } else {
-      // Big position number centred -- mirrors AC temperature display
       char pos_buf[5];
       snprintf(pos_buf, sizeof(pos_buf), "%d", position);
       it->print(64, 22, font_big, COLOR_ON, display::TextAlign::CENTER, pos_buf);
 
-      // "%" superscript -- mirrors AC "C" degree sign; x shifts with digit count
       int pct_x = (position < 10) ? 77 : (position < 100) ? 88 : 99;
       it->print(pct_x, 4, font_base, COLOR_ON, "%");
 
-      // State icon top-right -- mirrors AC fan-speed bars corner
       it->print(110, 8, state_icons, stateIcon(state));
     }
 
-    // ── room name bar (mirrors AC lower bar) ──────────────────────────────────
     it->line(0, 38, 127, 38);
     it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label);
 
-    // ── bottom menu: pin22=CLOSE  pin5=HOLD->STOP  pin33=OPEN ────────────────
     draw_bottom_menu(it, font_small, "CLOSE", "", "OPEN");
 
     it->display();
@@ -193,12 +144,31 @@ public:
 
 private:
 
-  // Maps HA cover state string to a Material Symbols glyph (18 px state_icons font).
+  static std::string& st(int idx) {
+    static bool init = false;
+    static std::string states[COVER_LIST_COUNT];
+    if (!init) {
+      for (int i = 0; i < COVER_LIST_COUNT; i++) states[i] = "unknown";
+      init = true;
+    }
+    return states[idx];
+  }
+
+  static int& pos(int idx) {
+    static bool init = false;
+    static int positions[COVER_LIST_COUNT];
+    if (!init) {
+      for (int i = 0; i < COVER_LIST_COUNT; i++) positions[i] = -1;
+      init = true;
+    }
+    return positions[idx];
+  }
+
   static const char* stateIcon(const std::string& state) {
-    if (state == "open")    return "\ue5d8";  // open_in_full
-    if (state == "closed")  return "\ue5d1";  // close_fullscreen
-    if (state == "opening") return "\ue5ce";  // unfold_more
-    if (state == "closing") return "\ue5cc";  // unfold_less
-    return                         "\ue034";  // pause  (stopped / fallback)
+    if (state == "open")    return "";  // open_in_full
+    if (state == "closed")  return "";  // close_fullscreen
+    if (state == "opening") return "";  // unfold_more
+    if (state == "closing") return "";  // unfold_less
+    return                         "";  // pause (stopped / fallback)
   }
 };

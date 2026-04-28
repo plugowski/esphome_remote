@@ -157,11 +157,17 @@ script:
       - lambda: 'ACController::nextUnit(id(selected_ac_index));'
       - script.execute: ac_select_unit
 
-  - id: ac_btn_power
+  - id: ac_btn_power_on
     then:
       - lambda: >-
-          ACController::togglePower(id(selected_ac_index), id(selected_ac_mode_index),
-                                    id(selected_ac_mode), id(updated_ui));
+          ACController::turnOn(id(selected_ac_index), id(selected_ac_mode_index),
+                               id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_power_off
+    then:
+      - lambda: 'ACController::turnOff(id(selected_ac_mode), id(updated_ui));'
       - script.execute: ac_draw
       - script.execute: ac_await
 

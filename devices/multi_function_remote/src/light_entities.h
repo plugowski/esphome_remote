@@ -17,12 +17,9 @@ struct LightEntity {
 };
 
 static const LightEntity LIGHTS_LIST[] = {
-  { "Sofa",       "light.sofa",       "sofa_light",       "sofa_brightness",       true  },
-  { "Table",      "light.table",      "table_light",       nullptr,                 false },
-  { "Desk",       "light.desk",       "desk_light",       "desk_brightness",       true  },
-  { "Workshop",   "light.workshop",   "workshop_light",    nullptr,                 false },
-  { "Bed Lights", "light.bed_lights", "bed_lights_light", "bed_lights_brightness", true  },
-  { "Printers",   "light.printers",   "printers_light",    nullptr,                 false },
+  { "Monitor",    "light.desk_monitor_light", "desk_monitor_light", nullptr,          false },
+  { "Office",     "light.office_main",        "office_main_light",  nullptr,          false },
+  { "Skadis",     "light.skadis_strip_light", "skadis_strip_light", "skadis_strip_brightness", true },
 };
 
 static const int LIGHTS_LIST_COUNT = sizeof(LIGHTS_LIST) / sizeof(LIGHTS_LIST[0]);

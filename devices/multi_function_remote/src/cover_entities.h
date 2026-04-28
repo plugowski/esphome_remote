@@ -19,7 +19,7 @@ struct CoverEntity {
 static const CoverEntity COVER_LIST[] = {
   { "Living",  "cover.living_room_curtain", "living_curtain_state",  "living_curtain_pos"  },
   { "Bedroom", "cover.bedroom_curtain",     "bedroom_curtain_state", "bedroom_curtain_pos" },
-  { "Office",  "cover.office_blind",        "office_blind_state",    "office_blind_pos"    },
+  { "Office",  "cover.office",        "office_state",    "office_pos"    },
 };
 
 static const int COVER_LIST_COUNT = sizeof(COVER_LIST) / sizeof(COVER_LIST[0]);

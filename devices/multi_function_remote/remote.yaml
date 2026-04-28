@@ -2,7 +2,7 @@ substitutions:
   BOARD: "esp32dev"
   DEVICE_NAME: "oled-remote"
   FRIENDLY_NAME: "OLED Remote"
-  API_KEY: "XXXXX"  # replace with your real key from HA
+  API_KEY: "{API_KEY_PLACEHOLDER}"
   PIN_WAKE: "0"
   PIN_I2C_SDA: "27"
   PIN_I2C_SCL: "25"
@@ -15,7 +15,7 @@ packages:
   automations: !include packages/mode_automations.yaml
   settings:    !include packages/mode_settings.yaml
   buttons:     !include packages/buttons.yaml
-  layout:      !include packages/layouts/layout_v2.yaml   # swap to layout_v1.yaml for v1 hardware
+  layout:      !include packages/layouts/layout_v2.yaml
 
 # ── fonts shared across all modes ────────────────────────────────────────────
 font:
@@ -28,7 +28,7 @@ font:
     id: font_small
     size: 10
     glyphs:
-      - "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890.%- <>"
+      - "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890.%- <>"
       - "\u25b2"  # ▲ (list up)
       - "\u25bc"  # ▼ (list down)
 
@@ -49,9 +49,20 @@ esphome:
   min_version: 2024.11.0
   name_add_mac_suffix: false
   includes:
-    - src/menu_entities.h   # APP_* constants used in lambdas below
+    - src/menu_entities.h
     - src/remote_core.h
     - src/wake_utils.h
+    - src/display_utils.h
+    - src/menu_controller.h
+    - src/ac_entities.h
+    - src/ac_controller.h
+    - src/light_entities.h
+    - src/lights_controller.h
+    - src/cover_entities.h
+    - src/cover_controller.h
+    - src/automation_entities.h
+    - src/automation_controller.h
+    - src/settings_controller.h
   on_boot:
     - priority: 700
       then:
@@ -77,11 +88,34 @@ esphome:
               # Timer wake: read battery, wait for WiFi + API to publish, sleep again
               - component.update: battery_raw
               - wait_until:
-                  api.connected:
+                  condition:
+                    api.connected:
                   timeout: 30s
               - delay: 2s   # ensure the value is flushed to HA
               - deep_sleep.enter:
                   sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
+            else:
+              # Normal wake: wait for WiFi, then wait for entity states
+              - wait_until:
+                  condition:
+                    wifi.connected:
+                  timeout: 10s
+              - if:
+                  condition:
+                    not:
+                      wifi.connected:
+                  then:
+                    - lambda: 'id(conn_status) = 1; id(is_booting) = false;'
+                  else:
+                    - wait_until:
+                        condition:
+                          lambda: 'return !id(is_booting);'
+                        timeout: 5s
+                    - if:
+                        condition:
+                          lambda: 'return id(is_booting);'
+                        then:
+                          - lambda: 'id(conn_status) = 2; id(is_booting) = false;'
 
 esp32:
   board: ${BOARD}
@@ -94,11 +128,26 @@ wifi:
   output_power: 10dB
   fast_connect: true
   power_save_mode: LIGHT
+  on_connect:
+    - if:
+        condition: { lambda: 'return id(conn_status) == 1;' }
+        then:
+          - lambda: 'id(conn_status) = 0;'
+  on_disconnect:
+    - lambda: 'id(conn_status) = 1;'
 
 api:
   reboot_timeout: 0s
   encryption:
     key: ${API_KEY}
+  on_client_connected:
+    - lambda: 'id(conn_status) = 0;'
+  on_client_disconnected:
+    - if:
+        condition:
+          wifi.connected:
+        then:
+          - lambda: 'id(conn_status) = 2;'
 
 ota:
   - platform: esphome
@@ -171,6 +220,11 @@ globals:
     type: bool
     initial_value: 'false'
 
+  - id: conn_status         # 0=ok  1=no-wifi  2=no-ha  3=entities-missing
+    type: int
+    initial_value: '0'
+
+
 # ── core scripts ──────────────────────────────────────────────────────────────
 script:
 
@@ -203,24 +257,29 @@ script:
                 then: [ script.execute: boot_screen ]
                 else:
                   - if:
-                      condition: { lambda: 'return id(menu_active);' }
-                      then: [ script.execute: menu_draw ]
+                      condition: { lambda: 'return id(conn_status) != 0;' }
+                      then:
+                        - lambda: 'RemoteCore::drawConnError(id(oled_display), id(font_base), id(font_small), id(conn_status));'
                       else:
                         - if:
-                            condition: { lambda: 'return id(app_mode) == APP_AC;' }
-                            then: [ script.execute: ac_update ]
-                        - if:
-                            condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
-                            then: [ script.execute: lights_update ]
-                        - if:
-                            condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
-                            then: [ script.execute: covers_update ]
-                        - if:
-                            condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
-                            then: [ script.execute: automations_update ]
-                        - if:
-                            condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
-                            then: [ script.execute: settings_update ]
+                            condition: { lambda: 'return id(menu_active);' }
+                            then: [ script.execute: menu_draw ]
+                            else:
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                                  then: [ script.execute: ac_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                                  then: [ script.execute: lights_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                                  then: [ script.execute: covers_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
+                                  then: [ script.execute: automations_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
+                                  then: [ script.execute: settings_update ]
 
 # ── main loop ─────────────────────────────────────────────────────────────────
 interval:
