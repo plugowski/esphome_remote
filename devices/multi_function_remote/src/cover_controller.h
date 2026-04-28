@@ -165,10 +165,10 @@ private:
   }
 
   static const char* stateIcon(const std::string& state) {
-    if (state == "open")    return "";  // open_in_full
-    if (state == "closed")  return "";  // close_fullscreen
-    if (state == "opening") return "";  // unfold_more
-    if (state == "closing") return "";  // unfold_less
-    return                         "";  // pause (stopped / fallback)
+    if (state == "open")    return "";  // \uef4a (opened)
+    if (state == "closed")  return "";  // \ue5cd (closed)
+    if (state == "opening") return "";  // \uf8ac (opening)
+    if (state == "closing") return "";  // \uf8ab (closing)
+    return                         "";  // \ue034 pause (stopped / fallback)
   }
 };

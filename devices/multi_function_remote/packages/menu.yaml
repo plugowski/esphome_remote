@@ -35,11 +35,11 @@ font:
       - "\uea0b"  # bolt  (automations)
       - "\ue88b"  # hourglass_empty  (boot screen)
       - "\ue8b8"  # settings  (cog)
-      - "\ue5d8"  # open_in_full      (cover: open)
-      - "\ue5d1"  # close_fullscreen  (cover: closed)
-      - "\ue5ce"  # unfold_more       (cover: opening)
-      - "\ue5cc"  # unfold_less       (cover: closing)
-      - "\ue034"  # pause             (cover: stopped)
+      - "\uef4a"  # cover: opened
+      - "\ue5cd"  # cover: closed
+      - "\uf8ac"  # cover: opening
+      - "\uf8ab"  # cover: closing
+      - "\ue034"  # cover: stopped (pause)
 
   # ── Quick-action icon font (32 px — matches carousel icon size) ──────────
   # Add a glyph here for every icon codepoint used in quick_action_entities.h.
