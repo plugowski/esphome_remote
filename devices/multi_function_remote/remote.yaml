@@ -16,6 +16,7 @@ packages:
   settings:    !include packages/mode_settings.yaml
   buttons:     !include packages/buttons.yaml
   layout:      !include packages/layouts/layout_v2.yaml
+  screenshot:  !include packages/screenshot.yaml
 
 # ── fonts shared across all modes ────────────────────────────────────────────
 font:

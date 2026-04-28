@@ -1,0 +1,23 @@
+button:
+  - platform: template
+    name: "Screenshot"
+    entity_category: diagnostic
+    on_press:
+      then:
+        - script.execute: screenshot
+
+script:
+  - id: screenshot
+    then:
+      - lambda: |-
+          const uint8_t* buf = grab_raw_buffer(id(oled_display));
+          char line[257];
+          ESP_LOGI("screenshot", "SCREENSHOT_BEGIN");
+          for (int chunk = 0; chunk < 8; chunk++) {
+            for (int i = 0; i < 128; i++) {
+              snprintf(line + i * 2, 3, "%02X", buf[chunk * 128 + i]);
+            }
+            line[256] = '\0';
+            ESP_LOGI("screenshot", "%s", line);
+          }
+          ESP_LOGI("screenshot", "SCREENSHOT_END");
