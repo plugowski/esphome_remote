@@ -30,7 +30,7 @@ script:
   - id: btn_left
     then:
       - if:
-          condition: { lambda: 'return id(menu_active);' }
+          condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
           then: [ script.execute: menu_prev ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
@@ -55,7 +55,7 @@ script:
   - id: btn_right
     then:
       - if:
-          condition: { lambda: 'return id(menu_active);' }
+          condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
           then: [ script.execute: menu_next ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
@@ -74,33 +74,43 @@ script:
           then: [ script.execute: settings_btn_right ]
 
   # ── btn_ok ────────────────────────────────────────────────────────────────
-  # Menu: confirm  |  AC: turn ON  |  Lights: toggle on/off
+  # Menu / action view: back to carousel  |  Menu / carousel: confirm mode
+  # AC: turn ON  |  Lights: toggle on/off
   # Covers: toggle open ↔ close  |  Automations: trigger selected
 
   - id: btn_ok
     then:
       - if:
           condition: { lambda: 'return id(menu_active);' }
-          then: [ script.execute: menu_confirm ]
-      - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-          then: [ script.execute: ac_btn_power_on ]
-      - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-          then: [ script.execute: lights_btn_toggle ]
-      - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
-          then: [ script.execute: covers_btn_ok ]
-      - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
-          then: [ script.execute: automations_btn_trigger ]
+          then:
+            - if:
+                condition: { lambda: 'return id(menu_quick_index) >= 0;' }
+                then: [ script.execute: menu_quick_trigger ]
+                else: [ script.execute: menu_confirm ]
+          else:
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                then: [ script.execute: ac_btn_power_on ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                then: [ script.execute: lights_btn_toggle ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                then: [ script.execute: covers_btn_ok ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
+                then: [ script.execute: automations_btn_trigger ]
 
   # ── btn_up ────────────────────────────────────────────────────────────────
-  # Menu: —  |  AC: temp +  |  Lights: scroll up ▲
+  # Menu: scroll quick actions ▲  |  AC: temp +  |  Lights: scroll up ▲
   # Covers: position +10 %  |  Automations: scroll up ▲
 
   - id: btn_up
     then:
+      - if:
+          condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
+          then: [ script.execute: menu_quick_up ]
+
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
           then: [ script.execute: ac_btn_temp_up ]
@@ -118,11 +128,14 @@ script:
           then: [ script.execute: settings_btn_up ]
 
   # ── btn_down ──────────────────────────────────────────────────────────────
-  # Menu: —  |  AC: temp –  |  Lights: scroll down ▼
+  # Menu: scroll quick actions ▼  |  AC: temp –  |  Lights: scroll down ▼
   # Covers: position –10 %  |  Automations: scroll down ▼
 
   - id: btn_down
     then:
+      - if:
+          condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
+          then: [ script.execute: menu_quick_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
           then: [ script.execute: ac_btn_temp_down ]
@@ -140,20 +153,25 @@ script:
           then: [ script.execute: settings_btn_down ]
 
   # ── btn_stop ──────────────────────────────────────────────────────────────
-  # Menu: cancel (close without confirming)  |  AC: turn OFF
-  # Lights: —  |  Covers: stop  |  Automations: —
+  # Menu / action view: back to carousel  |  Menu / carousel: cancel
+  # AC: turn OFF  |  Covers: stop
 
   - id: btn_stop
     then:
       - if:
           condition: { lambda: 'return id(menu_active);' }
-          then: [ script.execute: menu_cancel ]
-      - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-          then: [ script.execute: ac_btn_power_off ]
-      - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
-          then: [ script.execute: covers_btn_stop ]
+          then:
+            - if:
+                condition: { lambda: 'return id(menu_quick_index) >= 0;' }
+                then: [ script.execute: menu_back_to_carousel ]
+                else: [ script.execute: menu_cancel ]
+          else:
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                then: [ script.execute: ac_btn_power_off ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                then: [ script.execute: covers_btn_stop ]
 
   # ── btn_menu_open ─────────────────────────────────────────────────────────
   # Opens the controller selection menu.  Mapped to long press in layout_v2.
