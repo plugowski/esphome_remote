@@ -1,0 +1,465 @@
+# ── welcome_mosfet.yaml ──────────────────────────────────────────────────────
+# Welcome / info screen — MOSFET-gated OLED, with key-test diagnostics page
+#
+# GPIO map:
+#   Power            : GPIO0   (deep-sleep wakeup + OFF button)
+#   Left Circle      : GPIO22
+#   Mid Circle       : GPIO5
+#   Right Circle     : GPIO33
+#   Left Rectangle   : GPIO14
+#   Right Rectangle  : GPIO26
+#   Long Btn 1 L/R   : GPIO23 / GPIO17
+#   Long Btn 2 L/R   : GPIO19 / GPIO18
+#   SDA              : GPIO27
+#   SCL              : GPIO25
+#   OLED ON/OFF      : GPIO15 (MOSFET)
+#   Voltage Divider  : GPIO32 (ADC, not a push button)
+# ─────────────────────────────────────────────────────────────────────────────
+
+substitutions:
+  BOARD: "esp32dev"
+  DEVICE_NAME: "welcome"
+  FRIENDLY_NAME: "Off Remote"
+  VERSION: "v3.1"
+
+esphome:
+  name: ${DEVICE_NAME}
+  friendly_name: ${FRIENDLY_NAME}
+  min_version: 2024.11.0
+  includes:
+    - src/display_utils.h
+  on_boot:
+    - priority: 700
+      then:
+        - output.turn_on: oled_power
+        - delay: 10ms
+    - priority: 600
+      then:
+        - delay: 500ms
+        - display.page.show: page1
+        - component.update: oled_display
+
+esp32:
+  board: ${BOARD}
+  framework:
+    type: arduino
+
+logger:
+
+# ── power ─────────────────────────────────────────────────────────────────────
+output:
+  - platform: gpio
+    pin: 15
+    id: oled_power
+
+deep_sleep:
+  id: go_sleep
+  sleep_duration: 4320min
+  wakeup_pin:
+    number: 0
+    allow_other_uses: true
+  wakeup_pin_mode: INVERT_WAKEUP
+
+# ── I2C ───────────────────────────────────────────────────────────────────────
+i2c:
+  sda: 27
+  scl: 25
+  frequency: 400kHz
+  scan: false
+
+# ── fonts ─────────────────────────────────────────────────────────────────────
+font:
+  - file: "fonts/arial_bold.ttf"
+    id: basic
+    size: 14
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:/-!="
+
+  - file: "fonts/arial_bold.ttf"
+    id: small
+    size: 10
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:/-!="
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: symbols_big
+    size: 36
+    glyphs:
+      - ""  # AC
+      - ""  # curtains
+      - ""  # lightbulb
+      - ""  # home / automations
+
+# ── QR code ───────────────────────────────────────────────────────────────────
+qr_code:
+  - id: homepage_qr
+    value: "http://tech.lugowski.dev/remote"
+
+# ── globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: current_page   # 0-5=page1-6, 6=layout_select, 7=key_test
+    type: int
+    initial_value: '0'
+    restore_value: false
+
+  - id: key_test_mode
+    type: bool
+    initial_value: 'false'
+    restore_value: false
+
+  - id: remote_layout  # 0=AC Only  1=Multifunction
+    type: int
+    initial_value: '0'
+    restore_value: false
+
+  - id: last_key_name
+    type: std::string
+    initial_value: '""'
+
+  - id: last_key_gpio
+    type: int
+    initial_value: '-1'
+
+# ── display ───────────────────────────────────────────────────────────────────
+display:
+  - platform: ssd1306_i2c
+    model: "SH1106 128x64"
+    address: 0x3C
+    rotation: 180
+    contrast: 0.5
+    id: oled_display
+    update_interval: 99999s
+    pages:
+
+      - id: page1
+        lambda: |-
+          it.print(64, 18, id(symbols_big), COLOR_ON, display::TextAlign::CENTER, "");
+          it.print(64, 43, id(small), COLOR_ON, display::TextAlign::CENTER, "CONTROL YOUR AC");
+          draw_bottom_menu(&it, id(small), "<", "${VERSION}", ">");
+
+      - id: page2
+        lambda: |-
+          it.print(64, 18, id(symbols_big), COLOR_ON, display::TextAlign::CENTER, "");
+          it.print(64, 43, id(small), COLOR_ON, display::TextAlign::CENTER, "AND CURTAINS");
+          draw_bottom_menu(&it, id(small), "<", "${VERSION}", ">");
+
+      - id: page3
+        lambda: |-
+          it.print(64, 18, id(symbols_big), COLOR_ON, display::TextAlign::CENTER, "");
+          it.print(64, 43, id(small), COLOR_ON, display::TextAlign::CENTER, "AND LIGHTS");
+          draw_bottom_menu(&it, id(small), "<", "${VERSION}", ">");
+
+      - id: page4
+        lambda: |-
+          it.print(64, 18, id(symbols_big), COLOR_ON, display::TextAlign::CENTER, "");
+          it.print(64, 43, id(small), COLOR_ON, display::TextAlign::CENTER, "TRIGGER AUTOMATIONS");
+          draw_bottom_menu(&it, id(small), "<", "${VERSION}", ">");
+
+      - id: page5
+        lambda: |-
+          it.print(64, 5, id(small), COLOR_ON, display::TextAlign::CENTER, "THANK YOU!");
+          it.line(0, 17, 128, 17);
+          it.print(0, 22, id(small), COLOR_ON, "Configuration and setup:");
+          it.print(64, 41, id(small), COLOR_ON, display::TextAlign::CENTER, "tech.lugowski.dev/remote");
+          draw_bottom_menu(&it, id(small), "<", "${VERSION}", ">");
+
+      - id: page6
+        lambda: |-
+          auto size = id(homepage_qr).get_size() * 2;
+          auto x = (it.get_width() / 2) - (size / 2);
+          auto y = (it.get_height() / 2) - (size / 2);
+          it.qr_code(x, y, id(homepage_qr), COLOR_ON, 2);
+          draw_bottom_menu(&it, id(small), "<", "", ">", false, false);
+
+      # Layout selection — Left=AC Only, Right=Multifunction, Power=back
+      - id: page_layout_select
+        lambda: |-
+          it.print(64, 0, id(basic), COLOR_ON, display::TextAlign::TOP_CENTER, "KEY TEST");
+          it.line(0, 16, 128, 16);
+          it.print(64, 30, id(small), COLOR_ON, display::TextAlign::CENTER, "Select layout:");
+          draw_bottom_menu(&it, id(small), "AC", "", "MULTI", true);
+
+      # Key test — updates on each button press
+      - id: page_keytest
+        lambda: |-
+          it.print(64, 0, id(basic), COLOR_ON, display::TextAlign::TOP_CENTER, "KEY TEST");
+          it.line(0, 16, 128, 16);
+          if (id(last_key_gpio) < 0) {
+            it.print(64, 32, id(small), COLOR_ON, display::TextAlign::CENTER, "Press any button");
+          } else {
+            it.print(64, 26, id(basic), COLOR_ON, display::TextAlign::CENTER, id(last_key_name).c_str());
+            char gpio_str[16];
+            snprintf(gpio_str, sizeof(gpio_str), "GPIO: %d", id(last_key_gpio));
+            it.print(64, 42, id(small), COLOR_ON, display::TextAlign::CENTER, gpio_str);
+          }
+          draw_bottom_menu(&it, id(small), nullptr, "POWER = exit", nullptr, false);
+
+# ── buttons ───────────────────────────────────────────────────────────────────
+binary_sensor:
+
+  # Power: key_test=exit | layout_select=back | normal=sleep
+  - platform: gpio
+    id: btn_power
+    name: "Power"
+    pin:
+      number: 0
+      mode: INPUT_PULLUP
+      allow_other_uses: true
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - script.execute: exit_key_test
+          else:
+            - if:
+                condition: { lambda: 'return id(current_page) == 6;' }
+                then:
+                  - script.execute: nav_prev
+                else:
+                  - script.execute: turn_off
+
+  # Left Circle: key_test=record | layout_select=AC Only | normal=PREV
+  - platform: gpio
+    id: btn_left_circle
+    name: "Left Circle"
+    pin:
+      number: 22
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Left Circle"' }
+            - globals.set: { id: last_key_gpio, value: '22' }
+            - component.update: oled_display
+          else:
+            - if:
+                condition: { lambda: 'return id(current_page) == 6;' }
+                then:
+                  - globals.set: { id: remote_layout, value: '0' }
+                  - script.execute: enter_key_test
+                else:
+                  - script.execute: nav_prev
+
+  # Mid Circle: key_test=record | normal=(no action)
+  - platform: gpio
+    id: btn_mid_circle
+    name: "Mid Circle"
+    pin:
+      number: 5
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Mid Circle"' }
+            - globals.set: { id: last_key_gpio, value: '5' }
+            - component.update: oled_display
+
+  # Right Circle: key_test=record | layout_select=Multifunction | normal=NEXT
+  - platform: gpio
+    id: btn_right_circle
+    name: "Right Circle"
+    pin:
+      number: 33
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Right Circle"' }
+            - globals.set: { id: last_key_gpio, value: '33' }
+            - component.update: oled_display
+          else:
+            - if:
+                condition: { lambda: 'return id(current_page) == 6;' }
+                then:
+                  - globals.set: { id: remote_layout, value: '1' }
+                  - script.execute: enter_key_test
+                else:
+                  - script.execute: nav_next
+
+  # AC Only: Left Rectangle  |  Multifunction: Left Left
+  - platform: gpio
+    id: btn_left_rect
+    name: "Left Rectangle"
+    pin:
+      number: 14
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_gpio, value: '14' }
+            - lambda: 'id(last_key_name) = id(remote_layout) == 0 ? "AC" : "Left";'
+            - component.update: oled_display
+
+  # AC Only: Right Rectangle  |  Multifunction: Right
+  - platform: gpio
+    id: btn_right_rect
+    name: "Right Rectangle"
+    pin:
+      number: 26
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_gpio, value: '26' }
+            - lambda: 'id(last_key_name) = id(remote_layout) == 0 ? "ON / OFF" : "Right";'
+            - component.update: oled_display
+
+  # AC Only: Long 1 L  |  Multifunction: OK
+  - platform: gpio
+    id: btn_long1_l
+    name: "Long Btn 1 L"
+    pin:
+      number: 23
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_gpio, value: '23' }
+            - lambda: 'id(last_key_name) = id(remote_layout) == 0 ? "Plus Left" : "OK";'
+            - component.update: oled_display
+
+  # AC Only: Long 1 R  |  Multifunction: Up
+  - platform: gpio
+    id: btn_long1_r
+    name: "Long Btn 1 R"
+    pin:
+      number: 17
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_gpio, value: '17' }
+            - lambda: 'id(last_key_name) = id(remote_layout) == 0 ? "Plus Right" : "Up";'
+            - component.update: oled_display
+
+  # AC Only: Long 2 L  |  Multifunction: Stop
+  - platform: gpio
+    id: btn_long2_l
+    name: "Long Btn 2 L"
+    pin:
+      number: 19
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_gpio, value: '19' }
+            - lambda: 'id(last_key_name) = id(remote_layout) == 0 ? "Minus Left" : "Stop";'
+            - component.update: oled_display
+
+  # AC Only: Long 2 R  |  Multifunction: Down
+  - platform: gpio
+    id: btn_long2_r
+    name: "Long Btn 2 R"
+    pin:
+      number: 18
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_gpio, value: '18' }
+            - lambda: 'id(last_key_name) = id(remote_layout) == 0 ? "Minus Right" : "Down";'
+            - component.update: oled_display
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  # NEXT: page1-page5 increment, page6 goes to layout_select
+  - id: nav_next
+    mode: single
+    then:
+      - lambda: |-
+          id(current_page) = id(current_page) < 5 ? id(current_page) + 1 : 6;
+          DisplayPage *pages[] = {id(page1), id(page2), id(page3), id(page4), id(page5), id(page6), id(page_layout_select), id(page_keytest)};
+          id(oled_display)->show_page(pages[id(current_page)]);
+      - component.update: oled_display
+
+  # PREV: page2-page6 decrement, page1 wraps to page6; layout_select goes to page6
+  - id: nav_prev
+    mode: single
+    then:
+      - lambda: |-
+          id(current_page) = id(current_page) > 0 ? id(current_page) - 1 : 5;
+          DisplayPage *pages[] = {id(page1), id(page2), id(page3), id(page4), id(page5), id(page6), id(page_layout_select), id(page_keytest)};
+          id(oled_display)->show_page(pages[id(current_page)]);
+      - component.update: oled_display
+
+  # Enter key test — set remote_layout before calling
+  - id: enter_key_test
+    mode: single
+    then:
+      - lambda: |-
+          id(key_test_mode) = true;
+          id(last_key_name) = "";
+          id(last_key_gpio) = -1;
+          id(current_page) = 7;
+          id(oled_display)->show_page(id(page_keytest));
+      - component.update: oled_display
+
+  # Exit key test — back to page1
+  - id: exit_key_test
+    mode: single
+    then:
+      - lambda: |-
+          id(key_test_mode) = false;
+          id(current_page) = 0;
+          id(oled_display)->show_page(id(page1));
+      - component.update: oled_display
+
+  # Power off — "BYE" screen then deep sleep
+  - id: turn_off
+    mode: single
+    then:
+      - lambda: |-
+          auto *it = id(oled_display);
+          it->clear();
+          it->print(64, 32, id(basic), COLOR_ON, display::TextAlign::CENTER, "BYE");
+          it->display();
+      - delay: 1s
+      - lambda: |-
+          auto *it = id(oled_display);
+          it->clear();
+          it->display();
+      - delay: 500ms
+      - output.turn_off: oled_power
+      - delay: 5ms
+      - deep_sleep.enter: go_sleep
