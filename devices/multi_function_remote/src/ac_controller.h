@@ -40,11 +40,11 @@ public:
   // ── button actions ─────────────────────────────────────────────────────────
 
   static void prevUnit(int& idx) {
-    idx = (idx - 1 + AC_LIST_COUNT) % AC_LIST_COUNT;
+    idx = wrap_index(idx, AC_LIST_COUNT, -1);
   }
 
   static void nextUnit(int& idx) {
-    idx = (idx + 1) % AC_LIST_COUNT;
+    idx = wrap_index(idx, AC_LIST_COUNT, +1);
   }
 
   // Reverse-lookup: find the index for a given entity_id string (fallback 0)
@@ -76,7 +76,7 @@ public:
 
   // Advance to next HVAC mode in the unit's supported list
   static void cycleMode(int ac_idx, int& mode_idx) {
-    mode_idx = (mode_idx + 1) % AC_LIST[ac_idx].modes_count;
+    mode_idx = wrap_index(mode_idx, AC_LIST[ac_idx].modes_count, +1);
   }
 
   // Write mode_idx into the selected_ac_mode string and mark UI dirty
@@ -115,7 +115,7 @@ public:
     for (int i = 0; i < count; i++) {
       if (fan_mode == AC_LIST[ac_idx].fan_modes[i]) { fan_idx = i; break; }
     }
-    fan_idx  = (fan_idx + 1) % count;
+    fan_idx  = wrap_index(fan_idx, count, +1);
     fan_mode = AC_LIST[ac_idx].fan_modes[fan_idx];
     updated_ui = true;
   }
@@ -191,13 +191,72 @@ public:
     if (changed) updated_ui = true;
   }
 
+  // ── display helpers ────────────────────────────────────────────────────────
+
+  // HVAC modes that show the setpoint screen: mode icon, target temperature and
+  // a fan indicator. Anything not listed here falls through to the "..." screen,
+  // which is meant for "no state from Home Assistant yet" - not for a mode we
+  // simply forgot to draw. Keep this in sync with AC_HVAC_MODES in the
+  // configurator (multi.js), which is what the user can actually pick.
+  static bool isSetpointMode(const std::string& mode) {
+    return mode == "cool" || mode == "heat" || mode == "heat_cool" || mode == "auto";
+  }
+
+  // Material Symbols codepoints; every one of these must also be listed under
+  // the ac_symbols font in packages/mode_ac.yaml or it renders as blank.
+  static const char* modeIcon(const std::string& mode) {
+    if (mode == "heat")      return "\uef55";   // local_fire_department
+    if (mode == "heat_cool") return "\uf16b";   // mode_heat_cool
+    if (mode == "auto")      return "\uf077";   // thermostat_auto
+    return "\ueb3b";                            // ac_unit (cool, and fallback)
+  }
+
+  // Fan speed in the top-right corner. Ordered speeds are stacked bars; the
+  // named speeds with no place on that scale get an icon, the same way "auto"
+  // has always used a letter.
+  //
+  // All three share one slot. "A" is printed top-left-anchored at (108, 8) with
+  // font_bigger (Arial Bold 28), which inks the box x=108..127, y=14..34. The
+  // icons are centred on that same box — (118, 24) — rather than sharing the
+  // (108, 8) anchor: these are 24 px glyphs of differing widths, so a common
+  // top-left origin would both overrun the 128 px panel on the right and make
+  // each glyph sit in a slightly different place. Centring keeps them locked to
+  // the "A" position whatever the glyph.
+  static constexpr int FAN_ICON_CX = 118;
+  static constexpr int FAN_ICON_CY = 24;
+
+  template<class D, class F>
+  static void drawFanIndicator(D* it, F* symbols, F* font_bigger,
+                               const std::string& fan_mode) {
+    if (fan_mode == "turbo") {
+      it->print(FAN_ICON_CX, FAN_ICON_CY, symbols, COLOR_ON,
+                display::TextAlign::CENTER, "\ueb9b");   // rocket_launch
+      return;
+    }
+    if (fan_mode == "quiet") {
+      it->print(FAN_ICON_CX, FAN_ICON_CY, symbols, COLOR_ON,
+                display::TextAlign::CENTER, "\ue04f");   // volume_off
+      return;
+    }
+    if (fan_mode == "auto") {
+      it->print(108, 8, font_bigger, "A");
+      return;
+    }
+    if (fan_mode == "high")
+      it->filled_rectangle(110, 8, 20, 7);
+    if (fan_mode == "high" || fan_mode == "medium")
+      it->filled_rectangle(110, 18, 20, 7);
+    if (fan_mode == "high" || fan_mode == "medium" || fan_mode == "low")
+      it->filled_rectangle(110, 28, 20, 7);
+  }
+
   // ── display ────────────────────────────────────────────────────────────────
 
   // Renders the AC screen.  No-ops if updated_ui is false.
   // Clears updated_ui after drawing so the caller does not need to.
   //
   // Font parameters (all ESPHome font::Font*):
-  //   symbols      — 24 px Material Symbols (fan, ac_unit, dry, power_off)
+  //   symbols      — 24 px Material Symbols (fan, ac_unit, heat, dry, power_off)
   //   symbols_big  — 36 px Material Symbols bold (power_off hero icon)
   //   font_big     — 40 px Arial Bold (temperature number)
   //   font_bigger  — 28 px Arial Bold (fan label / DRY label)
@@ -226,22 +285,15 @@ public:
       it->line(0, 44, 127, 44);
       it->print(64, 56, font_base, COLOR_ON, display::TextAlign::CENTER, label.c_str());
 
-    } else if (mode == "cool") {
+    } else if (isSetpointMode(mode)) {
 
-      it->print(5,  8, symbols, "\ueb3b");   // ac_unit icon
+      // Setpoint modes share one screen: mode icon + big temperature + fan bars.
+      it->print(5,  8, symbols, modeIcon(mode));
       it->print(64, 22, font_big, COLOR_ON, display::TextAlign::CENTER,
                 std::to_string(temp).c_str());
       it->print(85, 4, font_base, "C");
 
-      // Fan-speed bars in top-right corner (stacked, bottom-anchored)
-      if (fan_mode == "high")
-        it->filled_rectangle(110, 8, 20, 7);
-      if (fan_mode == "high" || fan_mode == "medium")
-        it->filled_rectangle(110, 18, 20, 7);
-      if (fan_mode == "high" || fan_mode == "medium" || fan_mode == "low")
-        it->filled_rectangle(110, 28, 20, 7);
-      if (fan_mode == "auto")
-        it->print(108, 8, font_bigger, "A");
+      drawFanIndicator(it, symbols, font_bigger, fan_mode);
 
     } else if (mode == "fan_only") {
 
@@ -264,15 +316,10 @@ public:
 
     // ── lower bar (unit name + button labels) — shown for all non-off modes ──
     if (mode != "off") {
-      if (fan_mode == "auto") {
-        it->filled_rectangle(0, 38, 128, 14, COLOR_ON);
-        it->print(64, 45, font_base, COLOR_OFF, display::TextAlign::CENTER, label.c_str());
-      } else {
-        it->line(0, 38, 127, 38);
-        it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label.c_str());
-      }
+      it->line(0, 38, 127, 38);
+      it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label.c_str());
 
-      bool show_fan = (mode == "cool" || mode == "fan_only");
+      bool show_fan = isSetpointMode(mode) || mode == "fan_only";
       draw_bottom_menu(it, font_small, "MODE", "", show_fan ? "FAN" : nullptr);
     }
 

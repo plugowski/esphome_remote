@@ -44,11 +44,11 @@ public:
   // ── navigation ─────────────────────────────────────────────────────────────
 
   static void prevLight(int& idx) {
-    idx = (idx - 1 + LIGHTS_LIST_COUNT) % LIGHTS_LIST_COUNT;
+    idx = wrap_index(idx, LIGHTS_LIST_COUNT, -1);
   }
 
   static void nextLight(int& idx) {
-    idx = (idx + 1) % LIGHTS_LIST_COUNT;
+    idx = wrap_index(idx, LIGHTS_LIST_COUNT, +1);
   }
 
   // ── toggle ─────────────────────────────────────────────────────────────────
@@ -185,17 +185,17 @@ private:
 
   // Per-light state stored in static locals (survives mode switches)
   static bool& lightOn(int idx) {
-    static bool state[LIGHTS_LIST_COUNT] = {};
-    return state[idx];
+    static bool state[LIGHTS_LIST_CAPACITY] = {};
+    return state[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
   }
 
   static int& lightBrightness(int idx) {
-    static int  bri[LIGHTS_LIST_COUNT];
+    static int  bri[LIGHTS_LIST_CAPACITY];
     static bool init = false;
     if (!init) {
       init = true;
-      for (int i = 0; i < LIGHTS_LIST_COUNT; i++) bri[i] = 50;
+      for (int i = 0; i < LIGHTS_LIST_CAPACITY; i++) bri[i] = 50;
     }
-    return bri[idx];
+    return bri[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
   }
 };

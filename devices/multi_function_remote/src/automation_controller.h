@@ -38,11 +38,11 @@ public:
   // ── navigation ─────────────────────────────────────────────────────────────
 
   static void prevAuto(int& idx) {
-    idx = (idx - 1 + AUTOMATION_LIST_COUNT) % AUTOMATION_LIST_COUNT;
+    idx = wrap_index(idx, AUTOMATION_LIST_COUNT, -1);
   }
 
   static void nextAuto(int& idx) {
-    idx = (idx + 1) % AUTOMATION_LIST_COUNT;
+    idx = wrap_index(idx, AUTOMATION_LIST_COUNT, +1);
   }
 
   // ── trigger ────────────────────────────────────────────────────────────────

@@ -14,7 +14,11 @@ esphome:
   on_boot:
     - priority: 249
       then:
-        - lambda: 'id(selected_ac_index) = ACController::indexForEntity(id(selected_ac));'
+        # The selected unit is persisted as an INDEX, not as an entity_id string.
+        # A restored index can outlive the config that produced it (three ACs
+        # configured yesterday, one today), so clamp it before anything reads
+        # AC_LIST with it. wrap_index is safe for a count of 0.
+        - lambda: 'id(selected_ac_index) = wrap_index(id(selected_ac_index), AC_LIST_COUNT);'
   includes:
     - src/ac_entities.h     # must come before ac_controller.h (struct definition)
     - src/ac_controller.h
@@ -30,9 +34,14 @@ font:
     glyphs:
       - "\uf168"  # fan
       - "\ueb3b"  # ac_unit
+      - "\uef55"  # local_fire_department (heat)
       - "\uf164"  # dry
       - "\ue8ac"  # power_off
       - "\uec12"  # curtain (reused by cover_controller)
+      - "\uf16b"  # mode_heat_cool (heat_cool mode)
+      - "\uf077"  # thermostat_auto (auto mode)
+      - "\ueb9b"  # rocket_launch (turbo fan speed)
+      - "\ue04f"  # volume_off (quiet fan speed)
 
   - file:
       type: gfonts
@@ -99,14 +108,15 @@ text_sensor:
 
 # ── AC globals ────────────────────────────────────────────────────────────────
 globals:
+  # Persisting the INDEX is both correct and safe. The entity_id was previously
+  # kept in a `type: std::string` global with restore_value: true — ESPHome
+  # persists globals by copying their raw bytes, so for a std::string that
+  # stores the object's internal pointer and restores it into a heap that no
+  # longer exists. Anything past libstdc++'s 15-char small-string buffer (every
+  # realistic entity_id) is heap-allocated and comes back as garbage.
   - id: selected_ac_index
     type: int
     initial_value: '0'
-    restore_value: false
-
-  - id: selected_ac
-    type: std::string
-    initial_value: '"climate.living_room_ac"'
     restore_value: true
 
   - id: selected_ac_mode_index
@@ -248,7 +258,6 @@ script:
 
   - id: ac_select_unit
     then:
-      - lambda: 'ACController::selectUnit(id(selected_ac_index), id(selected_ac));'
       - lambda: |-
           ACController::resetUnit(id(selected_ac_index),
             id(selected_ac_mode_index), id(selected_ac_mode),
@@ -263,28 +272,28 @@ script:
   - id: ac_send_mode_update
     mode: single
     then:
-      - homeassistant.service:
-          service: climate.set_hvac_mode
+      - homeassistant.action:
+          action: climate.set_hvac_mode
           data:
-            entity_id: !lambda 'return id(selected_ac);'
+            entity_id: !lambda 'return std::string(AC_LIST[wrap_index(id(selected_ac_index), AC_LIST_CAPACITY)].entity_id);'
             hvac_mode: !lambda 'return id(selected_ac_mode);'
 
   - id: ac_send_temp_update
     mode: single
     then:
-      - homeassistant.service:
-          service: climate.set_temperature
+      - homeassistant.action:
+          action: climate.set_temperature
           data:
-            entity_id: !lambda 'return id(selected_ac);'
+            entity_id: !lambda 'return std::string(AC_LIST[wrap_index(id(selected_ac_index), AC_LIST_CAPACITY)].entity_id);'
             temperature: !lambda 'return id(selected_temp);'
 
   - id: ac_send_fan_update
     mode: single
     then:
-      - homeassistant.service:
-          service: climate.set_fan_mode
+      - homeassistant.action:
+          action: climate.set_fan_mode
           data:
-            entity_id: !lambda 'return id(selected_ac);'
+            entity_id: !lambda 'return std::string(AC_LIST[wrap_index(id(selected_ac_index), AC_LIST_CAPACITY)].entity_id);'
             fan_mode: !lambda 'return id(selected_fan_mode);'
 
   # ── debounce (300 ms settle before sending to HA) ────────────────────────

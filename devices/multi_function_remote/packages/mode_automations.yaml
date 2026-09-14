@@ -88,64 +88,64 @@ script:
       - if:
           condition: { lambda: 'return id(auto_service) == "scene.turn_on";' }
           then:
-            - homeassistant.service:
-                service: homeassistant.turn_on
+            - homeassistant.action:
+                action: homeassistant.turn_on
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "automation.trigger";' }
           then:
-            - homeassistant.service:
-                service: automation.trigger
+            - homeassistant.action:
+                action: automation.trigger
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "script.turn_on";' }
           then:
-            - homeassistant.service:
-                service: script.turn_on
+            - homeassistant.action:
+                action: script.turn_on
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "input_boolean.toggle";' }
           then:
-            - homeassistant.service:
-                service: input_boolean.toggle
+            - homeassistant.action:
+                action: input_boolean.toggle
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "switch.toggle";' }
           then:
-            - homeassistant.service:
-                service: switch.toggle
+            - homeassistant.action:
+                action: switch.toggle
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "lock.lock";' }
           then:
-            - homeassistant.service:
-                service: lock.lock
+            - homeassistant.action:
+                action: lock.lock
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "lock.unlock";' }
           then:
-            - homeassistant.service:
-                service: lock.unlock
+            - homeassistant.action:
+                action: lock.unlock
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "alarm_control_panel.arm_away";' }
           then:
-            - homeassistant.service:
-                service: alarm_control_panel.arm_away
+            - homeassistant.action:
+                action: alarm_control_panel.arm_away
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
       - if:
           condition: { lambda: 'return id(auto_service) == "alarm_control_panel.disarm";' }
           then:
-            - homeassistant.service:
-                service: alarm_control_panel.disarm
+            - homeassistant.action:
+                action: alarm_control_panel.disarm
                 data:
                   entity_id: !lambda 'return id(auto_entity);'
 

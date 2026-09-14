@@ -99,22 +99,22 @@ script:
 
   - id: covers_btn_open
     then:
-      - homeassistant.service:
-          service: cover.open_cover
+      - homeassistant.action:
+          action: cover.open_cover
           data:
             entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
 
   - id: covers_btn_close
     then:
-      - homeassistant.service:
-          service: cover.close_cover
+      - homeassistant.action:
+          action: cover.close_cover
           data:
             entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
 
   - id: covers_btn_stop
     then:
-      - homeassistant.service:
-          service: cover.stop_cover
+      - homeassistant.action:
+          action: cover.stop_cover
           data:
             entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
 
@@ -144,8 +144,8 @@ script:
     mode: restart
     then:
       - delay: 300ms    # debounce — coalesce rapid presses before sending
-      - homeassistant.service:
-          service: cover.set_cover_position
+      - homeassistant.action:
+          action: cover.set_cover_position
           data:
             entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
             position: !lambda 'return CoverController::getPosition(id(selected_cover_index));'
