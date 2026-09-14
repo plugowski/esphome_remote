@@ -31,7 +31,8 @@ esphome_remote/
     │   ├── secrets.yaml                ← WiFi credentials
     │   ├── Makefile                    ← CLI build targets
     │   ├── fonts/
-    │   │   └── arial_bold.ttf
+    │   │   ├── arial.ttf                ← bundled into every generated config ZIP
+    │   │   └── arial_bold.ttf           ← referenced by every font: entry in remote.yaml
     │   ├── packages/                   ← ESPHome YAML sub-packages (one per controller mode)
     │   │   ├── menu.yaml
     │   │   ├── mode_ac.yaml

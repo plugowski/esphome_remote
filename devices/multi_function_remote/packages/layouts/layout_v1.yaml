@@ -5,7 +5,7 @@
 #    0  power off       (shared with deep-sleep wake pin)
 #    5  ☰  menu         dedicated open / confirm menu button
 #   14  SELECT          AC: cycle entity  | Lights: next | Covers: next | Autos: next
-#   24  TOGGLE          AC: on/off        | Lights: toggle | Covers: open↔close | Autos: trigger
+#   26  TOGGLE          AC: on/off        | Lights: toggle | Covers: open↔close | Autos: trigger
 #   22  MODE / <<       menu prev | AC: cycle HVAC mode | Lights: prev | Covers: close | Autos: L slot
 #   33  FAN  / >>       menu next | AC: cycle fan speed | Covers: open | Autos: R slot
 #   23  TEMP ↑  (primary)   AC: temp+ | Lights: brightness+ | Covers: pos+ | Autos: scroll▲
@@ -57,7 +57,7 @@ binary_sensor:
   # ── TOGGLE — AC: on/off | Lights: toggle | Covers: open↔close | Autos: trigger
   - platform: gpio
     pin:
-      number: 24
+      number: 26
       mode: { input: true, pullup: true }
     name: "Button Toggle"
     internal: true
