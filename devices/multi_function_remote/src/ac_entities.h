@@ -48,4 +48,9 @@ static const ACEntity AC_LIST[] = {
   },
 };
 
+// Physical array length (always >= 1). Static per-entity arrays in the
+// controllers are sized with this, never with the count.
+static const int AC_LIST_CAPACITY = sizeof(AC_LIST) / sizeof(AC_LIST[0]);
+// Number of CONFIGURED entries; may be 0. Index wrapping goes through
+// wrap_index() in display_utils.h, which is defined for a count of 0.
 static const int AC_LIST_COUNT = sizeof(AC_LIST) / sizeof(AC_LIST[0]);

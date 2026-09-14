@@ -98,8 +98,8 @@ script:
   - id: lights_do_toggle
     mode: queued
     then:
-      - homeassistant.service:
-          service: light.toggle
+      - homeassistant.action:
+          action: light.toggle
           data:
             entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
 
@@ -107,8 +107,8 @@ script:
     mode: restart
     then:
       - delay: 300ms    # debounce — coalesce rapid presses before sending
-      - homeassistant.service:
-          service: light.turn_on
+      - homeassistant.action:
+          action: light.turn_on
           data:
             entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
             brightness_pct: !lambda 'return LightsController::getBrightness(id(selected_light_index));'

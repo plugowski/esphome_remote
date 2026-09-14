@@ -7,6 +7,10 @@
 esphome:
   name: oled-remote-demo
   friendly_name: "OLED Remote Demo"
+  # Floor set by the config features used here:
+  #   homeassistant.action / action:  -> 2024.8
+  #   ota: as a list with platform:   -> 2024.6
+  # 2024.11 is the tested baseline; raise, never lower.
   min_version: 2024.11.0
   name_add_mac_suffix: false
   platformio_options:
@@ -83,25 +87,25 @@ font:
   - file: "fonts/arial_bold.ttf"
     id: font_base
     size: 14
-    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:"
+    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:-/'&+(),!?#@"
 
   - file: "fonts/arial_bold.ttf"
     id: font_small
     size: 10
     glyphs:
-      - "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890.%/:!- <>"
+      - "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:-/'&+(),!?#@<>"
       - "\u25b2"  # ▲ (list up)
       - "\u25bc"  # ▼ (list down)
 
   - file: "fonts/arial_bold.ttf"
     id: font_bigger
     size: 28
-    glyphs: "ADEGHILMOTUWRY0123456789%"
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.%"
 
   - file: "fonts/arial_bold.ttf"
     id: font_big
     size: 40
-    glyphs: "ADEGHILMOTUWRY0123456789%"
+    glyphs: "ADEGHILMOTUWRY0123456789.%"
 
   - file:
       type: gfonts
@@ -135,11 +139,11 @@ font:
       - "\uea0b"  # bolt  (automations)
       - "\ue88b"  # hourglass_empty (boot screen)
       - "\ue8b8"  # settings  (cog)
-      - "\ue5d8"  # open_in_full      (cover: open)
-      - "\ue5d1"  # close_fullscreen  (cover: closed)
-      - "\ue5ce"  # unfold_more       (cover: opening)
-      - "\ue5cc"  # unfold_less       (cover: closing)
-      - "\ue034"  # pause             (cover: stopped)
+      - "\uef4a"  # cover: opened
+      - "\ue5cd"  # cover: closed
+      - "\uf8ac"  # cover: opening
+      - "\uf8ab"  # cover: closing
+      - "\ue034"  # cover: stopped (pause)
       - "\ue88e"  # info
 
   - file:
@@ -151,6 +155,7 @@ font:
     glyphs:
       - "\uf168"  # fan
       - "\ueb3b"  # ac_unit
+      - "\uef55"  # local_fire_department (heat)
       - "\uf164"  # dry
       - "\ue8ac"  # power_off
       - "\uec12"  # curtain (cover mode)

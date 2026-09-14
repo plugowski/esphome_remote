@@ -22,4 +22,9 @@ static const LightEntity LIGHTS_LIST[] = {
   { "Skadis",     "light.skadis_strip_light", "skadis_strip_light", "skadis_strip_brightness", true },
 };
 
+// Physical array length (always >= 1). Static per-entity arrays in the
+// controllers are sized with this, never with the count.
+static const int LIGHTS_LIST_CAPACITY = sizeof(LIGHTS_LIST) / sizeof(LIGHTS_LIST[0]);
+// Number of CONFIGURED entries; may be 0. Index wrapping goes through
+// wrap_index() in display_utils.h, which is defined for a count of 0.
 static const int LIGHTS_LIST_COUNT = sizeof(LIGHTS_LIST) / sizeof(LIGHTS_LIST[0]);

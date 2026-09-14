@@ -33,11 +33,11 @@ public:
   // ── navigation ───────────────────────────────────────────────────────────────
 
   static void prevSetting(int& idx) {
-    idx = (idx - 1 + SETTING_COUNT) % SETTING_COUNT;
+    idx = wrap_index(idx, SETTING_COUNT, -1);
   }
 
   static void nextSetting(int& idx) {
-    idx = (idx + 1) % SETTING_COUNT;
+    idx = wrap_index(idx, SETTING_COUNT, +1);
   }
 
   // ── contrast (1–10 steps) ────────────────────────────────────────────────────

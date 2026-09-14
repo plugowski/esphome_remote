@@ -37,4 +37,9 @@ static const MenuEntry MENU_LIST[] = {
   { APP_INFO,        "\ue88e", "INFO"         },
 #endif
 };
+// Physical array length (always >= 1). Static per-entity arrays in the
+// controllers are sized with this, never with the count.
+static const int MENU_LIST_CAPACITY = sizeof(MENU_LIST) / sizeof(MENU_LIST[0]);
+// Number of CONFIGURED entries; may be 0. Index wrapping goes through
+// wrap_index() in display_utils.h, which is defined for a count of 0.
 static const int MENU_LIST_COUNT = sizeof(MENU_LIST) / sizeof(MENU_LIST[0]);

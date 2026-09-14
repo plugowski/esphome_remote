@@ -21,6 +21,7 @@ font:
       - "\uea0b"  # bolt  (automations)
       - "\ue88b"  # hourglass_empty  (boot screen loading icon)
       - "\ue8b8"  # settings  (cog)
+      - "\ue88e"  # info  (DEMO_MODE only - remote_demo.yaml)
 
   - file:
       type: gfonts
@@ -35,6 +36,7 @@ font:
       - "\uea0b"  # bolt  (automations)
       - "\ue88b"  # hourglass_empty  (boot screen)
       - "\ue8b8"  # settings  (cog)
+      - "\ue88e"  # info  (DEMO_MODE only - remote_demo.yaml)
       - "\uef4a"  # cover: opened
       - "\ue5cd"  # cover: closed
       - "\uf8ac"  # cover: opening

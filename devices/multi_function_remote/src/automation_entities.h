@@ -21,4 +21,9 @@ static const AutomationEntity AUTOMATION_LIST[] = {
   { "Sofa Half",    "HALF",  "script.toggle_sofa_half_mode","script.turn_on",               nullptr },
 };
 
+// Physical array length (always >= 1). Static per-entity arrays in the
+// controllers are sized with this, never with the count.
+static const int AUTOMATION_LIST_CAPACITY = sizeof(AUTOMATION_LIST) / sizeof(AUTOMATION_LIST[0]);
+// Number of CONFIGURED entries; may be 0. Index wrapping goes through
+// wrap_index() in display_utils.h, which is defined for a count of 0.
 static const int AUTOMATION_LIST_COUNT = sizeof(AUTOMATION_LIST) / sizeof(AUTOMATION_LIST[0]);

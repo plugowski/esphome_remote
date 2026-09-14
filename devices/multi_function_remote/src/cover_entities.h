@@ -22,4 +22,9 @@ static const CoverEntity COVER_LIST[] = {
   { "Office",  "cover.office",        "office_state",    "office_pos"    },
 };
 
+// Physical array length (always >= 1). Static per-entity arrays in the
+// controllers are sized with this, never with the count.
+static const int COVER_LIST_CAPACITY = sizeof(COVER_LIST) / sizeof(COVER_LIST[0]);
+// Number of CONFIGURED entries; may be 0. Index wrapping goes through
+// wrap_index() in display_utils.h, which is defined for a count of 0.
 static const int COVER_LIST_COUNT = sizeof(COVER_LIST) / sizeof(COVER_LIST[0]);
