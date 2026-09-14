@@ -9,7 +9,7 @@
 #   settings_btn_right → increase value        (→ / pin26)
 # Main update loop: settings_update
 #
-# Battery sensor: reads raw ADC on GPIO34 through a 1:2 voltage divider.
+# Battery sensor: reads raw ADC on ${PIN_BAT_ADC} through the on-board voltage divider.
 # Adjust the pin or replace with a homeassistant sensor as needed.
 #
 # Note: on_value gates settings_draw on !id(is_timer_wake), which is expected
@@ -36,11 +36,11 @@ text_sensor:
         then: [ script.execute: settings_draw ]
 
 # ── Battery sensor ────────────────────────────────────────────────────────────
-# Assumes a 100 kΩ / 100 kΩ voltage divider: Vbatt → [100k] → GPIO34 → [100k] → GND
+# Assumes a 1:2 resistor divider: Vbatt → [R] → ${PIN_BAT_ADC} → [R] → GND
 # Multiply by 2 to recover full voltage; LiPo range 3.2 V (0 %) → 4.2 V (100 %).
 sensor:
   - platform: adc
-    pin: GPIO34
+    pin: ${PIN_BAT_ADC}
     id: battery_raw
     name: "Battery"
     internal: false
