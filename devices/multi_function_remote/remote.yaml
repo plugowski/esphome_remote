@@ -81,6 +81,9 @@ esphome:
     - src/automation_controller.h
     - src/settings_controller.h
   on_boot:
+    - priority: 900
+      then:
+        - lambda: 'configure_power_management();'
     - priority: 700
       then:
         - lambda: 'id(is_timer_wake) = is_timer_wakeup();'
@@ -140,7 +143,20 @@ esphome:
 esp32:
   board: ${BOARD}
   framework:
-    type: arduino
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP: "y"
+      CONFIG_BOOTLOADER_LOG_LEVEL_NONE: "y"
+      # Automatic light sleep: FreeRTOS drops the CPU into light sleep on its
+      # own whenever nothing is runnable, for the whole awake window — no
+      # app-level scheduling needed. NOT YET VALIDATED ON HARDWARE: whether
+      # the scheduler actually goes idle long enough for this to engage (vs.
+      # just getting dynamic frequency scaling) can only be confirmed with a
+      # real current measurement. See configure_power_management() in
+      # wake_utils.h.
+      CONFIG_PM_ENABLE: "y"
+      CONFIG_FREERTOS_USE_TICKLESS_IDLE: "y"
+      CONFIG_PM_DFS_INIT_AUTO: "y"
 
 wifi:
   ssid: !secret wifi_ssid
