@@ -32,7 +32,10 @@ binary_sensor:
     internal: true
     filters: [ invert: ]
     on_press:
-      then: [ script.execute: turn_off ]
+      # An explicit press always means "power off now" — a real deep sleep,
+      # even on a Light Sleep build. turn_off (the idle-timeout path) is the
+      # one that respects the configured sleep strategy.
+      then: [ script.execute: power_off_pressed ]
 
   # ── ← left ────────────────────────────────────────────────────────────────
   - platform: gpio
@@ -44,7 +47,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - script.execute: btn_left
 
   # ── → right ───────────────────────────────────────────────────────────────
@@ -57,7 +60,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - script.execute: btn_right
 
   # ── OK ────────────────────────────────────────────────────────────────────
@@ -70,7 +73,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - script.execute: btn_ok
 
   # ── ↑ up ──────────────────────────────────────────────────────────────────
@@ -83,7 +86,7 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - script.execute: btn_up
 
   # ── ↓ down ────────────────────────────────────────────────────────────────
@@ -96,7 +99,7 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - script.execute: btn_down
 
   # ── ⏸ stop / menu ─────────────────────────────────────────────────────────
@@ -113,12 +116,12 @@ binary_sensor:
       - min_length: 50ms
         max_length: 700ms
         then:
-          - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+          - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
           - script.execute: btn_stop
       - min_length: 800ms
         max_length: 3000ms
         then:
-          - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+          - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
           - script.execute: btn_menu_open
 
   # ── ☰ menu (pin 5) — open menu / confirm selection ───────────────────────
@@ -131,7 +134,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active);' }
             then: [ script.execute: menu_open ]
@@ -152,7 +155,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return id(menu_active);' }
             then: [ script.execute: menu_prev ]
@@ -183,7 +186,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return id(menu_active);' }
             then: [ script.execute: menu_next ]
