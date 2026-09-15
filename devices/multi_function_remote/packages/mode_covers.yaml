@@ -99,24 +99,38 @@ script:
 
   - id: covers_btn_open
     then:
-      - homeassistant.action:
-          action: cover.open_cover
-          data:
-            entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
+      # Wait for the API rather than silently dropping a command pressed
+      # before the connect window closes; screen/globals already updated.
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition: { api.connected: }
+          then:
+            - homeassistant.action:
+                action: cover.open_cover
+                data:
+                  entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
 
   - id: covers_btn_close
     then:
-      - homeassistant.action:
-          action: cover.close_cover
-          data:
-            entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition: { api.connected: }
+          then:
+            - homeassistant.action:
+                action: cover.close_cover
+                data:
+                  entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
 
   - id: covers_btn_stop
     then:
-      - homeassistant.action:
-          action: cover.stop_cover
-          data:
-            entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition: { api.connected: }
+          then:
+            - homeassistant.action:
+                action: cover.stop_cover
+                data:
+                  entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
 
   - id: covers_btn_ok
     then:
@@ -144,11 +158,15 @@ script:
     mode: restart
     then:
       - delay: 300ms    # debounce — coalesce rapid presses before sending
-      - homeassistant.action:
-          action: cover.set_cover_position
-          data:
-            entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
-            position: !lambda 'return CoverController::getPosition(id(selected_cover_index));'
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition: { api.connected: }
+          then:
+            - homeassistant.action:
+                action: cover.set_cover_position
+                data:
+                  entity_id: !lambda 'return std::string(COVER_LIST[id(selected_cover_index)].entity_id);'
+                  position: !lambda 'return CoverController::getPosition(id(selected_cover_index));'
 
   # ── display ───────────────────────────────────────────────────────────────
 
@@ -167,4 +185,4 @@ script:
                 CoverController::draw(id(oled_display),
                   id(ac_symbols), id(menu_icon_small),
                   id(font_big), id(font_base), id(font_small),
-                  id(selected_cover_index), id(updated_ui));
+                  id(selected_cover_index), id(updated_ui), id(conn_status));

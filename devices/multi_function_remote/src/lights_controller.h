@@ -6,6 +6,7 @@
 #include <cmath>
 #include "light_entities.h"
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── LightsController ──────────────────────────────────────────────────────────
 // Lights mode: scrollable list with on/off toggle, dimmable indicator,
@@ -106,7 +107,7 @@ public:
   //   brightness %  → right edge at x=110, all dimmable+ON rows
   //   radio button  → filled_circle (ON) / circle (OFF) at x=119, r=4
   template<class D, class F>
-  static void draw(D* it, F* font_small, int selected_idx, bool& updated_ui) {
+  static void draw(D* it, F* font_small, int selected_idx, bool& updated_ui, int conn_status) {
     if (!updated_ui) return;
     updated_ui = false;
 
@@ -166,6 +167,7 @@ public:
     }
 
     draw_bottom_menu(it, font_small, "\u25b2", "", "\u25bc");
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 

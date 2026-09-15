@@ -76,7 +76,7 @@ globals:
 
   - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
     type: int
-    initial_value: '2'
+    initial_value: '${SLEEP_TIMEOUT_MIN}'
     restore_value: true
 
   - id: battery_interval_mins  # timer-wake interval for battery check (15–1440 min)
@@ -151,4 +151,4 @@ script:
                   id(selected_setting_index), id(contrast_level),
                   id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
                   id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
-                  id(updated_ui));
+                  id(updated_ui), id(conn_status));

@@ -128,4 +128,5 @@ script:
       - lambda: >-
           MenuController::draw(id(oled_display),
             id(menu_icon_big), id(menu_icon_small), id(menu_action_icon),
-            id(font_base), id(font_small), id(menu_index), id(menu_quick_index));
+            id(font_base), id(font_small), id(menu_index), id(menu_quick_index),
+            id(conn_status));
