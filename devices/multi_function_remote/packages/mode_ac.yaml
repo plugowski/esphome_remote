@@ -51,6 +51,7 @@ font:
     size: 36
     glyphs:
       - "\ue8ac"  # power_off (shown when AC is off)
+      - "\ue5d5"  # refresh (shown while waiting for HA's first state update)
 
 # ── HA sensors ────────────────────────────────────────────────────────────────
 sensor:
