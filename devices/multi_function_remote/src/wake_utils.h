@@ -10,15 +10,12 @@ inline bool is_timer_wakeup() {
 
 // ── RTC-memory state ─────────────────────────────────────────────────────────
 // RTC_DATA_ATTR variables survive deep sleep (unlike normal RAM) but reset to
-// their initializer on power-on / reflash — exactly the lifetime UI state like
-// the active mode needs. Using RTC memory instead of ESPHome's flash-backed
-// `restore_value: true` avoids a flash write on every mode change or button
-// wake, which matters at button-press cadence over a multi-year device life.
-
-RTC_DATA_ATTR int rtc_app_mode = 0;
-
-inline void save_app_mode(int mode) { rtc_app_mode = mode; }
-inline int load_app_mode() { return rtc_app_mode; }
+// their initializer on power-on / reflash. app_mode used to live here instead
+// of ESPHome's flash-backed restore_value (to avoid a flash write on every
+// mode change) - moved back to restore_value: true in remote.yaml because RTC
+// memory doesn't survive an OTA reboot or power cycle, so a device that had
+// just been reflashed (or lost power) always reopened on AC/mode 0 instead of
+// wherever it was left - worse than the flash-wear tradeoff it was avoiding.
 
 // Set on every normal (button) wake; consumed by the next timer wake so a
 // scheduled battery-report wake can skip its own WiFi/API round trip when a

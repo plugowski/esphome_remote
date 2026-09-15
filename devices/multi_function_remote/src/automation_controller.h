@@ -111,13 +111,29 @@ public:
     if (selected_idx < scroll_top)      scroll_top = selected_idx;
     if (selected_idx >= scroll_top + 4) scroll_top = selected_idx - 3;
 
-    // Resolve bottom-bar labels from menu-slot entries
+    // Resolve bottom-bar labels from menu-slot entries. Falls back to (a
+    // truncated) name when short_name was left blank - the generator now
+    // requires short_name for a pinned slot, but a build made before that
+    // check existed would otherwise show a pinned marker in the list with
+    // nothing at all in the bottom bar (draw_bottom_menu skips "").
+    static char l_buf[6];
+    static char r_buf[6];
     const char* l_label = "....";
     const char* r_label = "....";
     for (int i = 0; i < AUTOMATION_LIST_COUNT; i++) {
       if (AUTOMATION_LIST[i].menu_slot == nullptr) continue;
-      if (strcmp(AUTOMATION_LIST[i].menu_slot, "L") == 0) l_label = AUTOMATION_LIST[i].short_name;
-      if (strcmp(AUTOMATION_LIST[i].menu_slot, "R") == 0) r_label = AUTOMATION_LIST[i].short_name;
+      const bool has_short = AUTOMATION_LIST[i].short_name && AUTOMATION_LIST[i].short_name[0];
+      const char* label = has_short ? AUTOMATION_LIST[i].short_name : AUTOMATION_LIST[i].name;
+      if (strcmp(AUTOMATION_LIST[i].menu_slot, "L") == 0) {
+        strncpy(l_buf, label, sizeof(l_buf) - 1);
+        l_buf[sizeof(l_buf) - 1] = '\0';
+        l_label = l_buf;
+      }
+      if (strcmp(AUTOMATION_LIST[i].menu_slot, "R") == 0) {
+        strncpy(r_buf, label, sizeof(r_buf) - 1);
+        r_buf[sizeof(r_buf) - 1] = '\0';
+        r_label = r_buf;
+      }
     }
 
     for (int row = 0; row < 4; row++) {

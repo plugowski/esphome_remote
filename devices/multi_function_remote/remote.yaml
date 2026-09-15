@@ -61,6 +61,12 @@ substitutions:
   # Default for BATTERY CHECK (battery_interval_mins), adjustable later on
   # the physical Settings screen — this is just where it starts out.
   BATTERY_INTERVAL_MIN: "60"
+  # 0 (default): disables the UART logger entirely - saves power and boot
+  # time. A real baud rate (e.g. 115200) is only needed for on-device
+  # debugging or tools/screenshot.py's serial capture. Remote logging over
+  # the Home Assistant API (and the HA-exposed Screenshot button) works
+  # either way - this only controls the raw USB-serial output.
+  LOGGER_BAUD_RATE: "0"
 
 packages:
   menu:        !include packages/menu.yaml
@@ -131,7 +137,6 @@ esphome:
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then:
-              - lambda: 'id(app_mode) = load_app_mode();'
               - output.turn_on: oled_power
               - delay: 10ms
     - priority: 250
@@ -230,7 +235,7 @@ ota:
   - platform: esphome
 
 logger:
-  baud_rate: 0
+  baud_rate: ${LOGGER_BAUD_RATE}
 
 output:
   - platform: gpio
@@ -271,12 +276,12 @@ globals:
   - id: app_mode          # 0 = AC  |  1 = Lights  |  2 = Covers  |  3 = Automations
     type: int
     initial_value: '0'
-    # Deliberately NOT restore_value here — that's a flash/NVS write on every
-    # mode change. Persistence across deep sleep instead comes from the
-    # RTC_DATA_ATTR variable in wake_utils.h (load_app_mode/save_app_mode),
-    # which costs nothing per write and still resets to 0 on a real power
-    # cycle or reflash, same as before.
-    restore_value: false
+    # restore_value (flash/NVS) rather than RTC memory: mode only changes on
+    # an explicit menu confirm, not every button press, so the flash-wear
+    # cost is low - and unlike RTC memory this survives an OTA reboot or a
+    # real power cycle, so the remote reopens where it was left instead of
+    # jumping back to AC/mode 0 the moment it's reflashed or loses power.
+    restore_value: true
 
   - id: menu_active
     type: bool

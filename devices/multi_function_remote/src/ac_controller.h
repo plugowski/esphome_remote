@@ -310,8 +310,13 @@ public:
 
     } else {
 
-      // unknown / loading — waiting for HA state
-      it->print(64, 22, font_bigger, COLOR_ON, display::TextAlign::CENTER, "...");
+      // unknown / loading — HA hasn't reported a mode for this unit yet
+      // (freshly booted or just switched to it); also reachable if HA ever
+      // sends a genuinely unrecognized mode string. "..." alone read as
+      // broken rather than "still loading" - short enough to fit this slot
+      // the same way "DRY"/"MID" already do, paired with the real unit name
+      // already shown in the lower bar so it's clear what's still loading.
+      it->print(64, 22, font_bigger, COLOR_ON, display::TextAlign::CENTER, "SYNC");
 
     }
 

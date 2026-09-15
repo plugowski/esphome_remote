@@ -3,7 +3,6 @@
 #include "quick_action_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
-#include "wake_utils.h"
 
 // ── MenuController ────────────────────────────────────────────────────────────
 // Two-view menu overlay:
@@ -43,7 +42,6 @@ public:
     app_mode    = MENU_LIST[wrap_index(menu_index, MENU_LIST_COUNT)].id;
     menu_active = false;
     updated_ui  = true;
-    save_app_mode(app_mode);
   }
 
   static void prev(int& menu_index) {
