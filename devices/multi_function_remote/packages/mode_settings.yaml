@@ -35,28 +35,49 @@ text_sensor:
       on_value:
         then: [ script.execute: settings_draw ]
 
-# ── Battery sensor ────────────────────────────────────────────────────────────
+# ── Battery sensors ───────────────────────────────────────────────────────────
 # Assumes a 1:2 resistor divider: Vbatt → [R] → ${PIN_BAT_ADC} → [R] → GND
 # Multiply by 2 to recover full voltage; LiPo range 3.2 V (0 %) → 4.2 V (100 %).
+# Two HA-facing entities under this device: raw voltage (device_class:
+# voltage) and a derived percentage (device_class: battery) — the actual ADC
+# read only happens once, in battery_voltage's on_value; the percentage
+# sensor is a template that just republishes battery_pct.
 sensor:
   - platform: adc
     pin: ${PIN_BAT_ADC}
-    id: battery_raw
-    name: "Battery"
+    id: battery_voltage
+    name: "Battery Voltage"
     internal: false
+    device_class: voltage
+    unit_of_measurement: "V"
+    state_class: measurement
+    accuracy_decimals: 2
+    entity_category: diagnostic
     attenuation: 11db
     update_interval: 60s
     filters:
       - multiply: 2.0
-      - lambda: |-
-          float pct = (x - 3.2f) / 1.0f * 100.0f;
-          return (pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct;
     on_value:
       then:
-        - lambda: 'id(battery_pct) = static_cast<int>(x); id(updated_ui) = true;'
+        - lambda: |-
+            float pct = (x - 3.2f) / 1.0f * 100.0f;
+            pct = (pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct;
+            id(battery_pct) = static_cast<int>(pct);
+            id(battery_percentage_sensor)->publish_state(id(battery_pct));
+            id(updated_ui) = true;
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then: [ script.execute: settings_draw ]
+
+  - platform: template
+    id: battery_percentage_sensor
+    name: "Battery"
+    internal: false
+    device_class: battery
+    unit_of_measurement: "%"
+    state_class: measurement
+    entity_category: diagnostic
+    # No lambda: published manually from battery_voltage's on_value instead.
 
 # ── globals ───────────────────────────────────────────────────────────────────
 globals:
@@ -81,7 +102,7 @@ globals:
 
   - id: battery_interval_mins  # timer-wake interval for battery check (15–1440 min)
     type: int
-    initial_value: '60'
+    initial_value: '${BATTERY_INTERVAL_MIN}'
     restore_value: true
 
   # ── Light Sleep only (USE_LIGHT_SLEEP) — inert on a Deep Sleep build ────────
@@ -106,12 +127,18 @@ script:
 
   - id: settings_btn_up
     then:
-      - lambda: 'SettingsController::prevSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - lambda: >-
+          SettingsController::prevSetting(id(selected_setting_index),
+            ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE});
+          id(updated_ui) = true;
       - script.execute: settings_draw
 
   - id: settings_btn_down
     then:
-      - lambda: 'SettingsController::nextSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - lambda: >-
+          SettingsController::nextSetting(id(selected_setting_index),
+            ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE});
+          id(updated_ui) = true;
       - script.execute: settings_draw
 
   - id: settings_btn_left
@@ -178,7 +205,9 @@ script:
 
   - id: settings_update
     then:
-      - lambda: 'if (id(selected_setting_index) >= SETTING_COUNT) id(selected_setting_index) = 0;'
+      - lambda: >-
+          SettingsController::sanitize(id(selected_setting_index),
+            ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE});
       - script.execute: settings_draw
 
   - id: settings_draw
@@ -193,4 +222,5 @@ script:
                   id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
                   id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
                   id(deep_sleep_fallback_mins), id(quiet_hours_start), id(quiet_hours_end),
+                  ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE},
                   id(updated_ui), id(conn_status));
