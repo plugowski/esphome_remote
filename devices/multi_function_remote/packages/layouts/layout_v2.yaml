@@ -32,7 +32,16 @@ binary_sensor:
     internal: true
     filters: [ invert: ]
     on_press:
-      then: [ script.execute: turn_off ]
+      then:
+        # A Light Sleep build's blanked screen is only "off", not asleep —
+        # this press should wake it, same as every other button, instead of
+        # re-blanking a screen that's already blank. Deep Sleep builds never
+        # see is_light_sleeping true, so this is always the else branch there.
+        - if:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - script.execute: turn_off
 
   # ── ← left ────────────────────────────────────────────────────────────────
   - platform: gpio
@@ -44,8 +53,11 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-        - script.execute: btn_left
+        - if:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - script.execute: btn_left
 
   # ── → right ───────────────────────────────────────────────────────────────
   - platform: gpio
@@ -57,8 +69,11 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-        - script.execute: btn_right
+        - if:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - script.execute: btn_right
 
   # ── OK ────────────────────────────────────────────────────────────────────
   - platform: gpio
@@ -70,8 +85,11 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-        - script.execute: btn_ok
+        - if:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - script.execute: btn_ok
 
   # ── ↑ up ──────────────────────────────────────────────────────────────────
   - platform: gpio
@@ -83,8 +101,11 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-        - script.execute: btn_up
+        - if:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - script.execute: btn_up
 
   # ── ↓ down ────────────────────────────────────────────────────────────────
   - platform: gpio
@@ -96,8 +117,11 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-        - script.execute: btn_down
+        - if:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - script.execute: btn_down
 
   # ── ⏸ stop / menu ─────────────────────────────────────────────────────────
   # Short press  → btn_stop  (cancel menu, stop cover, cycle AC fan)
@@ -113,13 +137,19 @@ binary_sensor:
       - min_length: 50ms
         max_length: 700ms
         then:
-          - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-          - script.execute: btn_stop
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              then:
+                - script.execute: btn_stop
       - min_length: 800ms
         max_length: 3000ms
         then:
-          - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-          - script.execute: btn_menu_open
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              then:
+                - script.execute: btn_menu_open
 
   # ── ☰ menu (pin 5) — open menu / confirm selection ───────────────────────
   - platform: gpio
@@ -131,15 +161,18 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
-            condition: { lambda: 'return !id(menu_active);' }
-            then: [ script.execute: menu_open ]
-            else:
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
               - if:
-                  condition: { lambda: 'return id(menu_quick_index) >= 0;' }
-                  then: [ script.execute: menu_back_to_carousel ]
-                  else: [ script.execute: menu_confirm ]
+                  condition: { lambda: 'return !id(menu_active);' }
+                  then: [ script.execute: menu_open ]
+                  else:
+                    - if:
+                        condition: { lambda: 'return id(menu_quick_index) >= 0;' }
+                        then: [ script.execute: menu_back_to_carousel ]
+                        else: [ script.execute: menu_confirm ]
 
   # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: prev ─────────
   # Covers: close | Autos: L slot
@@ -152,25 +185,28 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
-            condition: { lambda: 'return id(menu_active);' }
-            then: [ script.execute: menu_prev ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-            then: [ script.execute: ac_btn_mode ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-            then: [ script.execute: lights_btn_prev ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
-            then: [ script.execute: covers_btn_close ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
-            then: [ script.execute: automations_btn_menu_l ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
-            then: [ script.execute: settings_btn_up ]
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - if:
+                  condition: { lambda: 'return id(menu_active);' }
+                  then: [ script.execute: menu_prev ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+                  then: [ script.execute: ac_btn_mode ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+                  then: [ script.execute: lights_btn_prev ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+                  then: [ script.execute: covers_btn_close ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  then: [ script.execute: automations_btn_menu_l ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+                  then: [ script.execute: settings_btn_up ]
 
   # ── FAN / >> (pin 33) — menu next | AC: fan speed | Covers: open ──────────
   # Autos: R slot
@@ -183,22 +219,25 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
-            condition: { lambda: 'return id(menu_active);' }
-            then: [ script.execute: menu_next ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-            then: [ script.execute: ac_btn_fan ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-            then: [ script.execute: lights_btn_next ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
-            then: [ script.execute: covers_btn_open ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
-            then: [ script.execute: automations_btn_menu_r ]
-        - if:
-            condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
-            then: [ script.execute: settings_btn_down ]
+            condition:
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+            then:
+              - if:
+                  condition: { lambda: 'return id(menu_active);' }
+                  then: [ script.execute: menu_next ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+                  then: [ script.execute: ac_btn_fan ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+                  then: [ script.execute: lights_btn_next ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+                  then: [ script.execute: covers_btn_open ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  then: [ script.execute: automations_btn_menu_r ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
+                  then: [ script.execute: settings_btn_down ]
