@@ -28,7 +28,10 @@ binary_sensor:
     internal: true
     filters: [ invert: ]
     on_press:
-      then: [ script.execute: turn_off ]
+      # An explicit press always means "power off now" — a real deep sleep,
+      # even on a Light Sleep build. turn_off (the idle-timeout path) is the
+      # one that respects the configured sleep strategy.
+      then: [ script.execute: power_off_pressed ]
 
   # ── SELECT — AC: cycle entity | Lights: next | Covers: next | Autos: next ──
   - platform: gpio
@@ -40,7 +43,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
             then: [ script.execute: ac_btn_right ]
@@ -64,7 +67,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
             then: [ script.execute: ac_btn_mode ]
@@ -88,7 +91,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return id(menu_active);' }
             then: [ script.execute: menu_confirm ]
@@ -104,7 +107,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return id(menu_active);' }
             then: [ script.execute: menu_next ]
@@ -131,7 +134,7 @@ binary_sensor:
     filters: [ invert:, delayed_on: 30ms ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return id(menu_active);' }
             then: [ script.execute: menu_prev ]
@@ -161,7 +164,7 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
             then: [ script.execute: ac_btn_temp_up ]
@@ -185,7 +188,7 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
             then: [ script.execute: ac_btn_temp_up ]
@@ -209,7 +212,7 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
             then: [ script.execute: ac_btn_temp_down ]
@@ -233,7 +236,7 @@ binary_sensor:
     filters: [ invert: ]
     on_press:
       then:
-        - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+        - lambda: 'RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
         - if:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
             then: [ script.execute: ac_btn_temp_down ]

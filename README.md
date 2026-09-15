@@ -119,7 +119,9 @@ After flashing, HA will auto-discover the device. Go to **Settings → Devices &
 
 ### 3. (Optional) Static IP, sleep mode, serial logs
 
-`remote.yaml`'s `substitutions:` block also has `WIFI_POWER_SAVE_MODE` and `SLEEP_TIMEOUT_MIN` — the generator's "Soft Sleep" toggle sets both (`NONE` / `15` min) instead of the defaults (`LIGHT` / `2` min); edit them by hand if you're building straight from this repo instead of the generator.
+`remote.yaml`'s `substitutions:` block has `USE_LIGHT_SLEEP` — the generator's "Light Sleep" toggle sets it `"true"` (default `"false"`, Deep Sleep). Deep Sleep deep-sleeps on the idle timeout and reboots (WiFi/API reconnect) on every wake; Light Sleep only blanks the display on that same timeout — WiFi and the API connection stay up, so the next press is instant with no reboot — and falls back to a real deep sleep after `DEEP_SLEEP_FALLBACK_MIN` (default 60) minutes of continued inactivity as a safety net. `WIFI_POWER_SAVE_MODE` (`LIGHT`/`NONE`) also moves with the toggle — `NONE` for Light Sleep keeps the radio fully powered for maximum responsiveness while connected. Edit these by hand if you're building straight from this repo instead of the generator.
+
+Light Sleep also depends on `CONFIG_PM_ENABLE` (see `esp32.framework.sdkconfig_options` — this repo already targets `esp-idf`) letting the CPU itself drop into automatic light sleep between ticks while blanked, for whatever current savings that yields on your actual board; this hasn't been measured on real hardware.
 
 For a static IP, add a `manual_ip:` block under `wifi:` in `remote.yaml` (values from `secrets.yaml`, not hardcoded — see the comment already there) and `mdns: { disabled: true }` at the top level; DHCP/mDNS is the default when neither is set.
 

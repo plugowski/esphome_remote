@@ -12,11 +12,26 @@ substitutions:
   # "NONE" keeps the radio fully powered for the whole awake window — more
   # responsive in-session, meaningfully more current draw while awake.
   WIFI_POWER_SAVE_MODE: "LIGHT"
-  # Default idle-before-deep-sleep timeout (minutes), adjustable later on the
-  # physical Settings screen. Deep Sleep mode ships this low (fast sleep,
-  # best battery); Soft Sleep mode ships it higher (stay awake longer so a
-  # burst of presses stays instant, at the cost of battery while awake).
+  # Idle-before-blanking-the-display timeout (minutes), adjustable later on
+  # the physical Settings screen. Applies the same way in both sleep
+  # strategies below — it's just "how long until the screen turns off",
+  # not the deep-sleep decision itself.
   SLEEP_TIMEOUT_MIN: "2"
+  # false (default, "Deep Sleep"): the idle timeout goes straight to
+  # deep_sleep.enter — ~10uA, months of standby, but every wake reboots
+  # (WiFi reassociates, API reconnects) before the first press lands.
+  # true ("Light Sleep"): the idle timeout only blanks the display and
+  # keeps running — WiFi/API stay associated, so a press is instant with
+  # no reconnect at all. CONFIG_PM_ENABLE (see esp32.framework below)
+  # lets the CPU itself drop into automatic light sleep between ticks
+  # while blanked, for whatever current savings that yields on the actual
+  # board. DEEP_SLEEP_FALLBACK_MIN below is the safety net against
+  # leaving it powered like this indefinitely if it's put away unused.
+  USE_LIGHT_SLEEP: "false"
+  # Only consulted when USE_LIGHT_SLEEP is true: total minutes of inactivity
+  # (same last-press clock SLEEP_TIMEOUT_MIN uses, so this must be larger)
+  # before falling back to a real deep sleep anyway.
+  DEEP_SLEEP_FALLBACK_MIN: "60"
 
 packages:
   menu:        !include packages/menu.yaml
@@ -261,6 +276,15 @@ globals:
     type: bool
     initial_value: 'false'
 
+  - id: is_light_sleeping  # display blanked by the idle timeout in a Light
+    type: bool             # Sleep build; the device is otherwise still
+    initial_value: 'false' # fully running (WiFi/API stay associated).
+
+  - id: deep_sleep_fallback_mins
+    type: int
+    initial_value: '${DEEP_SLEEP_FALLBACK_MIN}'
+    restore_value: true
+
   - id: is_timer_wake      # true when woken by RTC timer (battery check only)
     type: bool
     initial_value: 'false'
@@ -273,7 +297,22 @@ globals:
 # ── core scripts ──────────────────────────────────────────────────────────────
 script:
 
+  # Idle-timeout path — respects the configured sleep strategy. The physical
+  # Power Off button goes straight to power_off_pressed instead (an explicit
+  # press always means "off now", regardless of strategy).
   - id: turn_off
+    mode: single
+    then:
+      - if:
+          condition: { lambda: 'return ${USE_LIGHT_SLEEP};' }
+          then:
+            - lambda: |-
+                id(is_light_sleeping) = true;
+                id(oled_display)->turn_off();
+          else:
+            - script.execute: power_off_pressed
+
+  - id: power_off_pressed
     mode: single
     then:
       - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
@@ -282,6 +321,18 @@ script:
           id(oled_display)->clear();
           id(oled_display)->display();
       - delay: 500ms
+      - output.turn_off: oled_power
+      - delay: 5ms
+      - deep_sleep.enter:
+          sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
+
+  # Safety net for a Light Sleep build left blanked-but-awake and forgotten:
+  # a real deep sleep once DEEP_SLEEP_FALLBACK_MIN of total inactivity has
+  # passed (checked from the interval below).
+  - id: deep_sleep_fallback
+    mode: single
+    then:
+      - lambda: 'id(is_shutting_down) = true;'
       - output.turn_off: oled_power
       - delay: 5ms
       - deep_sleep.enter:
@@ -351,7 +402,18 @@ interval:
           condition: { lambda: 'return !id(is_timer_wake);' }
           then:
             - if:
-                condition:
-                  lambda: 'return RemoteCore::isIdle(id(last_active), id(sleep_timeout_mins) * 60);'
-                then: [ script.execute: turn_off ]
-                else: [ script.execute: main_update ]
+                condition: { lambda: 'return id(is_light_sleeping);' }
+                then:
+                  # Already blanked (Light Sleep) — main_update has nothing
+                  # to draw to a display that's off, so the only thing left
+                  # to check here is the long-idle deep-sleep fallback.
+                  - if:
+                      condition:
+                        lambda: 'return RemoteCore::isIdle(id(last_active), id(deep_sleep_fallback_mins) * 60);'
+                      then: [ script.execute: deep_sleep_fallback ]
+                else:
+                  - if:
+                      condition:
+                        lambda: 'return RemoteCore::isIdle(id(last_active), id(sleep_timeout_mins) * 60);'
+                      then: [ script.execute: turn_off ]
+                      else: [ script.execute: main_update ]
