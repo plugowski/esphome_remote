@@ -37,7 +37,7 @@ static const int SETTING_MAX           = 8;   // total rows that exist; not all 
 // contrast_level:           int 1–10  →  0.1–1.0 for set_contrast()
 // sleep_timeout_mins:       int 1–30
 // battery_interval_mins:    int 15–1440, steps of 15   (hidden if !battery_enabled)
-// deep_sleep_fallback_mins: int 5–1440, steps of 5      (hidden unless light_sleep)
+// deep_sleep_fallback_mins: int 0 (off) or 5-1440, steps of 5 (hidden unless light_sleep)
 // quiet_hours_start/end:    int 0–23, wraps              (hidden unless light_sleep && quiet_hours_on_device)
 
 class SettingsController {
@@ -121,14 +121,15 @@ public:
     if (mins > 15) { mins -= 15; updated_ui = true; }
   }
 
-  // ── deep-sleep fallback, Light Sleep only (5–1440 minutes, step 5) ───────────
+  // Light Sleep only (0-1440 minutes, step 5). 0 disables the fallback
+  // entirely - stays in Light Sleep indefinitely unless quiet hours apply.
 
   static void deepAfterUp(int& mins, bool& updated_ui) {
     if (mins < 1440) { mins += 5; updated_ui = true; }
   }
 
   static void deepAfterDown(int& mins, bool& updated_ui) {
-    if (mins > 5) { mins -= 5; updated_ui = true; }
+    if (mins > 0) { mins -= 5; updated_ui = true; }
   }
 
   // ── quiet hours, Light Sleep only (0–23, wraps both ways) ────────────────────
@@ -295,9 +296,12 @@ private:
     snprintf(buf, buf_size, "%02d:00", ((hour % 24) + 24) % 24);
   }
 
-  // Format minutes → "X MIN" (< 60), "X H" (whole hours), or "XH MM" (mixed)
+  // Format minutes -> "OFF" (0, only meaningful for DEEP_AFTER), "X MIN"
+  // (< 60), "X H" (whole hours), or "XH MM" (mixed)
   static void formatMinutes(int mins, char* buf, int buf_size) {
-    if (mins < 60)
+    if (mins <= 0)
+      snprintf(buf, buf_size, "OFF");
+    else if (mins < 60)
       snprintf(buf, buf_size, "%d MIN", mins);
     else if (mins % 60 == 0)
       snprintf(buf, buf_size, "%d H", mins / 60);

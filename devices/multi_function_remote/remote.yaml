@@ -30,16 +30,18 @@ substitutions:
   USE_LIGHT_SLEEP: "false"
   # Only consulted when USE_LIGHT_SLEEP is true. Both are adjustable later on
   # the physical Settings screen (they're just defaults here):
-  #   DEEP_SLEEP_FALLBACK_MIN — total minutes of inactivity (same last-press
+  #   DEEP_SLEEP_FALLBACK_MIN - total minutes of inactivity (same last-press
   #     clock SLEEP_TIMEOUT_MIN uses, so this must be larger) before falling
-  #     back to a real deep sleep anyway, outside quiet hours.
-  #   QUIET_HOURS_START / QUIET_HOURS_END — 0-23 hour range (wraps past
+  #     back to a real deep sleep anyway, outside quiet hours. 0 disables
+  #     this fallback entirely - stays in Light Sleep indefinitely unless
+  #     quiet hours also apply.
+  #   QUIET_HOURS_START / QUIET_HOURS_END - 0-23 hour range (wraps past
   #     midnight when start > end) during which an idle device deep-sleeps
   #     right after the normal SLEEP_TIMEOUT_MIN blank instead of waiting for
-  #     the long fallback — e.g. 19/6 for "asleep by 7pm, up by 6am unless
+  #     the long fallback - e.g. 19/6 for "asleep by 7pm, up by 6am unless
   #     it's actually being used". Equal values (the "0"/"0" default) disable
   #     the schedule entirely. A press at any time still wakes it instantly
-  #     regardless of quiet hours — this only affects the *idle* decision.
+  #     regardless of quiet hours - this only affects the *idle* decision.
   DEEP_SLEEP_FALLBACK_MIN: "60"
   # Set by the generator when its own "enable deep sleep between" fields are
   # used: QUIET_HOURS_START/END get the chosen hours and this flips to
@@ -431,15 +433,18 @@ interval:
                   # to draw to a display that's off, so the only thing left
                   # to check here is: are we within quiet hours (deep-sleep
                   # right away instead of waiting for the long fallback), or
-                  # has the long fallback itself elapsed?
+                  # has the long fallback itself elapsed? deep_sleep_fallback_mins
+                  # == 0 disables that fallback entirely (quiet hours, if set,
+                  # still applies) — stays in Light Sleep indefinitely otherwise.
                   - if:
                       condition:
                         lambda: |-
                           auto t = id(sntp_time)->now();
                           bool quiet = t.is_valid() && RemoteCore::inQuietHours(
                             t.hour, id(quiet_hours_start), id(quiet_hours_end));
-                          return quiet || RemoteCore::isIdle(
+                          bool fallback_due = id(deep_sleep_fallback_mins) > 0 && RemoteCore::isIdle(
                             id(last_active), id(deep_sleep_fallback_mins) * 60);
+                          return quiet || fallback_due;
                       then: [ script.execute: deep_sleep_fallback ]
                 else:
                   - if:
