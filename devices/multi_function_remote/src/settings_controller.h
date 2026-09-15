@@ -6,16 +6,21 @@
 #include "display_utils.h"
 #include "remote_core.h"
 
-// ── Selectable row indices ────────────────────────────────────────────────────
+// ── Selectable row identifiers ────────────────────────────────────────────────
+// Fixed constants, not positions — a stored selected_setting_index always
+// means the same row regardless of which ones a given build shows (see
+// visibleSettings() below), so a value restored after reflashing with a
+// feature toggled off still means what it always meant instead of pointing
+// at a different row.
 static const int SETTING_CONTRAST      = 0;
 static const int SETTING_BATT_INTERVAL = 1;   // battery check wake interval (minutes)
 static const int SETTING_SLEEP         = 2;   // idle sleep timeout (minutes)
 static const int SETTING_DEEP_AFTER    = 3;   // Light Sleep only: total idle minutes -> real deep sleep
-static const int SETTING_QUIET_FROM    = 4;   // Light Sleep only: quiet-hours start (0-23)
-static const int SETTING_QUIET_TO      = 5;   // Light Sleep only: quiet-hours end (0-23)
+static const int SETTING_QUIET_FROM    = 4;   // Light Sleep + on-device only: quiet-hours start (0-23)
+static const int SETTING_QUIET_TO      = 5;   // Light Sleep + on-device only: quiet-hours end (0-23)
 static const int SETTING_WIFI          = 6;
 static const int SETTING_IP            = 7;
-static const int SETTING_COUNT         = 8;
+static const int SETTING_MAX           = 8;   // total rows that exist; not all are necessarily visible
 
 // ── SettingsController ────────────────────────────────────────────────────────
 // Settings mode layout (128×64 OLED):
@@ -26,24 +31,60 @@ static const int SETTING_COUNT         = 8;
 //   y=39-51  │ visible slot 2                   │  selectable
 //   y=53-63  │ ▲    │    ☰    │    ▼            │  bottom bar
 //
-// 8 settings rows scroll through 3 visible slots.
+// Up to 8 settings rows scroll through 3 visible slots; which rows actually
+// appear depends on battery_enabled / light_sleep / quiet_hours_on_device
+// (all three are build-time substitutions passed in from mode_settings.yaml).
 // contrast_level:           int 1–10  →  0.1–1.0 for set_contrast()
 // sleep_timeout_mins:       int 1–30
-// battery_interval_mins:    int 15–1440, steps of 15
-// deep_sleep_fallback_mins: int 5–1440, steps of 5   (Light Sleep only)
-// quiet_hours_start/end:    int 0–23, wraps           (Light Sleep only)
+// battery_interval_mins:    int 15–1440, steps of 15   (hidden if !battery_enabled)
+// deep_sleep_fallback_mins: int 5–1440, steps of 5      (hidden unless light_sleep)
+// quiet_hours_start/end:    int 0–23, wraps              (hidden unless light_sleep && quiet_hours_on_device)
 
 class SettingsController {
 public:
 
-  // ── navigation ───────────────────────────────────────────────────────────────
-
-  static void prevSetting(int& idx) {
-    idx = wrap_index(idx, SETTING_COUNT, -1);
+  // ── visibility ────────────────────────────────────────────────────────────
+  // Fills `out` with the rows this build actually shows, in display order,
+  // and returns how many. DEEP_AFTER/QUIET_FROM/QUIET_TO are meaningless on
+  // a Deep Sleep build (nothing ever reads them there), so they're hidden
+  // together; QUIET_FROM/QUIET_TO are hidden further when the generator
+  // already fixed the schedule at build time (quiet_hours_on_device false).
+  static int visibleSettings(int* out, bool battery_enabled, bool light_sleep, bool quiet_hours_on_device) {
+    int n = 0;
+    out[n++] = SETTING_CONTRAST;
+    if (battery_enabled) out[n++] = SETTING_BATT_INTERVAL;
+    out[n++] = SETTING_SLEEP;
+    if (light_sleep) {
+      out[n++] = SETTING_DEEP_AFTER;
+      if (quiet_hours_on_device) {
+        out[n++] = SETTING_QUIET_FROM;
+        out[n++] = SETTING_QUIET_TO;
+      }
+    }
+    out[n++] = SETTING_WIFI;
+    out[n++] = SETTING_IP;
+    return n;
   }
 
-  static void nextSetting(int& idx) {
-    idx = wrap_index(idx, SETTING_COUNT, +1);
+  // ── navigation ───────────────────────────────────────────────────────────────
+
+  static void prevSetting(int& idx, bool battery_enabled, bool light_sleep, bool quiet_hours_on_device) {
+    move(idx, -1, battery_enabled, light_sleep, quiet_hours_on_device);
+  }
+
+  static void nextSetting(int& idx, bool battery_enabled, bool light_sleep, bool quiet_hours_on_device) {
+    move(idx, +1, battery_enabled, light_sleep, quiet_hours_on_device);
+  }
+
+  // Snaps a restored index back onto this build's visible rows if it
+  // landed on one that's hidden (e.g. reflashed with a feature turned off).
+  static void sanitize(int& idx, bool battery_enabled, bool light_sleep, bool quiet_hours_on_device) {
+    int visible[SETTING_MAX];
+    int n = visibleSettings(visible, battery_enabled, light_sleep, quiet_hours_on_device);
+    for (int i = 0; i < n; i++) {
+      if (visible[i] == idx) return;
+    }
+    idx = visible[0];
   }
 
   // ── contrast (1–10 steps) ────────────────────────────────────────────────────
@@ -81,7 +122,6 @@ public:
   }
 
   // ── deep-sleep fallback, Light Sleep only (5–1440 minutes, step 5) ───────────
-  // Inert on a Deep Sleep build — nothing reads deep_sleep_fallback_mins there.
 
   static void deepAfterUp(int& mins, bool& updated_ui) {
     if (mins < 1440) { mins += 5; updated_ui = true; }
@@ -110,6 +150,7 @@ public:
                    const std::string& ssid, const std::string& ip,
                    int battery_pct, int sleep_timeout_mins, int battery_interval_mins,
                    int deep_sleep_fallback_mins, int quiet_hours_start, int quiet_hours_end,
+                   bool battery_enabled, bool light_sleep, bool quiet_hours_on_device,
                    bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
@@ -128,18 +169,27 @@ public:
       it->print(124, y_c, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pct);
     }
 
-    // ── Scrolling settings rows (3 visible out of SETTING_COUNT) ─────────────
+    // ── Scrolling settings rows (3 visible out of however many apply) ────────
+    int visible[SETTING_MAX];
+    const int count = visibleSettings(visible, battery_enabled, light_sleep, quiet_hours_on_device);
+
+    int pos = 0;
+    for (int i = 0; i < count; i++) {
+      if (visible[i] == selected_idx) { pos = i; break; }
+    }
+
     const int VISIBLE = 3;
     // Centre selected row in the visible window where possible
-    int offset = std::max(0, std::min(selected_idx - 1, SETTING_COUNT - VISIBLE));
+    int offset = std::max(0, std::min(pos - 1, count - VISIBLE));
 
-    static const char* labels[SETTING_COUNT] = {
+    static const char* labels[SETTING_MAX] = {
       "CONTRAST", "BATTERY CHECK", "SLEEP", "DEEP SLEEP", "QUIET FROM", "QUIET TO", "WIFI", "IP"
     };
 
     for (int slot = 0; slot < VISIBLE; slot++) {
-      int idx = offset + slot;
-      if (idx >= SETTING_COUNT) break;
+      int listPos = offset + slot;
+      if (listPos >= count) break;
+      int idx = visible[listPos];
 
       const bool sel   = (idx == selected_idx);
       const int  y_top = (slot + 1) * 13;
@@ -220,12 +270,23 @@ public:
       }
     }
 
-    draw_bottom_menu(it, font_small, "\u25b2", nullptr, "\u25bc");
+    draw_bottom_menu(it, font_small, "▲", nullptr, "▼");
     RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 
 private:
+
+  static void move(int& idx, int step, bool battery_enabled, bool light_sleep, bool quiet_hours_on_device) {
+    int visible[SETTING_MAX];
+    int n = visibleSettings(visible, battery_enabled, light_sleep, quiet_hours_on_device);
+    int pos = 0;
+    for (int i = 0; i < n; i++) {
+      if (visible[i] == idx) { pos = i; break; }
+    }
+    pos = wrap_index(pos, n, step);
+    idx = visible[pos];
+  }
 
   // Format an hour-of-day (0-23) as "HH:00". Equal start/end quiet-hours
   // values mean the schedule is disabled — shown as-is, no special case;

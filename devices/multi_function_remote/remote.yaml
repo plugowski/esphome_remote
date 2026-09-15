@@ -41,8 +41,24 @@ substitutions:
   #     the schedule entirely. A press at any time still wakes it instantly
   #     regardless of quiet hours — this only affects the *idle* decision.
   DEEP_SLEEP_FALLBACK_MIN: "60"
+  # Set by the generator when its own "enable deep sleep between" fields are
+  # used: QUIET_HOURS_START/END get the chosen hours and this flips to
+  # "false", hiding the QUIET FROM/TO rows on the physical Settings screen —
+  # a schedule fixed at build time isn't meant to be end-user-adjustable.
+  # Left "true" (the default here), quiet hours stay off (0/0, disabled)
+  # until whoever has the remote sets them from the Settings screen itself.
+  QUIET_HOURS_ON_DEVICE: "true"
   QUIET_HOURS_START: "0"
   QUIET_HOURS_END: "0"
+  # Whether the Settings screen lists the BATTERY CHECK row at all — the
+  # underlying ADC sensor and its wake cadence keep running either way (that
+  # cadence is also the general timer-wake interval, not purely a battery
+  # concept, so it isn't removable without its own separate setting), this
+  # only controls whether the row is worth exposing.
+  BATTERY_ENABLED: "true"
+  # Default for BATTERY CHECK (battery_interval_mins), adjustable later on
+  # the physical Settings screen — this is just where it starts out.
+  BATTERY_INTERVAL_MIN: "60"
 
 packages:
   menu:        !include packages/menu.yaml
@@ -141,7 +157,7 @@ esphome:
                         sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
                   else:
                     # Timer wake: read battery, wait for the API to publish, sleep again
-                    - component.update: battery_raw
+                    - component.update: battery_voltage
                     - wait_until:
                         condition:
                           api.connected:
