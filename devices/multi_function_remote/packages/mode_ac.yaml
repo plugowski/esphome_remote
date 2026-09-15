@@ -180,6 +180,18 @@ script:
       - script.execute: ac_draw
       - script.execute: ac_await
 
+  # Single-button on/off for layouts with no separate power-on/power-off
+  # buttons (layout_v1's TOGGLE). turnOn()/turnOff() are already no-ops in
+  # the state they'd otherwise turn on/off into, so checking selected_ac_mode
+  # here is what actually makes this alternate instead of doing nothing on
+  # every other press.
+  - id: ac_btn_power_toggle
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_ac_mode) == "off";' }
+          then: [ script.execute: ac_btn_power_on ]
+          else: [ script.execute: ac_btn_power_off ]
+
   - id: ac_btn_fan
     then:
       - lambda: >-
