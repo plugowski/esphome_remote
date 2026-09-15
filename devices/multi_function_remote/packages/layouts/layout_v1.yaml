@@ -123,9 +123,19 @@ binary_sensor:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
             then:
               - if:
-                  condition: { lambda: 'return id(menu_active);' }
-                  then: [ script.execute: menu_confirm ]
-                  else: [ script.execute: menu_open ]
+                  condition: { lambda: 'return !id(menu_active);' }
+                  then: [ script.execute: menu_open ]
+                  else:
+                    - if:
+                        # Quick-action view showing: just drop back to the
+                        # carousel (same screen the menu was opened on)
+                        # instead of confirming whatever mode the carousel
+                        # happens to be scrolled to - v1 has no separate
+                        # back button here like v2's OK, so this one button
+                        # has to tell the two states apart itself.
+                        condition: { lambda: 'return id(menu_quick_index) >= 0;' }
+                        then: [ script.execute: menu_back_to_carousel ]
+                        else: [ script.execute: menu_confirm ]
 
   # ── FAN / >> — menu next / AC fan / Covers open / Autos R ────────────────
   - platform: gpio
