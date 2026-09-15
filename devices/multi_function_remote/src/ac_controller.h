@@ -315,8 +315,12 @@ public:
       // sends a genuinely unrecognized mode string. A refresh icon in the
       // same hero-icon slot the "off" branch uses reads as "still fetching"
       // rather than looking broken, paired with the real unit name already
-      // shown in the lower bar so it's clear what's still loading.
-      it->print(64, 22, symbols_big, COLOR_ON, display::TextAlign::CENTER, "");
+      // shown in the lower bar so it's clear what's still loading. y=19
+      // centers it between the top edge and the y=38 separator line below
+      // (the "off" branch's own icon sits lower, at y=22, to leave room
+      // for its OWN separator+label at y=44/56 instead of the shared
+      // y=38/46 used here).
+      it->print(64, 19, symbols_big, COLOR_ON, display::TextAlign::CENTER, "");
 
     }
 

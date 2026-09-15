@@ -168,6 +168,15 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
           then:
             - lambda: 'SettingsController::hourDown(id(quiet_hours_end), id(updated_ui));'
+      # restore_value globals only queue their NVS write - ESPHome's default
+      # preferences component batches the actual flash commit every 60s, so
+      # a value changed here would silently revert to its old default if
+      # the remote lost power (unplugged, battery pulled) inside that
+      # window, even though it "worked" as long as the device stayed
+      # powered afterward (e.g. Light Sleep). Force it through immediately -
+      # these are deliberate, infrequent button presses, not a hot loop, so
+      # the extra flash write is cheap.
+      - lambda: 'global_preferences->sync();'
       - script.execute: settings_draw
 
   - id: settings_btn_right
@@ -197,6 +206,9 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
           then:
             - lambda: 'SettingsController::hourUp(id(quiet_hours_end), id(updated_ui));'
+      # See the matching comment in settings_btn_left - forces the NVS write
+      # through now instead of leaving it queued for the periodic 60s flush.
+      - lambda: 'global_preferences->sync();'
       - script.execute: settings_draw
 
   - id: settings_apply_contrast
