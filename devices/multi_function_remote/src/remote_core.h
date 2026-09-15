@@ -60,4 +60,19 @@ public:
   static bool isIdle(int last_active, int timeout_s = 120) {
     return (static_cast<int>(millis() / 1000) - last_active) >= timeout_s;
   }
+
+  // Connection-status glyph, drawn as a small overlay in the top-right corner
+  // of whichever mode screen is already on-screen. Call from inside a mode's
+  // draw(), right before it->display(), instead of blocking that mode's whole
+  // screen on network state. status: 0=ok (draws nothing), 1=no wifi,
+  // 2/3=wifi ok but HA/entities unreachable.
+  template<class D>
+  static void drawConnBadge(D* it, int status) {
+    if (status == 0) return;
+    if (status == 1) {
+      it->rectangle(119, 1, 8, 8, COLOR_ON);
+    } else {
+      it->filled_rectangle(119, 1, 8, 8, COLOR_ON);
+    }
+  }
 };

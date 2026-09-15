@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <algorithm>
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── Selectable row indices ────────────────────────────────────────────────────
 static const int SETTING_CONTRAST      = 0;
@@ -81,7 +82,7 @@ public:
                    int selected_idx, int contrast_level,
                    const std::string& ssid, const std::string& ip,
                    int battery_pct, int sleep_timeout_mins, int battery_interval_mins,
-                   bool& updated_ui)
+                   bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
     updated_ui = false;
@@ -171,6 +172,7 @@ public:
     }
 
     draw_bottom_menu(it, font_small, "\u25b2", nullptr, "\u25bc");
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 

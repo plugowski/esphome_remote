@@ -304,6 +304,10 @@ script:
       - lambda: 'id(debounce_active) = true;'
       - delay: 300ms
       - lambda: 'id(debounce_active) = false;'
+      # Send the settled change now instead of waiting for the next 500ms
+      # interval tick — ac_update() also runs from the main loop, so this is
+      # only closing the gap between "debounce cleared" and "next tick".
+      - script.execute: ac_update
 
   # ── main AC update (called from main_update every 500 ms) ────────────────
 
@@ -333,4 +337,4 @@ script:
             id(ac_symbols), id(ac_symbols_big),
             id(font_big), id(font_bigger), id(font_base), id(font_small),
             id(selected_ac_mode), id(selected_fan_mode),
-            id(selected_ac_index), id(selected_temp), id(updated_ui));
+            id(selected_ac_index), id(selected_temp), id(updated_ui), id(conn_status));

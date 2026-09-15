@@ -5,6 +5,7 @@
 #include <cstdio>
 #include "automation_entities.h"
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── AutomationController ──────────────────────────────────────────────────────
 // Automation mode: scrollable list identical in layout to LightsController.
@@ -99,7 +100,7 @@ public:
   // RIGHT triggers the selected automation.
   // MODE / FAN trigger the L / R menu-slot shortcuts directly.
   template<class D, class F>
-  static void draw(D* it, F* font_small, int selected_idx, bool& updated_ui) {
+  static void draw(D* it, F* font_small, int selected_idx, bool& updated_ui, int conn_status) {
     if (!updated_ui) return;
     updated_ui = false;
 
@@ -149,6 +150,7 @@ public:
     }
 
     draw_bottom_menu(it, font_small, l_label, "", r_label);
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 };

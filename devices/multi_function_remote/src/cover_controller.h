@@ -6,6 +6,7 @@
 #include <cstdio>
 #include "cover_entities.h"
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── CoverController ───────────────────────────────────────────────────────────
 // Cover mode: entity selection, open/close/stop/position actions, display.
@@ -102,7 +103,7 @@ public:
   static void draw(D* it, F* symbols, F* state_icons,
                    F* font_big, F* font_base, F* font_small,
                    int selected_idx,
-                   bool& updated_ui)
+                   bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
     updated_ui = false;
@@ -139,6 +140,7 @@ public:
 
     draw_bottom_menu(it, font_small, "CLOSE", "", "OPEN");
 
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 

@@ -98,20 +98,31 @@ script:
   - id: lights_do_toggle
     mode: queued
     then:
-      - homeassistant.action:
-          action: light.toggle
-          data:
-            entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
+      # Button presses taken before the API is connected land here immediately
+      # (the screen and globals already updated synchronously) — wait rather
+      # than silently drop the command; give up after a generous timeout.
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition: { api.connected: }
+          then:
+            - homeassistant.action:
+                action: light.toggle
+                data:
+                  entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
 
   - id: lights_do_brightness
     mode: restart
     then:
       - delay: 300ms    # debounce — coalesce rapid presses before sending
-      - homeassistant.action:
-          action: light.turn_on
-          data:
-            entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
-            brightness_pct: !lambda 'return LightsController::getBrightness(id(selected_light_index));'
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition: { api.connected: }
+          then:
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: !lambda 'return LIGHTS_LIST[id(selected_light_index)].entity_id;'
+                  brightness_pct: !lambda 'return LightsController::getBrightness(id(selected_light_index));'
 
   # ── display ───────────────────────────────────────────────────────────────
 
@@ -128,4 +139,4 @@ script:
           then:
             - lambda: >-
                 LightsController::draw(id(oled_display), id(font_small),
-                                       id(selected_light_index), id(updated_ui));
+                                       id(selected_light_index), id(updated_ui), id(conn_status));

@@ -2,12 +2,21 @@ substitutions:
   BOARD: "esp32dev"
   DEVICE_NAME: "oled-remote"
   FRIENDLY_NAME: "OLED Remote"
-  API_KEY: "8s07kGR8NLaKSRpxpbClUWh9GvY7Afh8qHc4DkyKe4w="
   PIN_WAKE: "0"
   PIN_I2C_SDA: "27"
   PIN_I2C_SCL: "25"
   PIN_OLED_EN: "15"
   PIN_BAT_ADC: "32"
+  # "LIGHT" (default) lets the radio modem sleep between DTIM beacons while
+  # awake — lower average current, at the cost of a little response jitter.
+  # "NONE" keeps the radio fully powered for the whole awake window — more
+  # responsive in-session, meaningfully more current draw while awake.
+  WIFI_POWER_SAVE_MODE: "LIGHT"
+  # Default idle-before-deep-sleep timeout (minutes), adjustable later on the
+  # physical Settings screen. Deep Sleep mode ships this low (fast sleep,
+  # best battery); Soft Sleep mode ships it higher (stay awake longer so a
+  # burst of presses stays instant, at the cost of battery while awake).
+  SLEEP_TIMEOUT_MIN: "2"
 
 packages:
   menu:        !include packages/menu.yaml
@@ -78,6 +87,7 @@ esphome:
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then:
+              - lambda: 'id(app_mode) = load_app_mode();'
               - output.turn_on: oled_power
               - delay: 10ms
     - priority: 250
@@ -94,38 +104,38 @@ esphome:
         - if:
             condition: { lambda: 'return id(is_timer_wake);' }
             then:
-              # Timer wake: read battery, wait for WiFi + API to publish, sleep again
-              - component.update: battery_raw
-              - wait_until:
-                  condition:
-                    api.connected:
-                  timeout: 30s
-              - delay: 2s   # ensure the value is flushed to HA
-              - deep_sleep.enter:
-                  sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
-            else:
-              # Normal wake: wait for WiFi, then wait for entity states
-              - wait_until:
-                  condition:
-                    wifi.connected:
-                  timeout: 10s
               - if:
-                  condition:
-                    not:
-                      wifi.connected:
+                  condition: { lambda: 'return consume_recent_normal_wake();' }
                   then:
-                    - lambda: 'id(conn_status) = 1; id(is_booting) = false;'
+                    # A button wake already delivered a fresher battery
+                    # reading to HA more recently than this scheduled check
+                    # would — skip the WiFi/API round trip and go straight
+                    # back to sleep.
+                    - deep_sleep.enter:
+                        sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
                   else:
+                    # Timer wake: read battery, wait for the API to publish, sleep again
+                    - component.update: battery_raw
                     - wait_until:
                         condition:
-                          lambda: 'return !id(is_booting);'
-                        timeout: 10s
-                    - if:
-                        condition:
-                          lambda: 'return id(is_booting) && id(conn_status) != 0;'
-                        then:
-                          - lambda: 'id(conn_status) = 2;'
-                    - lambda: 'id(is_booting) = false;'
+                          api.connected:
+                        timeout: 8s
+                    - delay: 300ms   # ensure the value is flushed to HA
+                    - deep_sleep.enter:
+                        sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
+            else:
+              # Normal wake: draw the real UI immediately from cached state
+              # instead of blocking the screen (and buttons — they already
+              # work regardless, see each mode's *_btn_* scripts) on the
+              # network. conn_status drives a small corner badge instead of
+              # a full-screen gate; boot_connect_watchdog updates it
+              # asynchronously without holding up anything else here.
+              - lambda: |-
+                  mark_normal_wake();
+                  id(is_booting) = false;
+                  id(updated_ui) = true;
+              - script.execute: main_update
+              - script.execute: boot_connect_watchdog
 
 esp32:
   board: ${BOARD}
@@ -137,32 +147,36 @@ wifi:
   password: !secret wifi_password
   output_power: 10dB
   fast_connect: true
-  power_save_mode: LIGHT
+  power_save_mode: ${WIFI_POWER_SAVE_MODE}
+  # A static-IP generator build inserts a `manual_ip:` block here (values from
+  # secrets.yaml) plus `mdns: disabled: true` below — DHCP/mDNS discovery is
+  # the safe default when no static IP is configured.
   on_connect:
     - if:
         condition: { lambda: 'return id(conn_status) == 1;' }
         then:
-          - lambda: 'id(conn_status) = 0;'
+          - lambda: 'id(conn_status) = 0; id(updated_ui) = true;'
   on_disconnect:
-    - lambda: 'id(conn_status) = 1;'
+    - lambda: 'id(conn_status) = 1; id(updated_ui) = true;'
 
 api:
   reboot_timeout: 0s
   encryption:
-    key: ${API_KEY}
+    key: !secret api_key
   on_client_connected:
-    - lambda: 'id(conn_status) = 0;'
+    - lambda: 'id(conn_status) = 0; id(updated_ui) = true;'
   on_client_disconnected:
     - if:
         condition:
           wifi.connected:
         then:
-          - lambda: 'id(conn_status) = 2;'
+          - lambda: 'id(conn_status) = 2; id(updated_ui) = true;'
 
 ota:
   - platform: esphome
 
 logger:
+  baud_rate: 0
 
 output:
   - platform: gpio
@@ -195,7 +209,12 @@ globals:
   - id: app_mode          # 0 = AC  |  1 = Lights  |  2 = Covers  |  3 = Automations
     type: int
     initial_value: '0'
-    restore_value: true
+    # Deliberately NOT restore_value here — that's a flash/NVS write on every
+    # mode change. Persistence across deep sleep instead comes from the
+    # RTC_DATA_ATTR variable in wake_utils.h (load_app_mode/save_app_mode),
+    # which costs nothing per write and still resets to 0 on a real power
+    # cycle or reflash, same as before.
+    restore_value: false
 
   - id: menu_active
     type: bool
@@ -218,9 +237,9 @@ globals:
     type: bool
     initial_value: 'true'
 
-  - id: is_booting
-    type: bool
-    initial_value: 'true'
+  - id: is_booting     # cleared in on_boot itself, before the main loop ever
+    type: bool         # runs — draw() calls gate on it mainly as a defensive
+    initial_value: 'true'  # guard against a button racing the very first frame.
 
   - id: is_shutting_down
     type: bool
@@ -255,6 +274,23 @@ script:
   - id: boot_screen
     then:
       - lambda: 'RemoteCore::drawBoot(id(oled_display), id(menu_icon_big), id(font_small));'
+
+  # Runs alongside the real UI on a normal wake — does not block anything.
+  # Flags a genuine connect failure (conn_status = 1) after a generous
+  # timeout, driving the corner badge; the on_client_connected/disconnected
+  # handlers above cover the HA-unreachable case (conn_status = 2) instead.
+  - id: boot_connect_watchdog
+    then:
+      - wait_until:
+          condition:
+            wifi.connected:
+          timeout: 10s
+      - if:
+          condition:
+            not:
+              wifi.connected:
+          then:
+            - lambda: 'id(conn_status) = 1; id(updated_ui) = true;'
 
   # dispatches to the active mode's update/draw on every interval tick
   - id: main_update

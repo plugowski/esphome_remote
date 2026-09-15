@@ -4,6 +4,7 @@
 #include <cmath>
 #include "ac_entities.h"
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── ACController ──────────────────────────────────────────────────────────────
 // All AC mode logic: button actions, state management, and display rendering.
@@ -268,7 +269,7 @@ public:
                    F* font_big, F* font_bigger, F* font_base, F* font_small,
                    const std::string& mode, const std::string& fan_mode,
                    int ac_idx, int temp,
-                   bool& updated_ui)
+                   bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
     updated_ui = false;
@@ -323,6 +324,7 @@ public:
       draw_bottom_menu(it, font_small, "MODE", "", show_fan ? "FAN" : nullptr);
     }
 
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 };

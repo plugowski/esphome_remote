@@ -109,20 +109,27 @@ Generate one:
 python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 
-Paste it into the `substitutions` block at the top of `remote.yaml`:
+Add it to `devices/multi_function_remote/secrets.yaml` (`remote.yaml` reads it via `!secret api_key`, so the key itself never has to touch a file you might share for support):
 
 ```yaml
-substitutions:
-  API_KEY: "paste_your_base64_key_here"
+api_key: "paste_your_base64_key_here"
 ```
 
 After flashing, HA will auto-discover the device. Go to **Settings → Devices & Services → ESPHome → Configure** and enter the same key — HA stores it for all future connections.
 
-### 3. Configure your entities
+### 3. (Optional) Static IP, sleep mode, serial logs
+
+`remote.yaml`'s `substitutions:` block also has `WIFI_POWER_SAVE_MODE` and `SLEEP_TIMEOUT_MIN` — the generator's "Soft Sleep" toggle sets both (`NONE` / `15` min) instead of the defaults (`LIGHT` / `2` min); edit them by hand if you're building straight from this repo instead of the generator.
+
+For a static IP, add a `manual_ip:` block under `wifi:` in `remote.yaml` (values from `secrets.yaml`, not hardcoded — see the comment already there) and `mdns: { disabled: true }` at the top level; DHCP/mDNS is the default when neither is set.
+
+`logger:` ships with `baud_rate: 0` (no UART output — nothing to power on a device with no console attached). `make logs-ota`/`esphome logs --device <ip>` still work since remote logging goes over the API, not the UART; for USB serial logs during development, temporarily remove `baud_rate: 0`.
+
+### 4. Configure your entities
 
 Edit the `src/*_entities.h` files to match your Home Assistant setup (see [Entity configuration](#entity-configuration) below).
 
-### 4. Flash the device
+### 5. Flash the device
 
 See [Building and flashing](#building-and-flashing) below.
 
@@ -183,7 +190,7 @@ make ota IP=<device-ip>
    rsync -av devices/multi_function_remote/ ha:/config/esphome/multi_function_remote/
    ```
 2. In the ESPHome dashboard click **+ New device → Import from file** and point it at `remote.yaml`.
-3. Set `API_KEY` in the `substitutions` block and fill in `secrets.yaml`.
+3. Fill in `secrets.yaml` (`wifi_ssid`, `wifi_password`, `api_key`).
 4. Hit **Install**.
 
 ---
@@ -336,7 +343,7 @@ static const AutomationEntity AUTOMATION_LIST[] = {
 - Pins use internal pull-ups — button should connect GPIO to GND
 
 **API connection fails after flashing**
-- Make sure the `API_KEY` in `remote.yaml` matches what you entered in HA
+- Make sure `api_key` in `secrets.yaml` matches what you entered in HA
 - HA must be reachable from the ESP32 subnet
 
 ---

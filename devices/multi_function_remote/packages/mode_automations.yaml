@@ -85,6 +85,10 @@ script:
   - id: auto_call_ha
     mode: queued
     then:
+      # Wait for the API rather than silently dropping a trigger pressed
+      # before the connect window closes; the confirmation screen already
+      # drew synchronously in auto_do_trigger.
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
       - if:
           condition: { lambda: 'return id(auto_service) == "scene.turn_on";' }
           then:
@@ -165,4 +169,4 @@ script:
             - lambda: >-
                 id(updated_ui) = true;
                 AutomationController::draw(id(oled_display), id(font_small),
-                                           id(selected_auto_index), id(updated_ui));
+                                           id(selected_auto_index), id(updated_ui), id(conn_status));
