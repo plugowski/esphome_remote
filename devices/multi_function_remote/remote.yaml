@@ -148,6 +148,13 @@ esphome:
                   if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
                   RemoteCore::resetIdleTimer(id(last_active));
                   id(is_booting) = true;
+                  // The display's own `contrast:` config below is a fixed
+                  // value applied at setup - it doesn't know about the
+                  // restore_value'd contrast_level global, so every boot
+                  // otherwise reset the screen to that fixed default
+                  // instead of whatever the user last set on the physical
+                  // Settings screen.
+                  id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));
     - priority: -200        # runs after all sensors/components are initialised
       then:
         - if:
