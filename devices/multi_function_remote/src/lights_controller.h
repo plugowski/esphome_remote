@@ -10,7 +10,8 @@
 
 // ── LightsController ──────────────────────────────────────────────────────────
 // Lights mode: scrollable list with on/off toggle, dimmable indicator,
-// brightness control (10 % steps), and real-time HA state sync.
+// brightness control (5 % steps, snapped to a clean multiple of 5 in the
+// direction of travel), and real-time HA state sync.
 //
 // Button mapping:
 //   MODE  (pin22)   -> prevLight   (labeled ▲ on screen)
@@ -60,21 +61,31 @@ public:
     updated_ui   = true;
   }
 
-  // ── brightness (10 % steps, clamped 0-100, dimmable + ON only) ────────────
+  // ── brightness (5 % steps, clamped 0-100, dimmable + ON only) ─────────────
+  // HA reports brightness as a 0-255 raw value converted to a percentage, so
+  // synced-in values land on odd numbers (21, 22, ...) more often than not.
+  // Stepping by a flat +/-5 from there would just keep propagating that
+  // oddness forever (22 -> 27 -> 32 -> ...). Snapping to the next clean
+  // multiple of BRIGHTNESS_STEP in the direction of travel instead means
+  // every value we ever send back to HA is already round, from the very
+  // first press - not just once it happens to land on one by chance.
+  static const int BRIGHTNESS_STEP = 5;
 
   static void brightnessUp(int idx, bool& updated_ui) {
     if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
     if (!LIGHTS_LIST[idx].dimmable || !lightOn(idx)) return;
-    int& b     = lightBrightness(idx);
-    b          = (b + 10 <= 100) ? b + 10 : 100;
+    int& b   = lightBrightness(idx);
+    int next = (b / BRIGHTNESS_STEP + 1) * BRIGHTNESS_STEP;
+    b        = (next <= 100) ? next : 100;
     updated_ui = true;
   }
 
   static void brightnessDown(int idx, bool& updated_ui) {
     if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
     if (!LIGHTS_LIST[idx].dimmable || !lightOn(idx)) return;
-    int& b     = lightBrightness(idx);
-    b          = (b - 10 >= 0) ? b - 10 : 0;
+    int& b   = lightBrightness(idx);
+    int next = ((b - 1) / BRIGHTNESS_STEP) * BRIGHTNESS_STEP;
+    b        = (next >= 0) ? next : 0;
     updated_ui = true;
   }
 
