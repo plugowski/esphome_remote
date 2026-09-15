@@ -10,9 +10,12 @@
 static const int SETTING_CONTRAST      = 0;
 static const int SETTING_BATT_INTERVAL = 1;   // battery check wake interval (minutes)
 static const int SETTING_SLEEP         = 2;   // idle sleep timeout (minutes)
-static const int SETTING_WIFI          = 3;
-static const int SETTING_IP            = 4;
-static const int SETTING_COUNT         = 5;
+static const int SETTING_DEEP_AFTER    = 3;   // Light Sleep only: total idle minutes -> real deep sleep
+static const int SETTING_QUIET_FROM    = 4;   // Light Sleep only: quiet-hours start (0-23)
+static const int SETTING_QUIET_TO      = 5;   // Light Sleep only: quiet-hours end (0-23)
+static const int SETTING_WIFI          = 6;
+static const int SETTING_IP            = 7;
+static const int SETTING_COUNT         = 8;
 
 // ── SettingsController ────────────────────────────────────────────────────────
 // Settings mode layout (128×64 OLED):
@@ -23,10 +26,12 @@ static const int SETTING_COUNT         = 5;
 //   y=39-51  │ visible slot 2                   │  selectable
 //   y=53-63  │ ▲    │    ☰    │    ▼            │  bottom bar
 //
-// 5 settings rows scroll through 3 visible slots.
-// contrast_level:        int 1–10  →  0.1–1.0 for set_contrast()
-// sleep_timeout_mins:    int 1–30
-// battery_interval_mins: int 15–1440, steps of 15
+// 8 settings rows scroll through 3 visible slots.
+// contrast_level:           int 1–10  →  0.1–1.0 for set_contrast()
+// sleep_timeout_mins:       int 1–30
+// battery_interval_mins:    int 15–1440, steps of 15
+// deep_sleep_fallback_mins: int 5–1440, steps of 5   (Light Sleep only)
+// quiet_hours_start/end:    int 0–23, wraps           (Light Sleep only)
 
 class SettingsController {
 public:
@@ -75,6 +80,28 @@ public:
     if (mins > 15) { mins -= 15; updated_ui = true; }
   }
 
+  // ── deep-sleep fallback, Light Sleep only (5–1440 minutes, step 5) ───────────
+  // Inert on a Deep Sleep build — nothing reads deep_sleep_fallback_mins there.
+
+  static void deepAfterUp(int& mins, bool& updated_ui) {
+    if (mins < 1440) { mins += 5; updated_ui = true; }
+  }
+
+  static void deepAfterDown(int& mins, bool& updated_ui) {
+    if (mins > 5) { mins -= 5; updated_ui = true; }
+  }
+
+  // ── quiet hours, Light Sleep only (0–23, wraps both ways) ────────────────────
+  // Shared by both the start and end row — same wrap-around arithmetic either way.
+
+  static void hourUp(int& hour, bool& updated_ui) {
+    hour = (hour + 1) % 24; updated_ui = true;
+  }
+
+  static void hourDown(int& hour, bool& updated_ui) {
+    hour = (hour + 23) % 24; updated_ui = true;
+  }
+
   // ── display ──────────────────────────────────────────────────────────────────
 
   template<class D, class F>
@@ -82,6 +109,7 @@ public:
                    int selected_idx, int contrast_level,
                    const std::string& ssid, const std::string& ip,
                    int battery_pct, int sleep_timeout_mins, int battery_interval_mins,
+                   int deep_sleep_fallback_mins, int quiet_hours_start, int quiet_hours_end,
                    bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
@@ -106,7 +134,7 @@ public:
     int offset = std::max(0, std::min(selected_idx - 1, SETTING_COUNT - VISIBLE));
 
     static const char* labels[SETTING_COUNT] = {
-      "CONTRAST", "BATTERY CHECK", "SLEEP", "WIFI", "IP"
+      "CONTRAST", "BATTERY CHECK", "SLEEP", "DEEP SLEEP", "QUIET FROM", "QUIET TO", "WIFI", "IP"
     };
 
     for (int slot = 0; slot < VISIBLE; slot++) {
@@ -168,6 +196,27 @@ public:
           it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
           break;
         }
+
+        case SETTING_DEEP_AFTER: {
+          char buf[10];
+          formatMinutes(deep_sleep_fallback_mins, buf, sizeof(buf));
+          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
+          break;
+        }
+
+        case SETTING_QUIET_FROM: {
+          char buf[8];
+          formatHour(quiet_hours_start, buf, sizeof(buf));
+          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
+          break;
+        }
+
+        case SETTING_QUIET_TO: {
+          char buf[8];
+          formatHour(quiet_hours_end, buf, sizeof(buf));
+          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
+          break;
+        }
       }
     }
 
@@ -177,6 +226,13 @@ public:
   }
 
 private:
+
+  // Format an hour-of-day (0-23) as "HH:00". Equal start/end quiet-hours
+  // values mean the schedule is disabled — shown as-is, no special case;
+  // the "same time twice" is the disabled indicator.
+  static void formatHour(int hour, char* buf, int buf_size) {
+    snprintf(buf, buf_size, "%02d:00", ((hour % 24) + 24) % 24);
+  }
 
   // Format minutes → "X MIN" (< 60), "X H" (whole hours), or "XH MM" (mixed)
   static void formatMinutes(int mins, char* buf, int buf_size) {

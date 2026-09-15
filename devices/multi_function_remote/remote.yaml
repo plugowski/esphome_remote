@@ -21,17 +21,28 @@ substitutions:
   # deep_sleep.enter — ~10uA, months of standby, but every wake reboots
   # (WiFi reassociates, API reconnects) before the first press lands.
   # true ("Light Sleep"): the idle timeout only blanks the display and
-  # keeps running — WiFi/API stay associated, so a press is instant with
-  # no reconnect at all. CONFIG_PM_ENABLE (see esp32.framework below)
-  # lets the CPU itself drop into automatic light sleep between ticks
-  # while blanked, for whatever current savings that yields on the actual
-  # board. DEEP_SLEEP_FALLBACK_MIN below is the safety net against
-  # leaving it powered like this indefinitely if it's put away unused.
+  # keeps running (full CPU clock — no automatic light sleep of its own;
+  # that was tried via CONFIG_PM_ENABLE and reverted, see esp32.framework
+  # below) — WiFi/API stay associated, so a press is instant with no
+  # reconnect at all. DEEP_SLEEP_FALLBACK_MIN below is the safety net
+  # against leaving it powered like this indefinitely if it's put away
+  # unused.
   USE_LIGHT_SLEEP: "false"
-  # Only consulted when USE_LIGHT_SLEEP is true: total minutes of inactivity
-  # (same last-press clock SLEEP_TIMEOUT_MIN uses, so this must be larger)
-  # before falling back to a real deep sleep anyway.
+  # Only consulted when USE_LIGHT_SLEEP is true. Both are adjustable later on
+  # the physical Settings screen (they're just defaults here):
+  #   DEEP_SLEEP_FALLBACK_MIN — total minutes of inactivity (same last-press
+  #     clock SLEEP_TIMEOUT_MIN uses, so this must be larger) before falling
+  #     back to a real deep sleep anyway, outside quiet hours.
+  #   QUIET_HOURS_START / QUIET_HOURS_END — 0-23 hour range (wraps past
+  #     midnight when start > end) during which an idle device deep-sleeps
+  #     right after the normal SLEEP_TIMEOUT_MIN blank instead of waiting for
+  #     the long fallback — e.g. 19/6 for "asleep by 7pm, up by 6am unless
+  #     it's actually being used". Equal values (the "0"/"0" default) disable
+  #     the schedule entirely. A press at any time still wakes it instantly
+  #     regardless of quiet hours — this only affects the *idle* decision.
   DEEP_SLEEP_FALLBACK_MIN: "60"
+  QUIET_HOURS_START: "0"
+  QUIET_HOURS_END: "0"
 
 packages:
   menu:        !include packages/menu.yaml
@@ -96,9 +107,6 @@ esphome:
     - src/automation_controller.h
     - src/settings_controller.h
   on_boot:
-    - priority: 900
-      then:
-        - lambda: 'configure_power_management();'
     - priority: 700
       then:
         - lambda: 'id(is_timer_wake) = is_timer_wakeup();'
@@ -162,16 +170,13 @@ esp32:
     sdkconfig_options:
       CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP: "y"
       CONFIG_BOOTLOADER_LOG_LEVEL_NONE: "y"
-      # Automatic light sleep: FreeRTOS drops the CPU into light sleep on its
-      # own whenever nothing is runnable, for the whole awake window — no
-      # app-level scheduling needed. NOT YET VALIDATED ON HARDWARE: whether
-      # the scheduler actually goes idle long enough for this to engage (vs.
-      # just getting dynamic frequency scaling) can only be confirmed with a
-      # real current measurement. See configure_power_management() in
-      # wake_utils.h.
-      CONFIG_PM_ENABLE: "y"
-      CONFIG_FREERTOS_USE_TICKLESS_IDLE: "y"
-      CONFIG_PM_DFS_INIT_AUTO: "y"
+      # CONFIG_PM_ENABLE (automatic FreeRTOS-tickless-idle light sleep) was
+      # tried here and reverted: on real hardware it destabilized WiFi/API
+      # (dropped connections, "took a long time" component warnings from the
+      # resulting frequency scaling) and crashed (StoreProhibited) when
+      # combined with deep_sleep.enter. The actual Light Sleep *strategy*
+      # (USE_LIGHT_SLEEP — display off, WiFi/API stay associated) does not
+      # depend on this and is unaffected by removing it.
 
 wifi:
   ssid: !secret wifi_ssid
@@ -220,6 +225,14 @@ deep_sleep:
     number: ${PIN_WAKE}
     allow_other_uses: true
   wakeup_pin_mode: INVERT_WAKEUP
+
+# Only used to know the hour-of-day for quiet hours (a Light Sleep build's
+# scheduled deep-sleep window). No explicit timezone: — ESPHome auto-detects
+# it from the machine that compiles this; override with `timezone: "..."` here
+# if that's wrong (e.g. a UTC build container) for your actual location.
+time:
+  - platform: sntp
+    id: sntp_time
 
 i2c:
   sda: ${PIN_I2C_SDA}
@@ -279,11 +292,9 @@ globals:
   - id: is_light_sleeping  # display blanked by the idle timeout in a Light
     type: bool             # Sleep build; the device is otherwise still
     initial_value: 'false' # fully running (WiFi/API stay associated).
-
-  - id: deep_sleep_fallback_mins
-    type: int
-    initial_value: '${DEEP_SLEEP_FALLBACK_MIN}'
-    restore_value: true
+    # deep_sleep_fallback_mins / quiet_hours_start / quiet_hours_end live in
+    # packages/mode_settings.yaml, alongside the rest of the Settings-screen-
+    # adjustable globals.
 
   - id: is_timer_wake      # true when woken by RTC timer (battery check only)
     type: bool
@@ -297,9 +308,9 @@ globals:
 # ── core scripts ──────────────────────────────────────────────────────────────
 script:
 
-  # Idle-timeout path — respects the configured sleep strategy. The physical
-  # Power Off button goes straight to power_off_pressed instead (an explicit
-  # press always means "off now", regardless of strategy).
+  # Both the idle timeout AND the physical Power Off button land here — a
+  # Light Sleep build never deep-sleeps on demand, only via
+  # deep_sleep_fallback below (long idle, or quiet hours).
   - id: turn_off
     mode: single
     then:
@@ -310,25 +321,21 @@ script:
                 id(is_light_sleeping) = true;
                 id(oled_display)->turn_off();
           else:
-            - script.execute: power_off_pressed
+            - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
+            - delay: 1s
+            - lambda: |-
+                id(oled_display)->clear();
+                id(oled_display)->display();
+            - delay: 500ms
+            - output.turn_off: oled_power
+            - delay: 5ms
+            - deep_sleep.enter:
+                sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
 
-  - id: power_off_pressed
-    mode: single
-    then:
-      - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
-      - delay: 1s
-      - lambda: |-
-          id(oled_display)->clear();
-          id(oled_display)->display();
-      - delay: 500ms
-      - output.turn_off: oled_power
-      - delay: 5ms
-      - deep_sleep.enter:
-          sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
-
-  # Safety net for a Light Sleep build left blanked-but-awake and forgotten:
-  # a real deep sleep once DEEP_SLEEP_FALLBACK_MIN of total inactivity has
-  # passed (checked from the interval below).
+  # Reached only from a Light Sleep build's blanked (is_light_sleeping) idle
+  # state: either DEEP_SLEEP_FALLBACK_MIN of total inactivity passed (put
+  # away and forgotten), or it's currently within quiet hours (see the
+  # interval below) — no power-off animation, nobody's watching by then.
   - id: deep_sleep_fallback
     mode: single
     then:
@@ -406,10 +413,17 @@ interval:
                 then:
                   # Already blanked (Light Sleep) — main_update has nothing
                   # to draw to a display that's off, so the only thing left
-                  # to check here is the long-idle deep-sleep fallback.
+                  # to check here is: are we within quiet hours (deep-sleep
+                  # right away instead of waiting for the long fallback), or
+                  # has the long fallback itself elapsed?
                   - if:
                       condition:
-                        lambda: 'return RemoteCore::isIdle(id(last_active), id(deep_sleep_fallback_mins) * 60);'
+                        lambda: |-
+                          auto t = id(sntp_time)->now();
+                          bool quiet = t.is_valid() && RemoteCore::inQuietHours(
+                            t.hour, id(quiet_hours_start), id(quiet_hours_end));
+                          return quiet || RemoteCore::isIdle(
+                            id(last_active), id(deep_sleep_fallback_mins) * 60);
                       then: [ script.execute: deep_sleep_fallback ]
                 else:
                   - if:

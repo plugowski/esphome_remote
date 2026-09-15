@@ -78,6 +78,15 @@ public:
     return (static_cast<int>(millis() / 1000) - last_active) >= timeout_s;
   }
 
+  // Quiet hours for a Light Sleep build: true when hour (0-23) falls in
+  // [start, end), wrapping past midnight when start > end (e.g. 19..6).
+  // start == end means the schedule is disabled — always returns false.
+  static bool inQuietHours(int hour, int start_hour, int end_hour) {
+    if (start_hour == end_hour) return false;
+    if (start_hour < end_hour) return hour >= start_hour && hour < end_hour;
+    return hour >= start_hour || hour < end_hour;
+  }
+
   // Connection-status glyph, drawn as a small overlay in the top-right corner
   // of whichever mode screen is already on-screen. Call from inside a mode's
   // draw(), right before it->display(), instead of blocking that mode's whole
