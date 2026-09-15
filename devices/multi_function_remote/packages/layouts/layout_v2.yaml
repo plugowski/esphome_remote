@@ -32,10 +32,7 @@ binary_sensor:
     internal: true
     filters: [ invert: ]
     on_press:
-      # An explicit press always means "power off now" — a real deep sleep,
-      # even on a Light Sleep build. turn_off (the idle-timeout path) is the
-      # one that respects the configured sleep strategy.
-      then: [ script.execute: power_off_pressed ]
+      then: [ script.execute: turn_off ]
 
   # ── ← left ────────────────────────────────────────────────────────────────
   - platform: gpio

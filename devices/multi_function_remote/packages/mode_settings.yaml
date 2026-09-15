@@ -84,6 +84,23 @@ globals:
     initial_value: '60'
     restore_value: true
 
+  # ── Light Sleep only (USE_LIGHT_SLEEP) — inert on a Deep Sleep build ────────
+
+  - id: deep_sleep_fallback_mins  # total idle minutes before a real deep sleep (5–1440)
+    type: int
+    initial_value: '${DEEP_SLEEP_FALLBACK_MIN}'
+    restore_value: true
+
+  - id: quiet_hours_start   # 0–23; equal to quiet_hours_end disables the schedule
+    type: int
+    initial_value: '${QUIET_HOURS_START}'
+    restore_value: true
+
+  - id: quiet_hours_end     # 0–23; deep-sleeps right after the SLEEP_TIMEOUT_MIN
+    type: int               # blank (instead of waiting for deep_sleep_fallback_mins)
+    initial_value: '${QUIET_HOURS_END}'  # whenever the current hour is in [start, end).
+    restore_value: true
+
 # ── scripts ───────────────────────────────────────────────────────────────────
 script:
 
@@ -112,6 +129,18 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
           then:
             - lambda: 'SettingsController::battIntervalDown(id(battery_interval_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_DEEP_AFTER;' }
+          then:
+            - lambda: 'SettingsController::deepAfterDown(id(deep_sleep_fallback_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_FROM;' }
+          then:
+            - lambda: 'SettingsController::hourDown(id(quiet_hours_start), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
+          then:
+            - lambda: 'SettingsController::hourDown(id(quiet_hours_end), id(updated_ui));'
       - script.execute: settings_draw
 
   - id: settings_btn_right
@@ -129,6 +158,18 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
           then:
             - lambda: 'SettingsController::battIntervalUp(id(battery_interval_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_DEEP_AFTER;' }
+          then:
+            - lambda: 'SettingsController::deepAfterUp(id(deep_sleep_fallback_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_FROM;' }
+          then:
+            - lambda: 'SettingsController::hourUp(id(quiet_hours_start), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
+          then:
+            - lambda: 'SettingsController::hourUp(id(quiet_hours_end), id(updated_ui));'
       - script.execute: settings_draw
 
   - id: settings_apply_contrast
@@ -151,4 +192,5 @@ script:
                   id(selected_setting_index), id(contrast_level),
                   id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
                   id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+                  id(deep_sleep_fallback_mins), id(quiet_hours_start), id(quiet_hours_end),
                   id(updated_ui), id(conn_status));
