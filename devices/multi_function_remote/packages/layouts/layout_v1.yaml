@@ -2,16 +2,21 @@
 # Physical button layout for v1 hardware — original board.
 #
 # Pin assignment:
-#    0  power off       (shared with deep-sleep wake pin)
-#    5  ☰  menu         dedicated open / confirm menu button
-#   14  SELECT          AC: cycle entity  | Lights: next | Covers: next | Autos: next
-#   26  TOGGLE          AC: on/off        | Lights: toggle | Covers: open↔close | Autos: trigger
-#   22  MODE / <<       menu prev | AC: cycle HVAC mode | Lights: prev | Covers: close | Autos: L slot
-#   33  FAN  / >>       menu next | AC: cycle fan speed | Covers: open | Autos: R slot
-#   23  TEMP ↑  (primary)   AC: temp+ | Lights: brightness+ | Covers: pos+ | Autos: scroll▲
-#   17  TEMP ↑  (secondary) same as 23
-#   19  TEMP ↓  (primary)   AC: temp– | Lights: brightness– | Covers: pos– | Autos: scroll▼
-#   18  TEMP ↓  (secondary) same as 19
+#    0  power off  (shared with deep-sleep wake pin)
+#
+# Circle pad - menu/navigation, mostly unchanged mode-to-mode:
+#    5  MENU        menu: open / confirm            (also wakes a blanked screen)
+#   14  SELECT      AC: cycle entity | Lights: next | Covers: next | Autos: next
+#   26  TOGGLE      AC: power on/off | Lights: toggle | Covers: open<->close | Autos: trigger
+#   22  MODE / <<   menu: prev | AC: cycle HVAC mode | Lights: prev | Covers: close | Autos: L slot
+#   33  FAN  / >>   menu: next | AC: cycle fan speed | Covers: open | Autos: R slot
+#
+# +/- pair - adjusts whatever value the active mode exposes; each wired to
+# two GPIOs (this board's physical + and - buttons land on different pins):
+#   23,17  +  menu (quick action selected): scroll up | AC: temp+
+#             Lights: brightness+ | Covers: pos+ | Autos: prev in list
+#   19,18  -  menu (quick action selected): scroll down | AC: temp-
+#             Lights: brightness- | Covers: pos- | Autos: next in list
 #
 # This layout is SELF-CONTAINED — it dispatches directly to mode scripts.
 # It does NOT depend on packages/buttons.yaml (button semantics differ from v2).
@@ -82,7 +87,7 @@ binary_sensor:
             then:
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
-                  then: [ script.execute: ac_btn_mode ]
+                  then: [ script.execute: ac_btn_power_toggle ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
                   then: [ script.execute: lights_btn_toggle ]
@@ -190,6 +195,9 @@ binary_sensor:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
             then:
               - if:
+                  condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
+                  then: [ script.execute: menu_quick_up ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_up ]
               - if:
@@ -216,6 +224,9 @@ binary_sensor:
             condition:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
             then:
+              - if:
+                  condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
+                  then: [ script.execute: menu_quick_up ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_up ]
@@ -244,6 +255,9 @@ binary_sensor:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
             then:
               - if:
+                  condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
+                  then: [ script.execute: menu_quick_down ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_down ]
               - if:
@@ -270,6 +284,9 @@ binary_sensor:
             condition:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
             then:
+              - if:
+                  condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
+                  then: [ script.execute: menu_quick_down ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_down ]
