@@ -56,21 +56,25 @@ public:
     last_active = millis() / 1000;
   }
 
-  // Call from every button handler instead of resetIdleTimer() directly.
-  // In Light Sleep builds the idle timeout blanks the display but keeps
-  // WiFi/API associated rather than rebooting from deep sleep, so "waking
-  // up" on the next press is just turning the panel back on here — no
-  // reinit needed, the SSD1306/SH1106 controller keeps its RAM/config
-  // while off (0xAE), and the caller's own *_draw script (already called
-  // synchronously right after this) fills it in with no visible delay.
-  // A no-op in Deep Sleep builds: is_light_sleeping is never true there.
+  // Call from every button handler instead of resetIdleTimer() directly, and
+  // gate the handler's normal action on its (negated) return value — see
+  // any binary_sensor in packages/layouts/. In Light Sleep builds the idle
+  // timeout blanks the display but keeps WiFi/API associated rather than
+  // rebooting from deep sleep; when a press lands on a blanked screen, this
+  // wakes it (no reinit needed — the SSD1306/SH1106 controller keeps its
+  // RAM/config while off, 0xAE) and reports "consumed" so the caller skips
+  // its normal action this press — matching a phone screen, where the first
+  // tap after screen-off only wakes it, nothing underneath it fires. A
+  // no-op in Deep Sleep builds: is_light_sleeping is never true there, so
+  // this always returns false and behaves exactly like resetIdleTimer.
   template<class D>
-  static void onUserActivity(D* it, int& last_active, bool& is_light_sleeping, bool& updated_ui) {
+  static bool onUserActivity(D* it, int& last_active, bool& is_light_sleeping, bool& updated_ui) {
     resetIdleTimer(last_active);
-    if (!is_light_sleeping) return;
+    if (!is_light_sleeping) return false;
     is_light_sleeping = false;
     it->turn_on();
     updated_ui = true;
+    return true;
   }
 
   // Returns true when the device has been idle for timeout_s seconds
