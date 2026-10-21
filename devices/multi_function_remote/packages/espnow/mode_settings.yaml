@@ -1,0 +1,134 @@
+# ── espnow/mode_settings.yaml ────────────────────────────────────────────────
+# Settings mode for the ESP-NOW remote — contrast, sleep timeout, battery
+# interval, link info.  Display logic lives in src/settings_controller.h.
+#
+# The two network rows of the shared settings screen are reused:
+#   WIFI row → "ESPNOW CH <n>"       (channel the hub answered on)
+#   IP row   → hub MAC, or "NO HUB"
+#
+# Battery sensor: raw ADC on GPIO34 through a 1:2 voltage divider.
+# battery_pct / battery_mv are also what hub_send_battery reports on timer wake.
+
+esphome:
+  includes:
+    - src/settings_controller.h
+
+sensor:
+  - platform: adc
+    pin: GPIO34
+    id: battery_raw
+    internal: true
+    attenuation: 11db
+    update_interval: 60s
+    filters:
+      - multiply: 2.0
+    on_value:
+      then:
+        - lambda: |-
+            id(battery_mv) = static_cast<int>(x * 1000.0f);
+            float pct = (x - 3.2f) / 1.0f * 100.0f;
+            id(battery_pct) = static_cast<int>((pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct);
+            id(updated_ui) = true;
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then: [ script.execute: settings_draw ]
+
+globals:
+  - id: selected_setting_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: contrast_level      # 1–10 (maps to 0.1–1.0)
+    type: int
+    initial_value: '5'
+    restore_value: true
+
+  - id: battery_pct         # 0–100, or -1 when not yet read
+    type: int
+    initial_value: '-1'
+
+  - id: battery_mv          # battery voltage in mV (0 = not yet read)
+    type: int
+    initial_value: '0'
+
+  - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
+    type: int
+    initial_value: '1'
+    restore_value: true
+
+  - id: battery_interval_mins  # timer-wake interval for battery report (15–1440 min)
+    type: int
+    initial_value: '60'
+    restore_value: true
+
+script:
+
+  - id: settings_btn_up
+    then:
+      - lambda: 'SettingsController::prevSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - script.execute: settings_draw
+
+  - id: settings_btn_down
+    then:
+      - lambda: 'SettingsController::nextSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - script.execute: settings_draw
+
+  - id: settings_btn_left
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_CONTRAST;' }
+          then:
+            - lambda: 'SettingsController::contrastDown(id(contrast_level), id(updated_ui));'
+            - script.execute: settings_apply_contrast
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_SLEEP;' }
+          then:
+            - lambda: 'SettingsController::sleepDown(id(sleep_timeout_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
+          then:
+            - lambda: 'SettingsController::battIntervalDown(id(battery_interval_mins), id(updated_ui));'
+      - script.execute: settings_draw
+
+  - id: settings_btn_right
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_CONTRAST;' }
+          then:
+            - lambda: 'SettingsController::contrastUp(id(contrast_level), id(updated_ui));'
+            - script.execute: settings_apply_contrast
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_SLEEP;' }
+          then:
+            - lambda: 'SettingsController::sleepUp(id(sleep_timeout_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
+          then:
+            - lambda: 'SettingsController::battIntervalUp(id(battery_interval_mins), id(updated_ui));'
+      - script.execute: settings_draw
+
+  - id: settings_apply_contrast
+    then:
+      - lambda: 'id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));'
+
+  - id: settings_update
+    then:
+      - lambda: 'if (id(selected_setting_index) >= SETTING_COUNT) id(selected_setting_index) = 0;'
+      - script.execute: settings_draw
+
+  - id: settings_draw
+    then:
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting);'
+          then:
+            - lambda: |-
+                std::string link = "ESPNOW CH " + std::to_string(id(espnow_channel));
+                std::string hub  = id(hub_known) ? "HUB " + EspNowRemote::macToString(id(hub_mac).data()).substr(9)
+                                                 : std::string("NO HUB");
+                SettingsController::draw(id(oled_display), id(font_small),
+                  id(selected_setting_index), id(contrast_level),
+                  link, hub,
+                  id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+                  id(updated_ui));

@@ -1,0 +1,284 @@
+# ── remote_espnow.yaml ───────────────────────────────────────────────────────
+# ESP-NOW variant of the multi-function remote.
+#
+# No WiFi, no Home Assistant API on the remote.  A mains-powered hub
+# (devices/espnow_hub/hub.yaml) keeps every entity state cached and relays
+# commands to Home Assistant.  On every wake the remote broadcasts HELLO,
+# receives the full snapshot within a few ms, and draws immediately.
+#
+# Shared with remote.yaml (WiFi variant): all src/*.h controllers and entity
+# lists, packages/menu.yaml, packages/buttons.yaml, packages/layouts/*.
+# ESP-NOW specific parts live in packages/espnow/.
+#
+# Setup:
+#   1. Set NETWORK_KEY to the same number as in hub.yaml.
+#   2. Set ESPNOW_CHANNEL to your router's 2.4 GHz channel (the hub follows
+#      the router; the remote scans all channels if this guess is wrong).
+#   3. Flash over USB (there is no OTA without WiFi):  make flash-espnow
+
+substitutions:
+  BOARD: "esp32dev"
+  DEVICE_NAME: "oled-remote-espnow"
+  FRIENDLY_NAME: "OLED Remote ESP-NOW"
+  NETWORK_KEY: "305419896"      # uint32, must match hub.yaml
+  ESPNOW_CHANNEL: "1"           # router channel guess (1-13)
+  PIN_WAKE: "0"
+  PIN_I2C_SDA: "27"
+  PIN_I2C_SCL: "25"
+
+packages:
+  transport:   !include packages/espnow/transport.yaml
+  menu:        !include packages/menu.yaml
+  ac:          !include packages/espnow/mode_ac.yaml
+  lights:      !include packages/espnow/mode_lights.yaml
+  covers:      !include packages/espnow/mode_covers.yaml
+  automations: !include packages/espnow/mode_automations.yaml
+  settings:    !include packages/espnow/mode_settings.yaml
+  buttons:     !include packages/buttons.yaml
+  layout:      !include packages/layouts/layout_v2.yaml
+  screenshot:  !include packages/screenshot.yaml
+
+# ── fonts shared across all modes ────────────────────────────────────────────
+font:
+  - file: "fonts/arial_bold.ttf"
+    id: font_base
+    size: 14
+    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:"
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_small
+    size: 10
+    glyphs:
+      - "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890.%:- <>"
+      - "▲"  # ▲ (list up)
+      - "▼"  # ▼ (list down)
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_bigger
+    size: 28
+    glyphs: "ADEGHILMOTUWRY0123456789%"
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_big
+    size: 40
+    glyphs: "ADEGHILMOTUWRY0123456789%"
+
+# ── core esphome config ───────────────────────────────────────────────────────
+esphome:
+  name: ${DEVICE_NAME}
+  friendly_name: ${FRIENDLY_NAME}
+  min_version: 2025.10.0
+  name_add_mac_suffix: false
+  includes:
+    - src/menu_entities.h
+    - src/quick_action_entities.h
+    - src/remote_core.h
+    - src/wake_utils.h
+    - src/display_utils.h
+    - src/menu_controller.h
+    - src/ac_entities.h
+    - src/ac_controller.h
+    - src/light_entities.h
+    - src/lights_controller.h
+    - src/cover_entities.h
+    - src/cover_controller.h
+    - src/automation_entities.h
+    - src/automation_controller.h
+    - src/settings_controller.h
+    - src/espnow_protocol.h
+    - src/espnow_remote.h
+  on_boot:
+    - priority: 700
+      then:
+        - lambda: 'id(is_timer_wake) = is_timer_wakeup();'
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then:
+              - output.turn_on: oled_power
+              - delay: 10ms
+    - priority: 250
+      then:
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then:
+              - lambda: |-
+                  if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
+                  RemoteCore::resetIdleTimer(id(last_active));
+                  id(is_booting) = true;
+    - priority: -200        # runs after all components (incl. espnow) are set up
+      then:
+        - if:
+            condition: { lambda: 'return id(is_timer_wake);' }
+            then:
+              # Timer wake: read battery, report it to the hub, sleep again
+              - component.update: battery_raw
+              - delay: 50ms
+              - script.execute: hub_send_battery
+              - script.wait: hub_send_battery
+              - deep_sleep.enter:
+                  sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
+            else:
+              # Normal wake: HELLO → snapshot → draw
+              - script.execute: hub_connect
+              - script.wait: hub_connect
+              - lambda: |-
+                  id(is_booting) = false;
+                  id(updated_ui) = true;
+
+esp32:
+  board: ${BOARD}
+  framework:
+    type: arduino
+
+logger:
+  level: INFO               # DEBUG adds noticeable boot time on the serial port
+
+output:
+  - platform: gpio
+    pin: 15
+    id: oled_power
+
+deep_sleep:
+  id: go_sleep
+  wakeup_pin:
+    number: ${PIN_WAKE}
+    allow_other_uses: true
+  wakeup_pin_mode: INVERT_WAKEUP
+
+i2c:
+  sda: ${PIN_I2C_SDA}
+  scl: ${PIN_I2C_SCL}
+  frequency: 400kHz
+  scan: false
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1106 128x64"
+    address: 0x3C
+    rotation: 180
+    contrast: 0.5
+    id: oled_display
+
+# ── shared globals ────────────────────────────────────────────────────────────
+globals:
+  - id: app_mode          # APP_* constant of the active controller
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: menu_active
+    type: bool
+    initial_value: 'false'
+
+  - id: menu_index
+    type: int
+    initial_value: '0'
+
+  - id: debounce_active
+    type: bool
+    initial_value: 'false'
+
+  - id: last_active
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: updated_ui
+    type: bool
+    initial_value: 'true'
+
+  - id: is_booting
+    type: bool
+    initial_value: 'true'
+
+  - id: is_shutting_down
+    type: bool
+    initial_value: 'false'
+
+  - id: is_timer_wake      # true when woken by RTC timer (battery report only)
+    type: bool
+    initial_value: 'false'
+
+  - id: conn_status         # 0=ok  3=no hub   (1/2 unused in the ESP-NOW variant)
+    type: int
+    initial_value: '0'
+
+# ── core scripts ──────────────────────────────────────────────────────────────
+script:
+
+  - id: turn_off
+    mode: single
+    then:
+      - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
+      - delay: 1s
+      - lambda: |-
+          id(oled_display)->clear();
+          id(oled_display)->display();
+      - delay: 500ms
+      - output.turn_off: oled_power
+      - delay: 5ms
+      - deep_sleep.enter:
+          sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
+
+  - id: boot_screen
+    then:
+      - lambda: 'RemoteCore::drawBoot(id(oled_display), id(menu_icon_big), id(font_small));'
+
+  # dispatches to the active mode's update/draw on every interval tick
+  - id: main_update
+    then:
+      - if:
+          condition: { lambda: 'return !id(is_shutting_down);' }
+          then:
+            - if:
+                condition: { lambda: 'return id(is_booting);' }
+                then: [ script.execute: boot_screen ]
+                else:
+                  - if:
+                      condition: { lambda: 'return id(conn_status) != 0;' }
+                      then:
+                        - lambda: 'RemoteCore::drawConnError(id(oled_display), id(font_base), id(font_small), id(conn_status));'
+                      else:
+                        - if:
+                            condition: { lambda: 'return id(menu_active);' }
+                            then: [ script.execute: menu_draw ]
+                            else:
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                                  then: [ script.execute: ac_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                                  then: [ script.execute: lights_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                                  then: [ script.execute: covers_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
+                                  then: [ script.execute: automations_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
+                                  then: [ script.execute: settings_update ]
+
+# ── main loop ─────────────────────────────────────────────────────────────────
+interval:
+  - interval: 500ms
+    then:
+      - if:
+          condition: { lambda: 'return !id(is_timer_wake);' }
+          then:
+            - if:
+                condition:
+                  lambda: 'return RemoteCore::isIdle(id(last_active), id(sleep_timeout_mins) * 60);'
+                then: [ script.execute: turn_off ]
+                else: [ script.execute: main_update ]
+
+  # Keep trying to reach the hub while the NO HUB screen is shown
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(is_timer_wake) && !id(is_booting) && id(conn_status) == 3 && !id(hub_connect).is_running();'
+          then:
+            - script.execute: hub_connect
+            - script.wait: hub_connect
+            - lambda: 'if (id(conn_status) == 0) id(updated_ui) = true;'
