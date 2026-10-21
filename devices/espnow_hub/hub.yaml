@@ -1,0 +1,151 @@
+# ── hub.yaml ─────────────────────────────────────────────────────────────────
+# ESP-NOW hub for the OLED remote (devices/multi_function_remote/remote_espnow.yaml).
+#
+# A mains-powered ESP32 that stays connected to WiFi + Home Assistant, keeps
+# the state of every entity from the remote's entity lists cached, and:
+#   • answers a remote's HELLO with a full snapshot (STATE_AC / LIGHTS /
+#     COVERS / DONE) within a few milliseconds,
+#   • broadcasts changes to all awake remotes,
+#   • executes CMD packets as Home Assistant service calls,
+#   • exposes the last reported remote battery as HA sensors.
+#
+# Entity configuration is NOT duplicated here: the hub includes the same
+# src/*_entities.h files as the remote.  Rebuild + flash the hub and the
+# remote(s) whenever those lists change (indices must match on both sides).
+#
+# Setup:
+#   1. secrets.yaml → wifi_ssid / wifi_password
+#   2. NETWORK_KEY  → same number as in remote_espnow.yaml
+#   3. API_KEY      → any 32-byte base64 key (see repository README)
+#   4. make hub-flash  (from devices/multi_function_remote) or esphome run hub.yaml
+#
+# The hub follows the router's WiFi channel automatically; the remote scans
+# for it.  Keep the router on a fixed 2.4 GHz channel for the fastest wake.
+
+substitutions:
+  BOARD: "esp32dev"
+  DEVICE_NAME: "espnow-hub"
+  FRIENDLY_NAME: "ESP-NOW Remote Hub"
+  API_KEY: "8s07kGR8NLaKSRpxpbClUWh9GvY7Afh8qHc4DkyKe4w="
+  NETWORK_KEY: "305419896"      # uint32, must match remote_espnow.yaml
+
+esphome:
+  name: ${DEVICE_NAME}
+  friendly_name: ${FRIENDLY_NAME}
+  min_version: 2025.10.0
+  name_add_mac_suffix: false
+  includes:
+    - ../multi_function_remote/src/espnow_protocol.h
+    - ../multi_function_remote/src/ac_entities.h
+    - ../multi_function_remote/src/light_entities.h
+    - ../multi_function_remote/src/cover_entities.h
+    - ../multi_function_remote/src/automation_entities.h
+    - ../multi_function_remote/src/quick_action_entities.h
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            id(hub).set_battery_sensor(id(remote_battery));
+            id(hub).set_battery_voltage_sensor(id(remote_battery_voltage));
+            id(hub).set_last_remote_sensor(id(last_remote));
+
+esp32:
+  board: ${BOARD}
+  framework:
+    type: arduino
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: NONE         # required: modem sleep drops ESP-NOW packets
+  fast_connect: true
+
+api:
+  encryption:
+    key: ${API_KEY}
+  homeassistant_services: true  # the hub calls HA services from C++
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+
+logger:
+  level: INFO
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ remote_hub ]
+
+espnow:
+  id: espnow_bus
+  auto_add_peer: true           # every remote that talks to us becomes a peer
+  on_broadcast:
+    - then:
+        - lambda: 'id(hub).handle_packet(info.src_addr, data, size);'
+  on_receive:
+    - then:
+        - lambda: 'id(hub).handle_packet(info.src_addr, data, size);'
+
+remote_hub:
+  id: hub
+  network_key: ${NETWORK_KEY}
+
+# ── HA entities exposed by the hub ───────────────────────────────────────────
+sensor:
+  - platform: template
+    id: remote_battery
+    name: "Remote Battery"
+    unit_of_measurement: "%"
+    device_class: battery
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+  - platform: template
+    id: remote_battery_voltage
+    name: "Remote Battery Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: never
+
+  - platform: template
+    name: "ESP-NOW Packets Received"
+    lambda: 'return id(hub).packets_rx();'
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    update_interval: 60s
+
+  - platform: wifi_signal
+    name: "Hub WiFi Signal"
+    entity_category: diagnostic
+    update_interval: 60s
+
+text_sensor:
+  - platform: template
+    id: last_remote
+    name: "Last Remote"
+    icon: mdi:remote
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: wifi_info
+    ip_address:
+      name: "Hub IP"
+      entity_category: diagnostic
+
+button:
+  - platform: template
+    name: "Resync Remotes"
+    icon: mdi:sync
+    entity_category: config
+    on_press:
+      - lambda: 'id(hub).broadcast_all();'
+
+  - platform: restart
+    name: "Hub Restart"
+    entity_category: config

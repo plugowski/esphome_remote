@@ -1,0 +1,115 @@
+# ── espnow/mode_covers.yaml ──────────────────────────────────────────────────
+# Covers mode over ESP-NOW.  Cover state/position arrive in STATE_COVERS
+# packets (pushed into CoverController by EspNowRemote::handle); commands go
+# out as rnp::CMD packets.  Entity configuration lives in src/cover_entities.h.
+#
+# Button entry points (via buttons.yaml / layout):
+#   covers_btn_left / covers_btn_right   → previous / next cover
+#   covers_btn_open / _close / _stop / _ok
+#   covers_btn_pos_up / _down            → ±10 %
+# Main update loop: covers_update
+
+esphome:
+  includes:
+    - src/cover_entities.h
+    - src/cover_controller.h
+
+globals:
+  - id: selected_cover_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+script:
+
+  - id: covers_btn_left
+    then:
+      - lambda: 'CoverController::prevCover(id(selected_cover_index));'
+      - script.execute: covers_select
+
+  - id: covers_btn_right
+    then:
+      - lambda: 'CoverController::nextCover(id(selected_cover_index));'
+      - script.execute: covers_select
+
+  - id: covers_select
+    then:
+      - lambda: 'id(updated_ui) = true;'
+      - script.execute: covers_draw
+
+  - id: covers_btn_open
+    then:
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_COVERS;'
+          idx: !lambda 'return id(selected_cover_index);'
+          action: !lambda 'return rnp::COVER_OPEN;'
+          value: 0
+
+  - id: covers_btn_close
+    then:
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_COVERS;'
+          idx: !lambda 'return id(selected_cover_index);'
+          action: !lambda 'return rnp::COVER_CLOSE;'
+          value: 0
+
+  - id: covers_btn_stop
+    then:
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_COVERS;'
+          idx: !lambda 'return id(selected_cover_index);'
+          action: !lambda 'return rnp::COVER_STOP;'
+          value: 0
+
+  - id: covers_btn_ok
+    then:
+      - if:
+          condition:
+            lambda: 'return CoverController::isClosed(id(selected_cover_index));'
+          then: [ script.execute: covers_btn_open ]
+          else: [ script.execute: covers_btn_close ]
+
+  - id: covers_btn_pos_up
+    then:
+      - lambda: 'CoverController::positionUp(id(selected_cover_index), id(updated_ui));'
+      - script.execute: covers_do_position
+      - script.execute: covers_draw
+
+  - id: covers_btn_pos_down
+    then:
+      - lambda: 'CoverController::positionDown(id(selected_cover_index), id(updated_ui));'
+      - script.execute: covers_do_position
+      - script.execute: covers_draw
+
+  - id: covers_do_position
+    mode: restart
+    then:
+      - delay: 300ms    # debounce — coalesce rapid presses before sending
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_COVERS;'
+          idx: !lambda 'return id(selected_cover_index);'
+          action: !lambda 'return rnp::COVER_SET_POSITION;'
+          value: !lambda 'return CoverController::getPosition(id(selected_cover_index));'
+
+  # ── display ───────────────────────────────────────────────────────────────
+
+  - id: covers_update
+    then:
+      - lambda: 'if (id(selected_cover_index) >= COVER_LIST_COUNT) id(selected_cover_index) = 0;'
+      - script.execute: covers_draw
+
+  - id: covers_draw
+    then:
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_COVERS && !id(menu_active) && !id(is_booting);'
+          then:
+            - lambda: >-
+                CoverController::draw(id(oled_display),
+                  id(ac_symbols), id(menu_icon_small),
+                  id(font_big), id(font_base), id(font_small),
+                  id(selected_cover_index), id(updated_ui));
