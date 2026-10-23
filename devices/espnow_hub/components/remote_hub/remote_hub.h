@@ -63,6 +63,8 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
     uint32_t exp_mode_at{0}, exp_fan_at{0}, exp_temp_at{0};
     bool due{false};
     uint32_t due_at{0};
+    bool repeat{false};  // announce the result once more shortly after applying it
+    uint32_t repeat_at{0};
   };
   struct LightState {
     uint8_t on{rnp::LIGHT_UNKNOWN};
@@ -94,6 +96,8 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   static std::string mac_str_(const uint8_t *mac);
   static uint8_t pct_from_ha_(const std::string &v, float scale);
 
+  uint8_t last_src_[6]{0, 0, 0, 0, 0, 0};  // remote that sent the latest AC command
+  bool have_src_{false};
   uint32_t key_{0};
   sensor::Sensor *battery_sensor_{nullptr};
   sensor::Sensor *battery_voltage_sensor_{nullptr};
