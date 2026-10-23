@@ -18,10 +18,13 @@ namespace remote_hub {
 
 static const char *const TAG = "remote_hub";
 static const uint32_t PUSH_DEBOUNCE_MS = 150;
-// AC commands are applied this long after the last one. Temperature and fan are stepped through
-// with repeated presses, so they wait longer than a mode/power change (ON then OFF must still merge).
-static const uint32_t SETTLE_MODE_MS = 700;
-static const uint32_t SETTLE_STEP_MS = 1500;
+// AC commands are applied after a short quiet period, so a single press reaches the AC quickly.
+// While presses keep coming (the previous one was less than BURST_GAP_MS ago) the wait grows to
+// SETTLE_BURST_MS so a run of taps ends up as one change.
+static const uint32_t SETTLE_MODE_MS = 500;
+static const uint32_t SETTLE_FIRST_MS = 600;
+static const uint32_t SETTLE_BURST_MS = 1000;
+static const uint32_t BURST_GAP_MS = 1200;
 static const uint32_t STEP_MS = 700;         // pause between a mode change and the fan / temperature
 static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stands in for HA's state
 
@@ -404,8 +407,12 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
       } else {
         return;
       }
-      uint32_t settle = (action == rnp::AC_SET_MODE) ? SETTLE_MODE_MS : SETTLE_STEP_MS;
-      uint32_t due_at = millis() + settle;
+      uint32_t now_ms = millis();
+      bool in_burst = g.last_cmd_at != 0 && (uint32_t) (now_ms - g.last_cmd_at) < BURST_GAP_MS;
+      g.last_cmd_at = now_ms;
+      uint32_t settle = (action == rnp::AC_SET_MODE) ? SETTLE_MODE_MS : (in_burst ? SETTLE_BURST_MS : SETTLE_FIRST_MS);
+      if (in_burst && settle < SETTLE_BURST_MS) settle = SETTLE_BURST_MS;
+      uint32_t due_at = now_ms + settle;
       // Never shorten a wait that is already running: a power press must not cut a temperature
       // sequence short.
       if (!g.due || (int32_t) (due_at - g.due_at) > 0) g.due_at = due_at;

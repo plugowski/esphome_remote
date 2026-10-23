@@ -11,7 +11,7 @@
 #   ac_btn_temp_up / _down, ac_btn_power_on / _off
 # Main update called by main_update: ac_update
 #
-# Sending: a change is sent when the selection differs from what the hub is
+# Sending: every press is sent at once, and a change is sent when the selection differs from what the hub is
 # known to have.  Right after a send that is the value just sent (ac_sent_*),
 # not the hub's older cached state, so a second press made before the hub has
 # answered (ON, then OFF) is still sent.  The hub waits for the presses to stop,
@@ -312,18 +312,18 @@ script:
       - script.execute: ac_set_selections
       - script.execute: ac_draw
 
-  # ── debounce (300 ms settle before sending) ───────────────────────────────
+  # ── tap guard (every press is sent at once; the hub decides what reaches the AC) ───────
+  # debounce_active only keeps a state frame from the hub from overwriting the selection while taps
+  # are still coming in (300 ms after the last one).
 
   - id: ac_await
     mode: restart
     then:
       - lambda: 'id(debounce_active) = true;'
+      # Send this press now, as an absolute value. The hub merges the presses and applies the result.
+      - script.execute: ac_update
       - delay: 300ms
       - lambda: 'id(debounce_active) = false;'
-      # Send the settled change now instead of waiting for the next 500ms
-      # interval tick — ac_update() also runs from the main loop, so this is
-      # only closing the gap between "debounce cleared" and "next tick".
-      - script.execute: ac_update
 
   # ── main AC update (called from main_update every 500 ms) ────────────────
 
@@ -339,15 +339,15 @@ script:
           }
       - if:
           condition:
-            lambda: 'return !id(debounce_active) && id(selected_ac_mode) != (id(ac_pending_command) ? id(ac_sent_mode) : id(current_ac_mode));'
+            lambda: 'return id(selected_ac_mode) != (id(ac_pending_command) ? id(ac_sent_mode) : id(current_ac_mode));'
           then: [ script.execute: ac_send_mode_update ]
       - if:
           condition:
-            lambda: 'return !id(debounce_active) && id(selected_fan_mode) != (id(ac_pending_command) ? id(ac_sent_fan) : id(current_fan_mode));'
+            lambda: 'return id(selected_fan_mode) != (id(ac_pending_command) ? id(ac_sent_fan) : id(current_fan_mode));'
           then: [ script.execute: ac_send_fan_update ]
       - if:
           condition:
-            lambda: 'return !id(debounce_active) && id(selected_temp) != (id(ac_pending_command) ? id(ac_sent_temp) : id(current_temp));'
+            lambda: 'return id(selected_temp) != (id(ac_pending_command) ? id(ac_sent_temp) : id(current_temp));'
           then: [ script.execute: ac_send_temp_update ]
       - script.execute: ac_set_current_states
       - script.execute: ac_draw
