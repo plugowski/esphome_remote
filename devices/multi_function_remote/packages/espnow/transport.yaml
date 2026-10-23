@@ -72,6 +72,10 @@ globals:
     type: int
     initial_value: '0'
 
+  - id: hub_verify              # extra HELLOs sent because the snapshot was incomplete
+    type: int
+    initial_value: '0'
+
   - id: rx_type                 # last received packet type (for hub_rx)
     type: int
     initial_value: '0'
@@ -147,6 +151,16 @@ script:
                   id(espnow_channel) = ch;
                 }
                 id(conn_status) = 0;
+            # STATE_DONE can arrive although a STATE_AC packet was lost on the way, which would
+            # leave the AC screen on its refresh icon until the next change. Ask again a few times.
+            - lambda: 'id(hub_verify) = 0;'
+            - while:
+                condition: { lambda: 'return !EspNowRemote::allAcKnown() && id(hub_verify) < 3;' }
+                then:
+                  - lambda: 'id(hub_verify)++;'
+                  - script.execute: hub_send_hello
+                  - script.wait: hub_send_hello
+                  - delay: 250ms
           else:
             - lambda: 'ESP_LOGW("hub", "Hub not found on any channel"); id(conn_status) = 3;'
 

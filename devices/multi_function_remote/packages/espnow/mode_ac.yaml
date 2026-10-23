@@ -107,6 +107,11 @@ globals:
     type: bool
     initial_value: 'false'
 
+  # Resends of the current change after the hub did not confirm it (see ac_mark_pending).
+  - id: ac_retries
+    type: int
+    initial_value: '0'
+
 # ── AC scripts ────────────────────────────────────────────────────────────────
 script:
 
@@ -260,20 +265,32 @@ script:
           action: !lambda 'return rnp::AC_SET_FAN;'
           value: !lambda 'return EspNowRemote::acFanValue(id(selected_ac_index), id(selected_fan_mode));'
 
-  # Pending flag: cleared when the hub echoes a matching state, or after 3 s.
+  # Pending flag: cleared when the hub echoes a matching state, or after 3 s.  The first timeout
+  # lets ac_update resend once; after that the remote gives up and takes the hub's state, so a
+  # unit that clamps or ignores a value cannot make it resend (and beep) forever.
   - id: ac_mark_pending
     mode: restart
     then:
       - lambda: 'id(ac_pending_command) = true;'
       - delay: 3s
-      - lambda: 'id(ac_pending_command) = false;'
+      - lambda: |-
+          id(ac_pending_command) = false;
+          id(ac_retries)++;
+      - if:
+          condition: { lambda: 'return id(ac_retries) > 1;' }
+          then:
+            - lambda: 'id(ac_retries) = 0;'
+            - script.execute: ac_set_selections
+            - script.execute: ac_draw
 
   # ── debounce (300 ms settle before sending) ───────────────────────────────
 
   - id: ac_await
     mode: restart
     then:
-      - lambda: 'id(debounce_active) = true;'
+      - lambda: |-
+          id(debounce_active) = true;
+          id(ac_retries) = 0;
       - delay: 300ms
       - lambda: 'id(debounce_active) = false;'
       # Send the settled change now instead of waiting for the next 500ms
@@ -291,6 +308,7 @@ script:
               id(selected_fan_mode) == id(current_fan_mode) &&
               id(selected_temp)    == id(current_temp)) {
             id(ac_pending_command) = false;
+            id(ac_retries) = 0;
             id(ac_mark_pending).stop();
           }
       - if:
