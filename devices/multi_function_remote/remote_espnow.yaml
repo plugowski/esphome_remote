@@ -25,6 +25,68 @@ substitutions:
   PIN_WAKE: "0"
   PIN_I2C_SDA: "27"
   PIN_I2C_SCL: "25"
+  PIN_OLED_EN: "15"
+  PIN_BAT_ADC: "32"
+  # "LIGHT" (default) lets the radio modem sleep between DTIM beacons while
+  # awake — lower average current, at the cost of a little response jitter.
+  # "NONE" keeps the radio fully powered for the whole awake window — more
+  # responsive in-session, meaningfully more current draw while awake.
+  WIFI_POWER_SAVE_MODE: "LIGHT"
+  # Idle-before-blanking-the-display timeout (minutes), adjustable later on
+  # the physical Settings screen. Applies the same way in both sleep
+  # strategies below — it's just "how long until the screen turns off",
+  # not the deep-sleep decision itself.
+  SLEEP_TIMEOUT_MIN: "2"
+  # false (default, "Deep Sleep"): the idle timeout goes straight to
+  # deep_sleep.enter — ~10uA, months of standby, but every wake reboots
+  # (WiFi reassociates, API reconnects) before the first press lands.
+  # true ("Light Sleep"): the idle timeout only blanks the display and
+  # keeps running (full CPU clock — no automatic light sleep of its own;
+  # that was tried via CONFIG_PM_ENABLE and reverted, see esp32.framework
+  # below) — WiFi/API stay associated, so a press is instant with no
+  # reconnect at all. DEEP_SLEEP_FALLBACK_MIN below is the safety net
+  # against leaving it powered like this indefinitely if it's put away
+  # unused.
+  USE_LIGHT_SLEEP: "false"
+  # Only consulted when USE_LIGHT_SLEEP is true. Both are adjustable later on
+  # the physical Settings screen (they're just defaults here):
+  #   DEEP_SLEEP_FALLBACK_MIN - total minutes of inactivity (same last-press
+  #     clock SLEEP_TIMEOUT_MIN uses, so this must be larger) before falling
+  #     back to a real deep sleep anyway, outside quiet hours. 0 disables
+  #     this fallback entirely - stays in Light Sleep indefinitely unless
+  #     quiet hours also apply.
+  #   QUIET_HOURS_START / QUIET_HOURS_END - 0-23 hour range (wraps past
+  #     midnight when start > end) during which an idle device deep-sleeps
+  #     right after the normal SLEEP_TIMEOUT_MIN blank instead of waiting for
+  #     the long fallback - e.g. 19/6 for "asleep by 7pm, up by 6am unless
+  #     it's actually being used". Equal values (the "0"/"0" default) disable
+  #     the schedule entirely. A press at any time still wakes it instantly
+  #     regardless of quiet hours - this only affects the *idle* decision.
+  DEEP_SLEEP_FALLBACK_MIN: "60"
+  # Set by the generator when its own "enable deep sleep between" fields are
+  # used: QUIET_HOURS_START/END get the chosen hours and this flips to
+  # "false", hiding the QUIET FROM/TO rows on the physical Settings screen —
+  # a schedule fixed at build time isn't meant to be end-user-adjustable.
+  # Left "true" (the default here), quiet hours stay off (0/0, disabled)
+  # until whoever has the remote sets them from the Settings screen itself.
+  QUIET_HOURS_ON_DEVICE: "true"
+  QUIET_HOURS_START: "0"
+  QUIET_HOURS_END: "0"
+  # Whether the Settings screen lists the BATTERY CHECK row at all — the
+  # underlying ADC sensor and its wake cadence keep running either way (that
+  # cadence is also the general timer-wake interval, not purely a battery
+  # concept, so it isn't removable without its own separate setting), this
+  # only controls whether the row is worth exposing.
+  BATTERY_ENABLED: "true"
+  # Default for BATTERY CHECK (battery_interval_mins), adjustable later on
+  # the physical Settings screen — this is just where it starts out.
+  BATTERY_INTERVAL_MIN: "60"
+  # 0 (default): disables the UART logger entirely - saves power and boot
+  # time. A real baud rate (e.g. 115200) is only needed for on-device
+  # debugging or tools/screenshot.py's serial capture. Remote logging over
+  # the Home Assistant API (and the HA-exposed Screenshot button) works
+  # either way - this only controls the raw USB-serial output.
+  LOGGER_BAUD_RATE: "0"
 
 packages:
   transport:   !include packages/espnow/transport.yaml
@@ -43,25 +105,25 @@ font:
   - file: "fonts/arial_bold.ttf"
     id: font_base
     size: 14
-    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:"
+    glyphs: "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:-/'&+(),!?#@"
 
   - file: "fonts/arial_bold.ttf"
     id: font_small
     size: 10
     glyphs:
-      - "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890.%:- <>"
-      - "▲"  # ▲ (list up)
-      - "▼"  # ▼ (list down)
+      - "0123456789.%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz _:-/'&+(),!?#@<>"
+      - "\u25b2"  # ▲ (list up)
+      - "\u25bc"  # ▼ (list down)
 
   - file: "fonts/arial_bold.ttf"
     id: font_bigger
     size: 28
-    glyphs: "ADEGHILMOTUWRY0123456789%"
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.%"
 
   - file: "fonts/arial_bold.ttf"
     id: font_big
     size: 40
-    glyphs: "ADEGHILMOTUWRY0123456789%"
+    glyphs: "ADEGHILMOTUWRY0123456789.%"
 
 # ── core esphome config ───────────────────────────────────────────────────────
 esphome:
@@ -105,6 +167,13 @@ esphome:
                   if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
                   RemoteCore::resetIdleTimer(id(last_active));
                   id(is_booting) = true;
+                  // The display's own `contrast:` config below is a fixed
+                  // value applied at setup - it doesn't know about the
+                  // restore_value'd contrast_level global, so every boot
+                  // otherwise reset the screen to that fixed default
+                  // instead of whatever the user last set on the physical
+                  // Settings screen.
+                  id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));
     - priority: -200        # runs after all components (incl. espnow) are set up
       then:
         - if:
@@ -128,14 +197,25 @@ esphome:
 esp32:
   board: ${BOARD}
   framework:
-    type: arduino
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP: "y"
+      CONFIG_BOOTLOADER_LOG_LEVEL_NONE: "y"
+      # CONFIG_PM_ENABLE (automatic FreeRTOS-tickless-idle light sleep) was
+      # tried here and reverted: on real hardware it destabilized WiFi/API
+      # (dropped connections, "took a long time" component warnings from the
+      # resulting frequency scaling) and crashed (StoreProhibited) when
+      # combined with deep_sleep.enter. The actual Light Sleep *strategy*
+      # (USE_LIGHT_SLEEP — display off, WiFi/API stay associated) does not
+      # depend on this and is unaffected by removing it.
 
 logger:
   level: INFO               # DEBUG adds noticeable boot time on the serial port
+  baud_rate: ${LOGGER_BAUD_RATE}
 
 output:
   - platform: gpio
-    pin: 15
+    pin: ${PIN_OLED_EN}
     id: oled_power
 
 deep_sleep:
@@ -164,6 +244,11 @@ globals:
   - id: app_mode          # APP_* constant of the active controller
     type: int
     initial_value: '0'
+    # restore_value (flash/NVS) rather than RTC memory: mode only changes on
+    # an explicit menu confirm, not every button press, so the flash-wear
+    # cost is low - and unlike RTC memory this survives an OTA reboot or a
+    # real power cycle, so the remote reopens where it was left instead of
+    # jumping back to AC/mode 0 the moment it's reflashed or loses power.
     restore_value: true
 
   - id: menu_active
@@ -187,13 +272,20 @@ globals:
     type: bool
     initial_value: 'true'
 
-  - id: is_booting
-    type: bool
-    initial_value: 'true'
+  - id: is_booting     # cleared in on_boot itself, before the main loop ever
+    type: bool         # runs — draw() calls gate on it mainly as a defensive
+    initial_value: 'true'  # guard against a button racing the very first frame.
 
   - id: is_shutting_down
     type: bool
     initial_value: 'false'
+
+  - id: is_light_sleeping  # display blanked by the idle timeout in a Light
+    type: bool             # Sleep build; the device is otherwise still
+    initial_value: 'false' # fully running (WiFi/API stay associated).
+    # deep_sleep_fallback_mins / quiet_hours_start / quiet_hours_end live in
+    # packages/mode_settings.yaml, alongside the rest of the Settings-screen-
+    # adjustable globals.
 
   - id: is_timer_wake      # true when woken by RTC timer (battery report only)
     type: bool
@@ -206,15 +298,38 @@ globals:
 # ── core scripts ──────────────────────────────────────────────────────────────
 script:
 
+  # Both the idle timeout AND the physical Power Off button land here — a
+  # Light Sleep build never deep-sleeps on demand, only via
+  # deep_sleep_fallback below (long idle, or quiet hours).
   - id: turn_off
     mode: single
     then:
-      - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
-      - delay: 1s
-      - lambda: |-
-          id(oled_display)->clear();
-          id(oled_display)->display();
-      - delay: 500ms
+      - if:
+          condition: { lambda: 'return ${USE_LIGHT_SLEEP};' }
+          then:
+            - lambda: |-
+                id(is_light_sleeping) = true;
+                id(oled_display)->turn_off();
+          else:
+            - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
+            - delay: 1s
+            - lambda: |-
+                id(oled_display)->clear();
+                id(oled_display)->display();
+            - delay: 500ms
+            - output.turn_off: oled_power
+            - delay: 5ms
+            - deep_sleep.enter:
+                sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
+
+  # Reached only from a Light Sleep build's blanked (is_light_sleeping) idle
+  # state: either DEEP_SLEEP_FALLBACK_MIN of total inactivity passed (put
+  # away and forgotten), or it's currently within quiet hours (see the
+  # interval below) — no power-off animation, nobody's watching by then.
+  - id: deep_sleep_fallback
+    mode: single
+    then:
+      - lambda: 'id(is_shutting_down) = true;'
       - output.turn_off: oled_power
       - delay: 5ms
       - deep_sleep.enter:

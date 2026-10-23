@@ -88,4 +88,4 @@ script:
           then:
             - lambda: >-
                 LightsController::draw(id(oled_display), id(font_small),
-                                       id(selected_light_index), id(updated_ui));
+                                       id(selected_light_index), id(updated_ui), id(conn_status));

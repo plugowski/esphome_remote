@@ -54,24 +54,47 @@ globals:
 
   - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
     type: int
-    initial_value: '1'
+    initial_value: '${SLEEP_TIMEOUT_MIN}'
     restore_value: true
 
-  - id: battery_interval_mins  # timer-wake interval for battery report (15–1440 min)
+  - id: battery_interval_mins  # timer-wake interval for battery check (15 min to 14 days)
     type: int
-    initial_value: '60'
+    initial_value: '${BATTERY_INTERVAL_MIN}'
+    restore_value: true
+
+  # ── Light Sleep only (USE_LIGHT_SLEEP) — inert on a Deep Sleep build ────────
+
+  - id: deep_sleep_fallback_mins  # total idle minutes before a real deep sleep (0=off, 5-1440)
+    type: int
+    initial_value: '${DEEP_SLEEP_FALLBACK_MIN}'
+    restore_value: true
+
+  - id: quiet_hours_start   # 0–23; equal to quiet_hours_end disables the schedule
+    type: int
+    initial_value: '${QUIET_HOURS_START}'
+    restore_value: true
+
+  - id: quiet_hours_end     # 0–23; deep-sleeps right after the SLEEP_TIMEOUT_MIN
+    type: int               # blank (instead of waiting for deep_sleep_fallback_mins)
+    initial_value: '${QUIET_HOURS_END}'  # whenever the current hour is in [start, end).
     restore_value: true
 
 script:
 
   - id: settings_btn_up
     then:
-      - lambda: 'SettingsController::prevSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - lambda: >-
+          SettingsController::prevSetting(id(selected_setting_index),
+            ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE});
+          id(updated_ui) = true;
       - script.execute: settings_draw
 
   - id: settings_btn_down
     then:
-      - lambda: 'SettingsController::nextSetting(id(selected_setting_index)); id(updated_ui) = true;'
+      - lambda: >-
+          SettingsController::nextSetting(id(selected_setting_index),
+            ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE});
+          id(updated_ui) = true;
       - script.execute: settings_draw
 
   - id: settings_btn_left
@@ -89,6 +112,27 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
           then:
             - lambda: 'SettingsController::battIntervalDown(id(battery_interval_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_DEEP_AFTER;' }
+          then:
+            - lambda: 'SettingsController::deepAfterDown(id(deep_sleep_fallback_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_FROM;' }
+          then:
+            - lambda: 'SettingsController::hourDown(id(quiet_hours_start), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
+          then:
+            - lambda: 'SettingsController::hourDown(id(quiet_hours_end), id(updated_ui));'
+      # restore_value globals only queue their NVS write - ESPHome's default
+      # preferences component batches the actual flash commit every 60s, so
+      # a value changed here would silently revert to its old default if
+      # the remote lost power (unplugged, battery pulled) inside that
+      # window, even though it "worked" as long as the device stayed
+      # powered afterward (e.g. Light Sleep). Force it through immediately -
+      # these are deliberate, infrequent button presses, not a hot loop, so
+      # the extra flash write is cheap.
+      - lambda: 'global_preferences->sync();'
       - script.execute: settings_draw
 
   - id: settings_btn_right
@@ -106,6 +150,21 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_BATT_INTERVAL;' }
           then:
             - lambda: 'SettingsController::battIntervalUp(id(battery_interval_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_DEEP_AFTER;' }
+          then:
+            - lambda: 'SettingsController::deepAfterUp(id(deep_sleep_fallback_mins), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_FROM;' }
+          then:
+            - lambda: 'SettingsController::hourUp(id(quiet_hours_start), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
+          then:
+            - lambda: 'SettingsController::hourUp(id(quiet_hours_end), id(updated_ui));'
+      # See the matching comment in settings_btn_left - forces the NVS write
+      # through now instead of leaving it queued for the periodic 60s flush.
+      - lambda: 'global_preferences->sync();'
       - script.execute: settings_draw
 
   - id: settings_apply_contrast
@@ -114,7 +173,9 @@ script:
 
   - id: settings_update
     then:
-      - lambda: 'if (id(selected_setting_index) >= SETTING_COUNT) id(selected_setting_index) = 0;'
+      - lambda: >-
+          SettingsController::sanitize(id(selected_setting_index),
+            ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE});
       - script.execute: settings_draw
 
   - id: settings_draw
@@ -131,4 +192,6 @@ script:
                   id(selected_setting_index), id(contrast_level),
                   link, hub,
                   id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
-                  id(updated_ui));
+                  id(deep_sleep_fallback_mins), id(quiet_hours_start), id(quiet_hours_end),
+                  ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE},
+                  id(updated_ui), id(conn_status));
