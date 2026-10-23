@@ -18,7 +18,10 @@ namespace remote_hub {
 
 static const char *const TAG = "remote_hub";
 static const uint32_t PUSH_DEBOUNCE_MS = 150;
-static const uint32_t SETTLE_MS = 900;       // AC commands are applied this long after the last one
+// AC commands are applied this long after the last one. Temperature and fan are stepped through
+// with repeated presses, so they wait longer than a mode/power change (ON then OFF must still merge).
+static const uint32_t SETTLE_MODE_MS = 700;
+static const uint32_t SETTLE_STEP_MS = 1500;
 static const uint32_t STEP_MS = 700;         // pause between a mode change and the fan / temperature
 static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stands in for HA's state
 
@@ -395,8 +398,12 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
       } else {
         return;
       }
+      uint32_t settle = (action == rnp::AC_SET_MODE) ? SETTLE_MODE_MS : SETTLE_STEP_MS;
+      uint32_t due_at = millis() + settle;
+      // Never shorten a wait that is already running: a power press must not cut a temperature
+      // sequence short.
+      if (!g.due || (int32_t) (due_at - g.due_at) > 0) g.due_at = due_at;
       g.due = true;
-      g.due_at = millis() + SETTLE_MS;
       break;
     }
 
