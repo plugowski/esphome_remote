@@ -371,8 +371,14 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
     ESP_LOGW(TAG, "Malformed CMD from %s", mac_str_(src).c_str());
     return;
   }
-  ESP_LOGI(TAG, "CMD from %s: domain=%u idx=%u action=%u value=%d", mac_str_(src).c_str(), domain, idx, action,
-           (int) value);
+  // Time since the previous command, measured here on the hub, to tell the user's tapping rhythm
+  // from the delays in front of the hub (remote debounce, radio, processing).
+  static uint32_t last_cmd_ms = 0;
+  uint32_t now_ms = millis();
+  uint32_t gap_ms = now_ms - last_cmd_ms;
+  last_cmd_ms = now_ms;
+  ESP_LOGI(TAG, "CMD from %s: domain=%u idx=%u action=%u value=%d (+%u ms)", mac_str_(src).c_str(), domain, idx,
+           action, (int) value, (unsigned) gap_ms);
 
   switch (domain) {
     case rnp::DOM_AC: {
