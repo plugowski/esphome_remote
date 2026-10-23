@@ -129,7 +129,8 @@ font:
 esphome:
   name: ${DEVICE_NAME}
   friendly_name: ${FRIENDLY_NAME}
-  min_version: 2025.10.0
+  # 2025.12 is the first release that accepts `attenuation: 12db` (11db is deprecated).
+  min_version: 2025.12.0
   name_add_mac_suffix: false
   includes:
     - src/menu_entities.h

@@ -18,7 +18,7 @@ sensor:
     pin: GPIO34
     id: battery_raw
     internal: true
-    attenuation: 11db
+    attenuation: 12db
     update_interval: 60s
     filters:
       - multiply: 2.0
