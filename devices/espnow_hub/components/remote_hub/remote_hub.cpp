@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 
 #include "esphome/core/hal.h"
@@ -39,7 +40,17 @@ void RemoteHub::loop() {
     // A commanded value that HA never confirmed (the unit clamped or ignored it) stops counting
     // as the state; push the real one to the remotes.
     bool expired = false;
-    if (g.exp_mode && older_than(g.exp_mode_at, EXPECT_TTL_MS)) { g.exp_mode = false; expired = true; }
+    if (g.repeat && (int32_t) (millis() - g.repeat_at) >= 0) {
+      g.repeat = false;
+      this->send_ac_(rnp::BROADCAST_ADDR);
+      if (this->have_src_) this->send_ac_(this->last_src_);
+    }
+    if (g.exp_mode && older_than(g.exp_mode_at, EXPECT_TTL_MS)) {
+      ESP_LOGW(TAG, "AC %d: HA still reports mode '%s' after commanding '%s'", i, this->ac_[i].mode.c_str(),
+               g.exp_mode_v.c_str());
+      g.exp_mode = false;
+      expired = true;
+    }
     if (g.exp_fan && older_than(g.exp_fan_at, EXPECT_TTL_MS)) { g.exp_fan = false; expired = true; }
     if (g.exp_temp && older_than(g.exp_temp_at, EXPECT_TTL_MS)) { g.exp_temp = false; expired = true; }
     if (expired) this->mark_dirty_(DIRTY_AC);
@@ -205,7 +216,12 @@ void RemoteHub::apply_ac_(int i) {
       g.exp_temp_at = now;
     }
   }
+  // Broadcasts are not acknowledged, so also hand the result to the remote that asked (unicast is
+  // acknowledged and retried by the radio) and announce it once more a moment later.
   this->mark_dirty_(DIRTY_AC);
+  if (this->have_src_) this->send_ac_(this->last_src_);
+  g.repeat = true;
+  g.repeat_at = now + 2000;
 }
 
 // ── sending ───────────────────────────────────────────────────────────────────
@@ -360,6 +376,8 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
       if (idx >= AC_LIST_COUNT) return;
       const ACEntity &ac = AC_LIST[idx];
       AcGuard &g = this->ac_guard_[idx];
+      memcpy(this->last_src_, src, 6);
+      this->have_src_ = true;
       // Only record the wish; apply_ac_ talks to HA once the commands stop coming.
       if (action == rnp::AC_SET_MODE) {
         if (value == rnp::AC_MODE_OFF) g.want_mode_v = "off";
