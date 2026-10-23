@@ -14,7 +14,11 @@ esphome:
   on_boot:
     - priority: 249
       then:
-        - lambda: 'id(selected_ac_index) = ACController::indexForEntity(id(selected_ac));'
+        # The selected unit is persisted as an INDEX, not as an entity_id string.
+        # A restored index can outlive the config that produced it (three ACs
+        # configured yesterday, one today), so clamp it before anything reads
+        # AC_LIST with it. wrap_index is safe for a count of 0.
+        - lambda: 'id(selected_ac_index) = wrap_index(id(selected_ac_index), AC_LIST_COUNT);'
   includes:
     - src/ac_entities.h     # must come before ac_controller.h (struct definition)
     - src/ac_controller.h
@@ -30,9 +34,14 @@ font:
     glyphs:
       - "\uf168"  # fan
       - "\ueb3b"  # ac_unit
+      - "\uef55"  # local_fire_department (heat)
       - "\uf164"  # dry
       - "\ue8ac"  # power_off
       - "\uec12"  # curtain (reused by cover_controller)
+      - "\uf16b"  # mode_heat_cool (heat_cool mode)
+      - "\uf077"  # thermostat_auto (auto mode)
+      - "\ueb9b"  # rocket_launch (turbo fan speed)
+      - "\ue04f"  # volume_off (quiet fan speed)
 
   - file:
       type: gfonts
@@ -42,6 +51,7 @@ font:
     size: 36
     glyphs:
       - "\ue8ac"  # power_off (shown when AC is off)
+      - "\ue5d5"  # refresh (shown while waiting for HA's first state update)
 
 # ── HA sensors ────────────────────────────────────────────────────────────────
 sensor:
@@ -99,14 +109,15 @@ text_sensor:
 
 # ── AC globals ────────────────────────────────────────────────────────────────
 globals:
+  # Persisting the INDEX is both correct and safe. The entity_id was previously
+  # kept in a `type: std::string` global with restore_value: true — ESPHome
+  # persists globals by copying their raw bytes, so for a std::string that
+  # stores the object's internal pointer and restores it into a heap that no
+  # longer exists. Anything past libstdc++'s 15-char small-string buffer (every
+  # realistic entity_id) is heap-allocated and comes back as garbage.
   - id: selected_ac_index
     type: int
     initial_value: '0'
-    restore_value: false
-
-  - id: selected_ac
-    type: std::string
-    initial_value: '"climate.living_room_ac"'
     restore_value: true
 
   - id: selected_ac_mode_index
@@ -169,6 +180,18 @@ script:
       - lambda: 'ACController::turnOff(id(selected_ac_mode), id(updated_ui));'
       - script.execute: ac_draw
       - script.execute: ac_await
+
+  # Single-button on/off for layouts with no separate power-on/power-off
+  # buttons (layout_v1's TOGGLE). turnOn()/turnOff() are already no-ops in
+  # the state they'd otherwise turn on/off into, so checking selected_ac_mode
+  # here is what actually makes this alternate instead of doing nothing on
+  # every other press.
+  - id: ac_btn_power_toggle
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_ac_mode) == "off";' }
+          then: [ script.execute: ac_btn_power_on ]
+          else: [ script.execute: ac_btn_power_off ]
 
   - id: ac_btn_fan
     then:
@@ -248,7 +271,6 @@ script:
 
   - id: ac_select_unit
     then:
-      - lambda: 'ACController::selectUnit(id(selected_ac_index), id(selected_ac));'
       - lambda: |-
           ACController::resetUnit(id(selected_ac_index),
             id(selected_ac_mode_index), id(selected_ac_mode),
@@ -263,28 +285,28 @@ script:
   - id: ac_send_mode_update
     mode: single
     then:
-      - homeassistant.service:
-          service: climate.set_hvac_mode
+      - homeassistant.action:
+          action: climate.set_hvac_mode
           data:
-            entity_id: !lambda 'return id(selected_ac);'
+            entity_id: !lambda 'return std::string(AC_LIST[wrap_index(id(selected_ac_index), AC_LIST_CAPACITY)].entity_id);'
             hvac_mode: !lambda 'return id(selected_ac_mode);'
 
   - id: ac_send_temp_update
     mode: single
     then:
-      - homeassistant.service:
-          service: climate.set_temperature
+      - homeassistant.action:
+          action: climate.set_temperature
           data:
-            entity_id: !lambda 'return id(selected_ac);'
+            entity_id: !lambda 'return std::string(AC_LIST[wrap_index(id(selected_ac_index), AC_LIST_CAPACITY)].entity_id);'
             temperature: !lambda 'return id(selected_temp);'
 
   - id: ac_send_fan_update
     mode: single
     then:
-      - homeassistant.service:
-          service: climate.set_fan_mode
+      - homeassistant.action:
+          action: climate.set_fan_mode
           data:
-            entity_id: !lambda 'return id(selected_ac);'
+            entity_id: !lambda 'return std::string(AC_LIST[wrap_index(id(selected_ac_index), AC_LIST_CAPACITY)].entity_id);'
             fan_mode: !lambda 'return id(selected_fan_mode);'
 
   # ── debounce (300 ms settle before sending to HA) ────────────────────────
@@ -295,6 +317,10 @@ script:
       - lambda: 'id(debounce_active) = true;'
       - delay: 300ms
       - lambda: 'id(debounce_active) = false;'
+      # Send the settled change now instead of waiting for the next 500ms
+      # interval tick — ac_update() also runs from the main loop, so this is
+      # only closing the gap between "debounce cleared" and "next tick".
+      - script.execute: ac_update
 
   # ── main AC update (called from main_update every 500 ms) ────────────────
 
@@ -324,4 +350,4 @@ script:
             id(ac_symbols), id(ac_symbols_big),
             id(font_big), id(font_bigger), id(font_base), id(font_small),
             id(selected_ac_mode), id(selected_fan_mode),
-            id(selected_ac_index), id(selected_temp), id(updated_ui));
+            id(selected_ac_index), id(selected_temp), id(updated_ui), id(conn_status));

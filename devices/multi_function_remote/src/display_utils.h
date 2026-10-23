@@ -2,6 +2,23 @@
 #include "esphome/components/display/display_buffer.h"
 #include "esphome/components/font/font.h"
 
+// ── Safe index wrapping ───────────────────────────────────────────────────────
+// Every list in this project (modes, entities, quick actions) is generated from
+// the configurator, so any of them can legitimately end up with a count of 0.
+// Writing `idx = (idx + 1) % COUNT` against a constant 0 is a compile-time
+// division by zero (-Wdiv-by-zero) and undefined behaviour at runtime — on the
+// ESP32 that is a hard fault, not a wrong number. Routing the count through a
+// function parameter both silences the constant-folding warning and makes the
+// zero case well defined, so controllers must wrap indices with this helper
+// instead of using % directly.
+inline int wrap_index(int idx, int count, int step = 0) {
+  if (count <= 0) return 0;
+  long long next = static_cast<long long>(idx) + step;
+  next %= count;
+  if (next < 0) next += count;
+  return static_cast<int>(next);
+}
+
 // ── Protected buffer access ───────────────────────────────────────────────────
 // DisplayBuffer::buffer_ is protected; this accessor subclass exposes it.
 // We never instantiate it — we only reinterpret_cast a live DisplayBuffer* to
