@@ -112,6 +112,8 @@ globals:
     initial_value: 'false'
 
   # What the remote last sent, per field; the baseline for new presses while a send is pending.
+  # A send that starts a pending period first copies the hub's current values into all three, so a
+  # field that was not touched compares equal and is not sent along with the one that was.
   - id: ac_sent_mode
     type: std::string
     initial_value: '"unknown"'
@@ -247,7 +249,13 @@ script:
   - id: ac_send_mode_update
     mode: single
     then:
-      - lambda: 'id(ac_sent_mode) = id(selected_ac_mode);'
+      - lambda: |-
+          if (!id(ac_pending_command)) {
+            id(ac_sent_mode) = id(current_ac_mode);
+            id(ac_sent_fan) = id(current_fan_mode);
+            id(ac_sent_temp) = id(current_temp);
+          }
+          id(ac_sent_mode) = id(selected_ac_mode);
       - script.execute: ac_mark_pending
       - script.execute:
           id: espnow_cmd
@@ -259,7 +267,13 @@ script:
   - id: ac_send_temp_update
     mode: single
     then:
-      - lambda: 'id(ac_sent_temp) = id(selected_temp);'
+      - lambda: |-
+          if (!id(ac_pending_command)) {
+            id(ac_sent_mode) = id(current_ac_mode);
+            id(ac_sent_fan) = id(current_fan_mode);
+            id(ac_sent_temp) = id(current_temp);
+          }
+          id(ac_sent_temp) = id(selected_temp);
       - script.execute: ac_mark_pending
       - script.execute:
           id: espnow_cmd
@@ -271,7 +285,13 @@ script:
   - id: ac_send_fan_update
     mode: single
     then:
-      - lambda: 'id(ac_sent_fan) = id(selected_fan_mode);'
+      - lambda: |-
+          if (!id(ac_pending_command)) {
+            id(ac_sent_mode) = id(current_ac_mode);
+            id(ac_sent_fan) = id(current_fan_mode);
+            id(ac_sent_temp) = id(current_temp);
+          }
+          id(ac_sent_fan) = id(selected_fan_mode);
       - script.execute: ac_mark_pending
       - script.execute:
           id: espnow_cmd
