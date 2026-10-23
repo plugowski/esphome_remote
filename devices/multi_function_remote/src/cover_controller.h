@@ -6,6 +6,7 @@
 #include <cstdio>
 #include "cover_entities.h"
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── CoverController ───────────────────────────────────────────────────────────
 // Cover mode: entity selection, open/close/stop/position actions, display.
@@ -37,11 +38,11 @@ public:
   // ── navigation ─────────────────────────────────────────────────────────────
 
   static void prevCover(int& idx) {
-    idx = (idx - 1 + COVER_LIST_COUNT) % COVER_LIST_COUNT;
+    idx = wrap_index(idx, COVER_LIST_COUNT, -1);
   }
 
   static void nextCover(int& idx) {
-    idx = (idx + 1) % COVER_LIST_COUNT;
+    idx = wrap_index(idx, COVER_LIST_COUNT, +1);
   }
 
   // ── HA state sync — always stores for every sensor index ──────────────────
@@ -102,7 +103,7 @@ public:
   static void draw(D* it, F* symbols, F* state_icons,
                    F* font_big, F* font_base, F* font_small,
                    int selected_idx,
-                   bool& updated_ui)
+                   bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
     updated_ui = false;
@@ -113,7 +114,7 @@ public:
     it->clear();
 
     char label[12];
-    strncpy(label, COVER_LIST[selected_idx].name, sizeof(label) - 1);
+    strncpy(label, COVER_LIST[wrap_index(selected_idx, COVER_LIST_CAPACITY)].name, sizeof(label) - 1);
     label[sizeof(label) - 1] = '\0';
     for (int i = 0; label[i]; i++) label[i] = toupper((unsigned char)label[i]);
 
@@ -139,6 +140,7 @@ public:
 
     draw_bottom_menu(it, font_small, "CLOSE", "", "OPEN");
 
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 
@@ -146,22 +148,22 @@ private:
 
   static std::string& st(int idx) {
     static bool init = false;
-    static std::string states[COVER_LIST_COUNT];
+    static std::string states[COVER_LIST_CAPACITY];
     if (!init) {
-      for (int i = 0; i < COVER_LIST_COUNT; i++) states[i] = "unknown";
+      for (int i = 0; i < COVER_LIST_CAPACITY; i++) states[i] = "unknown";
       init = true;
     }
-    return states[idx];
+    return states[wrap_index(idx, COVER_LIST_CAPACITY)];
   }
 
   static int& pos(int idx) {
     static bool init = false;
-    static int positions[COVER_LIST_COUNT];
+    static int positions[COVER_LIST_CAPACITY];
     if (!init) {
-      for (int i = 0; i < COVER_LIST_COUNT; i++) positions[i] = -1;
+      for (int i = 0; i < COVER_LIST_CAPACITY; i++) positions[i] = -1;
       init = true;
     }
-    return positions[idx];
+    return positions[wrap_index(idx, COVER_LIST_CAPACITY)];
   }
 
   static const char* stateIcon(const std::string& state) {

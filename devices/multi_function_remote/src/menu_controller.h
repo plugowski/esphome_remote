@@ -2,6 +2,7 @@
 #include "menu_entities.h"
 #include "quick_action_entities.h"
 #include "display_utils.h"
+#include "remote_core.h"
 
 // ── MenuController ────────────────────────────────────────────────────────────
 // Two-view menu overlay:
@@ -38,39 +39,41 @@ public:
   }
 
   static void confirm(int& app_mode, int menu_index, bool& menu_active, bool& updated_ui) {
-    app_mode    = MENU_LIST[menu_index].id;
+    app_mode    = MENU_LIST[wrap_index(menu_index, MENU_LIST_COUNT)].id;
     menu_active = false;
     updated_ui  = true;
   }
 
   static void prev(int& menu_index) {
-    menu_index = (menu_index - 1 + MENU_LIST_COUNT) % MENU_LIST_COUNT;
+    menu_index = wrap_index(menu_index, MENU_LIST_COUNT, -1);
   }
 
   static void next(int& menu_index) {
-    menu_index = (menu_index + 1) % MENU_LIST_COUNT;
+    menu_index = wrap_index(menu_index, MENU_LIST_COUNT, +1);
   }
 
   // -1 → last item; wraps within list
   static void scrollUp(int& quick_idx) {
+    if (QUICK_ACTION_COUNT <= 0) { quick_idx = -1; return; }
     if (quick_idx < 0)
       quick_idx = QUICK_ACTION_COUNT - 1;
     else
-      quick_idx = (quick_idx - 1 + QUICK_ACTION_COUNT) % QUICK_ACTION_COUNT;
+      quick_idx = wrap_index(quick_idx, QUICK_ACTION_COUNT, -1);
   }
 
   // -1 → first item; wraps within list
   static void scrollDown(int& quick_idx) {
+    if (QUICK_ACTION_COUNT <= 0) { quick_idx = -1; return; }
     if (quick_idx < 0)
       quick_idx = 0;
     else
-      quick_idx = (quick_idx + 1) % QUICK_ACTION_COUNT;
+      quick_idx = wrap_index(quick_idx, QUICK_ACTION_COUNT, +1);
   }
 
   template<class D, class F>
   static void drawTriggered(D* it, F* action_icon, F* font_base, F* font_small_f, int quick_idx) {
     it->clear();
-    const QuickAction& qa = QUICK_ACTION_LIST[quick_idx];
+    const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
     it->print(64, 17, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
     it->print(64, 43, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
     draw_bottom_menu(it, font_small_f, "", "", "");
@@ -79,14 +82,15 @@ public:
 
   template<class D, class F>
   static void draw(D* it, F* icon_big, F* icon_small, F* action_icon,
-                   F* font_base, F* font_small_f, int menu_index, int quick_idx) {
+                   F* font_base, F* font_small_f, int menu_index, int quick_idx,
+                   int conn_status) {
     it->clear();
 
     if (quick_idx < 0) {
       // ── carousel view (original full-height layout) ───────────────────────
-      const int cur  = menu_index;
-      const int prev = (cur - 1 + MENU_LIST_COUNT) % MENU_LIST_COUNT;
-      const int nxt  = (cur + 1) % MENU_LIST_COUNT;
+      const int cur  = wrap_index(menu_index, MENU_LIST_COUNT);
+      const int prev = wrap_index(cur, MENU_LIST_COUNT, -1);
+      const int nxt  = wrap_index(cur, MENU_LIST_COUNT, +1);
 
       it->print(14,  19, icon_small, COLOR_ON, display::TextAlign::CENTER, MENU_LIST[prev].icon);
       it->print(114, 19, icon_small, COLOR_ON, display::TextAlign::CENTER, MENU_LIST[nxt].icon);
@@ -96,12 +100,13 @@ public:
 
     } else {
       // ── quick-action view (big icon + name, no side icons) ────────────────
-      const QuickAction& qa = QUICK_ACTION_LIST[quick_idx];
+      const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
       it->print(64, 17, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
       it->print(64, 43, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
       draw_bottom_menu(it, font_small_f, "", "", "");
     }
 
+    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 };

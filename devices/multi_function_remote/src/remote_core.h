@@ -60,8 +60,53 @@ public:
     last_active = millis() / 1000;
   }
 
+  // Call from every button handler instead of resetIdleTimer() directly, and
+  // gate the handler's normal action on its (negated) return value — see
+  // any binary_sensor in packages/layouts/. In Light Sleep builds the idle
+  // timeout blanks the display but keeps WiFi/API associated rather than
+  // rebooting from deep sleep; when a press lands on a blanked screen, this
+  // wakes it (no reinit needed — the SSD1306/SH1106 controller keeps its
+  // RAM/config while off, 0xAE) and reports "consumed" so the caller skips
+  // its normal action this press — matching a phone screen, where the first
+  // tap after screen-off only wakes it, nothing underneath it fires. A
+  // no-op in Deep Sleep builds: is_light_sleeping is never true there, so
+  // this always returns false and behaves exactly like resetIdleTimer.
+  template<class D>
+  static bool onUserActivity(D* it, int& last_active, bool& is_light_sleeping, bool& updated_ui) {
+    resetIdleTimer(last_active);
+    if (!is_light_sleeping) return false;
+    is_light_sleeping = false;
+    it->turn_on();
+    updated_ui = true;
+    return true;
+  }
+
   // Returns true when the device has been idle for timeout_s seconds
   static bool isIdle(int last_active, int timeout_s = 120) {
     return (static_cast<int>(millis() / 1000) - last_active) >= timeout_s;
+  }
+
+  // Quiet hours for a Light Sleep build: true when hour (0-23) falls in
+  // [start, end), wrapping past midnight when start > end (e.g. 19..6).
+  // start == end means the schedule is disabled — always returns false.
+  static bool inQuietHours(int hour, int start_hour, int end_hour) {
+    if (start_hour == end_hour) return false;
+    if (start_hour < end_hour) return hour >= start_hour && hour < end_hour;
+    return hour >= start_hour || hour < end_hour;
+  }
+
+  // Connection-status glyph, drawn as a small overlay in the top-right corner
+  // of whichever mode screen is already on-screen. Call from inside a mode's
+  // draw(), right before it->display(), instead of blocking that mode's whole
+  // screen on network state. status: 0=ok (draws nothing), 1=no wifi,
+  // 2/3=wifi ok but HA/entities unreachable.
+  template<class D>
+  static void drawConnBadge(D* it, int status) {
+    if (status == 0) return;
+    if (status == 1) {
+      it->rectangle(119, 1, 8, 8, COLOR_ON);
+    } else {
+      it->filled_rectangle(119, 1, 8, 8, COLOR_ON);
+    }
   }
 };

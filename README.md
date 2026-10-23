@@ -37,7 +37,8 @@ esphome_remote/
     │   ├── secrets.yaml                ← WiFi credentials
     │   ├── Makefile                    ← CLI build targets
     │   ├── fonts/
-    │   │   └── arial_bold.ttf
+    │   │   ├── arial.ttf                ← bundled into every generated config ZIP
+    │   │   └── arial_bold.ttf           ← referenced by every font: entry in remote.yaml
     │   ├── packages/                   ← ESPHome YAML sub-packages (one per controller mode)
     │   │   ├── menu.yaml
     │   │   ├── mode_ac.yaml
@@ -119,20 +120,29 @@ Generate one:
 python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 
-Paste it into the `substitutions` block at the top of `remote.yaml`:
+Add it to `devices/multi_function_remote/secrets.yaml` (`remote.yaml` reads it via `!secret api_key`, so the key itself never has to touch a file you might share for support):
 
 ```yaml
-substitutions:
-  API_KEY: "paste_your_base64_key_here"
+api_key: "paste_your_base64_key_here"
 ```
 
 After flashing, HA will auto-discover the device. Go to **Settings → Devices & Services → ESPHome → Configure** and enter the same key — HA stores it for all future connections.
 
-### 3. Configure your entities
+### 3. (Optional) Static IP, sleep mode, serial logs
+
+`remote.yaml`'s `substitutions:` block has `USE_LIGHT_SLEEP` — the generator's "Light Sleep" toggle sets it `"true"` (default `"false"`, Deep Sleep). Deep Sleep deep-sleeps on the idle timeout and reboots (WiFi/API reconnect) on every wake; Light Sleep only blanks the display on that same timeout — WiFi and the API connection stay up, so the next press is instant with no reboot — and falls back to a real deep sleep after `DEEP_SLEEP_FALLBACK_MIN` (default 60) minutes of continued inactivity as a safety net. `WIFI_POWER_SAVE_MODE` (`LIGHT`/`NONE`) also moves with the toggle — `NONE` for Light Sleep keeps the radio fully powered for maximum responsiveness while connected. Edit these by hand if you're building straight from this repo instead of the generator.
+
+Light Sleep is purely the software strategy above (blank display, WiFi/API stay associated) — the CPU stays at full clock the whole time. `CONFIG_PM_ENABLE`/tickless idle was tried for real automatic light sleep and reverted: on real hardware it destabilized WiFi/API and crashed (StoreProhibited) when combined with `deep_sleep`, so `esp32.framework.sdkconfig_options` no longer sets it.
+
+For a static IP, add a `manual_ip:` block under `wifi:` in `remote.yaml` (values from `secrets.yaml`, not hardcoded — see the comment already there) and `mdns: { disabled: true }` at the top level; DHCP/mDNS is the default when neither is set.
+
+`logger:` uses `baud_rate: ${LOGGER_BAUD_RATE}`, which defaults to `0` (no UART output — nothing to power on a device with no console attached). The generator's "Enable debug logging (UART)" toggle sets it to `115200`; edit `LOGGER_BAUD_RATE` by hand if you're building straight from this repo instead. `make logs-ota`/`esphome logs --device <ip>` still work at `baud_rate: 0` since remote logging goes over the API, not the UART — a real baud rate is only needed for USB-serial development logs or `tools/screenshot.py`'s serial capture (see below).
+
+### 4. Configure your entities
 
 Edit the `src/*_entities.h` files to match your Home Assistant setup (see [Entity configuration](#entity-configuration) below).
 
-### 4. Flash the device
+### 5. Flash the device
 
 See [Building and flashing](#building-and-flashing) below.
 
@@ -196,18 +206,20 @@ make ota IP=<device-ip>
    rsync -av devices/multi_function_remote/ ha:/config/esphome/multi_function_remote/
    ```
 2. In the ESPHome dashboard click **+ New device → Import from file** and point it at `remote.yaml`.
-3. Set `API_KEY` in the `substitutions` block and fill in `secrets.yaml`.
+3. Fill in `secrets.yaml` (`wifi_ssid`, `wifi_password`, `api_key`).
 4. Hit **Install**.
 
 ---
 
-## Taking screenshots (demo firmware only)
+## Taking screenshots
 
-The demo firmware can dump the current OLED framebuffer as a monochromatic PNG via the serial port.
+Both firmwares can dump the current OLED framebuffer as hex lines over the logger, which `tools/screenshot.py` converts to a monochromatic PNG.
 
 ### Trigger
 
-While the device is connected over USB, navigate to the screen you want to capture and **hold the Pause/Stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
+**Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the Pause/Stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
+
+**Product firmware** (`remote.yaml`, generator-built): press the **Screenshot** button — it's a plain HA button entity (no `internal:` flag), so it shows up under the device in Home Assistant automatically and can be pressed there, called from an automation/script (`button.press`), or pressed on demand from the ESPHome dashboard. To capture the output over USB serial (rather than just watching HA's log viewer), turn on the generator's **"Enable debug logging (UART)"** toggle first — the raw hex lines only reach the serial port when `LOGGER_BAUD_RATE` is a real baud rate, not the power-optimized default of `0`.
 
 ### Capture and convert
 
@@ -400,7 +412,7 @@ Documented in `src/espnow_protocol.h`. Every packet starts with `R N <version> <
 - Press *Resync Remotes* on the hub (or wake the remote again)
 
 **API connection fails after flashing**
-- Make sure the `API_KEY` in `remote.yaml` matches what you entered in HA
+- Make sure `api_key` in `secrets.yaml` matches what you entered in HA
 - HA must be reachable from the ESP32 subnet
 
 ---
