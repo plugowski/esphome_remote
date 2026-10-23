@@ -16,7 +16,7 @@
 # not the hub's older cached state, so a second press made before the hub has
 # answered (ON, then OFF) is still sent.  The hub waits for the presses to stop,
 # skips anything that changes nothing and answers with the resulting state.
-# ac_pending_command lasts until that state matches the selection, or 4 s;
+# ac_pending_command lasts until the hub reports what was last sent, or 4 s;
 # then the remote simply takes the hub's state (no resends).
 
 esphome:
@@ -330,10 +330,12 @@ script:
   - id: ac_update
     then:
       - lambda: |-
+          // Pending ends when the hub reports what the remote last SENT, not when it happens to
+          // equal the current selection: a stale hub state can match a selection that was never sent.
           if (id(ac_pending_command) &&
-              id(selected_ac_mode) == id(current_ac_mode) &&
-              id(selected_fan_mode) == id(current_fan_mode) &&
-              id(selected_temp)    == id(current_temp)) {
+              id(ac_sent_mode) == id(current_ac_mode) &&
+              id(ac_sent_fan)  == id(current_fan_mode) &&
+              id(ac_sent_temp) == id(current_temp)) {
             id(ac_pending_command) = false;
             id(ac_mark_pending).stop();
           }
