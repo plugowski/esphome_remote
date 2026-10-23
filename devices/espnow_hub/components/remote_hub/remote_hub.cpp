@@ -115,7 +115,9 @@ void RemoteHub::subscribe_all_() {
 void RemoteHub::send_(const uint8_t *dest, const std::vector<uint8_t> &payload) {
   auto *bus = espnow::global_esp_now;
   if (bus == nullptr) return;
-  esp_err_t err = bus->send(dest, payload);
+  // ESPHome 2026.4 calls the send callback unconditionally when the send report arrives, so a
+  // missing one aborts with std::bad_function_call. Always pass one, even if it does nothing.
+  esp_err_t err = bus->send(dest, payload, [](esp_err_t) {});
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "send to %s failed: %d", mac_str_(dest).c_str(), (int) err);
   } else {
