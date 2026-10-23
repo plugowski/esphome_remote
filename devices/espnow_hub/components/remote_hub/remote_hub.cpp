@@ -17,6 +17,11 @@ namespace remote_hub {
 
 static const char *const TAG = "remote_hub";
 static const uint32_t PUSH_DEBOUNCE_MS = 150;
+static const uint32_t SETTLE_MS = 900;       // AC commands are applied this long after the last one
+static const uint32_t STEP_MS = 700;         // pause between a mode change and the fan / temperature
+static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stands in for HA's state
+
+static bool older_than(uint32_t since, uint32_t ms) { return (uint32_t) (millis() - since) > ms; }
 using state_cb_t = std::function<void(const std::string &)>;
 
 // ── lifecycle ─────────────────────────────────────────────────────────────────
@@ -28,6 +33,17 @@ void RemoteHub::setup() {
 }
 
 void RemoteHub::loop() {
+  for (int i = 0; i < AC_LIST_COUNT; i++) {
+    AcGuard &g = this->ac_guard_[i];
+    if (g.due && (int32_t) (millis() - g.due_at) >= 0) this->apply_ac_(i);
+    // A commanded value that HA never confirmed (the unit clamped or ignored it) stops counting
+    // as the state; push the real one to the remotes.
+    bool expired = false;
+    if (g.exp_mode && older_than(g.exp_mode_at, EXPECT_TTL_MS)) { g.exp_mode = false; expired = true; }
+    if (g.exp_fan && older_than(g.exp_fan_at, EXPECT_TTL_MS)) { g.exp_fan = false; expired = true; }
+    if (g.exp_temp && older_than(g.exp_temp_at, EXPECT_TTL_MS)) { g.exp_temp = false; expired = true; }
+    if (expired) this->mark_dirty_(DIRTY_AC);
+  }
   if (this->dirty_ == 0) return;
   if (millis() - this->dirty_since_ < PUSH_DEBOUNCE_MS) return;
   uint8_t d = this->dirty_;
@@ -70,9 +86,11 @@ void RemoteHub::subscribe_all_() {
     std::string eid = AC_LIST[i].entity_id;
     api->subscribe_home_assistant_state(eid, optional<std::string>{}, state_cb_t([this, i](const std::string &s) {
       if (this->ac_[i].mode != s) { this->ac_[i].mode = s; this->mark_dirty_(DIRTY_AC); }
+      this->confirm_ac_expected_(i);
     }));
     api->subscribe_home_assistant_state(eid, optional<std::string>{"fan_mode"}, state_cb_t([this, i](const std::string &s) {
       if (this->ac_[i].fan != s) { this->ac_[i].fan = s; this->mark_dirty_(DIRTY_AC); }
+      this->confirm_ac_expected_(i);
     }));
     api->subscribe_home_assistant_state(eid, optional<std::string>{"temperature"}, state_cb_t([this, i](const std::string &s) {
       int8_t t = -1;
@@ -85,6 +103,7 @@ void RemoteHub::subscribe_all_() {
       // would never match, so it would keep resending the command.
       if (t < 0 && this->ac_[i].temp >= 0) return;
       if (this->ac_[i].temp != t) { this->ac_[i].temp = t; this->mark_dirty_(DIRTY_AC); }
+      this->confirm_ac_expected_(i);
     }));
   }
 
@@ -114,6 +133,81 @@ void RemoteHub::subscribe_all_() {
   }
 }
 
+// ── AC command guard ──────────────────────────────────────────────────────────
+
+std::string RemoteHub::eff_ac_mode_(int i) const {
+  const AcGuard &g = this->ac_guard_[i];
+  return g.exp_mode ? g.exp_mode_v : this->ac_[i].mode;
+}
+std::string RemoteHub::eff_ac_fan_(int i) const {
+  const AcGuard &g = this->ac_guard_[i];
+  return g.exp_fan ? g.exp_fan_v : this->ac_[i].fan;
+}
+int8_t RemoteHub::eff_ac_temp_(int i) const {
+  const AcGuard &g = this->ac_guard_[i];
+  return g.exp_temp ? (int8_t) g.exp_temp_v : this->ac_[i].temp;
+}
+
+// HA reported a state: a commanded value it now shows is confirmed and stops overriding it.
+void RemoteHub::confirm_ac_expected_(int i) {
+  AcGuard &g = this->ac_guard_[i];
+  if (g.exp_mode && this->ac_[i].mode == g.exp_mode_v) g.exp_mode = false;
+  if (g.exp_fan && this->ac_[i].fan == g.exp_fan_v) g.exp_fan = false;
+  if (g.exp_temp && this->ac_[i].temp == g.exp_temp_v) g.exp_temp = false;
+}
+
+// Sends HA only what differs from the effective state, then pushes the result to the remotes
+// whether or not anything changed, so they always get an answer to what they asked for.
+void RemoteHub::apply_ac_(int i) {
+  AcGuard &g = this->ac_guard_[i];
+  g.due = false;
+  std::string eid = AC_LIST[i].entity_id;
+  uint32_t now = millis();
+  bool sent_mode = false;
+
+  if (g.want_mode) {
+    g.want_mode = false;
+    if (this->eff_ac_mode_(i) != g.want_mode_v) {
+      ESP_LOGI(TAG, "AC %d: mode %s -> %s", i, this->eff_ac_mode_(i).c_str(), g.want_mode_v.c_str());
+      this->call_homeassistant_service("climate.set_hvac_mode", {{"entity_id", eid}, {"hvac_mode", g.want_mode_v}});
+      g.exp_mode = true;
+      g.exp_mode_v = g.want_mode_v;
+      g.exp_mode_at = now;
+      sent_mode = true;
+    } else {
+      ESP_LOGI(TAG, "AC %d: mode already %s, nothing to send", i, g.want_mode_v.c_str());
+    }
+  }
+  // A unit that was just switched on needs a moment before it takes a fan speed or setpoint.
+  if (sent_mode && (g.want_fan || g.want_temp)) {
+    g.due = true;
+    g.due_at = now + STEP_MS;
+    return;
+  }
+  if (g.want_fan) {
+    g.want_fan = false;
+    if (this->eff_ac_fan_(i) != g.want_fan_v) {
+      ESP_LOGI(TAG, "AC %d: fan %s -> %s", i, this->eff_ac_fan_(i).c_str(), g.want_fan_v.c_str());
+      this->call_homeassistant_service("climate.set_fan_mode", {{"entity_id", eid}, {"fan_mode", g.want_fan_v}});
+      g.exp_fan = true;
+      g.exp_fan_v = g.want_fan_v;
+      g.exp_fan_at = now;
+    }
+  }
+  if (g.want_temp) {
+    g.want_temp = false;
+    if (this->eff_ac_temp_(i) != g.want_temp_v) {
+      ESP_LOGI(TAG, "AC %d: temperature %d -> %d", i, (int) this->eff_ac_temp_(i), g.want_temp_v);
+      this->call_homeassistant_service("climate.set_temperature",
+                                       {{"entity_id", eid}, {"temperature", std::to_string(g.want_temp_v)}});
+      g.exp_temp = true;
+      g.exp_temp_v = g.want_temp_v;
+      g.exp_temp_at = now;
+    }
+  }
+  this->mark_dirty_(DIRTY_AC);
+}
+
 // ── sending ───────────────────────────────────────────────────────────────────
 
 void RemoteHub::send_(const uint8_t *dest, const std::vector<uint8_t> &payload) {
@@ -138,7 +232,7 @@ void RemoteHub::send_ac_(const uint8_t *dest) {
   uint8_t count = 0;
   for (int i = 0; i < AC_LIST_COUNT; i++) {
     rnp::Writer rec(this->key_, rnp::STATE_AC);
-    rec.u8(i).i8(this->ac_[i].temp).str(this->ac_[i].mode).str(this->ac_[i].fan);
+    rec.u8(i).i8(this->eff_ac_temp_(i)).str(this->eff_ac_mode_(i)).str(this->eff_ac_fan_(i));
     size_t rec_len = rec.size() - rnp::HEADER_LEN;
     if (!w.fits(rec_len)) {
       std::vector<uint8_t> out = w.take();
@@ -148,7 +242,7 @@ void RemoteHub::send_ac_(const uint8_t *dest) {
       w.u8(0);
       count = 0;
     }
-    w.u8(i).i8(this->ac_[i].temp).str(this->ac_[i].mode).str(this->ac_[i].fan);
+    w.u8(i).i8(this->eff_ac_temp_(i)).str(this->eff_ac_mode_(i)).str(this->eff_ac_fan_(i));
     count++;
   }
   std::vector<uint8_t> out = w.take();
@@ -264,26 +358,27 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
   switch (domain) {
     case rnp::DOM_AC: {
       if (idx >= AC_LIST_COUNT) return;
-      // Answer every AC command with the full AC frame, even if HA's state ends up unchanged
-      // (the unit clamped the value, or it was already set), so the remote always gets an echo.
-      this->mark_dirty_(DIRTY_AC);
       const ACEntity &ac = AC_LIST[idx];
-      std::string eid = ac.entity_id;
+      AcGuard &g = this->ac_guard_[idx];
+      // Only record the wish; apply_ac_ talks to HA once the commands stop coming.
       if (action == rnp::AC_SET_MODE) {
-        std::string mode;
-        if (value == rnp::AC_MODE_OFF) mode = "off";
-        else if (value >= 0 && value < ac.modes_count) mode = ac.modes[value];
+        if (value == rnp::AC_MODE_OFF) g.want_mode_v = "off";
+        else if (value >= 0 && value < ac.modes_count) g.want_mode_v = ac.modes[value];
         else return;
-        this->call_homeassistant_service("climate.set_hvac_mode", {{"entity_id", eid}, {"hvac_mode", mode}});
+        g.want_mode = true;
       } else if (action == rnp::AC_SET_FAN) {
         if (value < 0 || value >= ac.fan_modes_count) return;
-        this->call_homeassistant_service("climate.set_fan_mode",
-                                         {{"entity_id", eid}, {"fan_mode", std::string(ac.fan_modes[value])}});
+        g.want_fan_v = ac.fan_modes[value];
+        g.want_fan = true;
       } else if (action == rnp::AC_SET_TEMP) {
         if (value < 5 || value > 40) return;
-        this->call_homeassistant_service("climate.set_temperature",
-                                         {{"entity_id", eid}, {"temperature", std::to_string((int) value)}});
+        g.want_temp_v = (int) value;
+        g.want_temp = true;
+      } else {
+        return;
       }
+      g.due = true;
+      g.due_at = millis() + SETTLE_MS;
       break;
     }
 

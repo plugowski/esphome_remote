@@ -48,6 +48,22 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
     std::string fan;
     int8_t temp{-1};
   };
+  // Guard between the remotes and Home Assistant for one AC unit. Commands only record what the
+  // user wants; once they stop arriving for SETTLE_MS the hub sends Home Assistant just the
+  // fields that really differ. "exp_*" is what the hub last commanded: until Home Assistant
+  // confirms it (or EXPECT_TTL_MS pass) it counts as the unit's state, so a quick ON then OFF
+  // is not mistaken for "already off" while HA still reports the old state.
+  struct AcGuard {
+    bool want_mode{false}, want_fan{false}, want_temp{false};
+    std::string want_mode_v, want_fan_v;
+    int want_temp_v{0};
+    bool exp_mode{false}, exp_fan{false}, exp_temp{false};
+    std::string exp_mode_v, exp_fan_v;
+    int exp_temp_v{0};
+    uint32_t exp_mode_at{0}, exp_fan_at{0}, exp_temp_at{0};
+    bool due{false};
+    uint32_t due_at{0};
+  };
   struct LightState {
     uint8_t on{rnp::LIGHT_UNKNOWN};
     uint8_t brightness{rnp::VALUE_UNKNOWN};
@@ -59,6 +75,12 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
 
   void subscribe_all_();
   void mark_dirty_(uint8_t domain_bit);
+
+  void apply_ac_(int i);
+  void confirm_ac_expected_(int i);
+  std::string eff_ac_mode_(int i) const;
+  std::string eff_ac_fan_(int i) const;
+  int8_t eff_ac_temp_(int i) const;
 
   void send_(const uint8_t *dest, const std::vector<uint8_t> &payload);
   void send_ac_(const uint8_t *dest);
@@ -78,6 +100,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   text_sensor::TextSensor *last_remote_sensor_{nullptr};
 
   AcState ac_[AC_LIST_COUNT > 0 ? AC_LIST_COUNT : 1];
+  AcGuard ac_guard_[AC_LIST_COUNT > 0 ? AC_LIST_COUNT : 1];
   LightState lights_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
   CoverState covers_[COVER_LIST_COUNT > 0 ? COVER_LIST_COUNT : 1];
 
