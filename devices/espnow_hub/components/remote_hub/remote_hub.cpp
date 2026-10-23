@@ -80,6 +80,10 @@ void RemoteHub::subscribe_all_() {
         float f = strtof(s.c_str(), nullptr);
         if (!std::isnan(f) && f >= 0 && f < 127) t = static_cast<int8_t>(f + 0.5f);
       }
+      // Keep the last known setpoint when HA reports none (null while the unit is off or in a
+      // mode without one): the remote compares its selection with this value, and an "unknown"
+      // would never match, so it would keep resending the command.
+      if (t < 0 && this->ac_[i].temp >= 0) return;
       if (this->ac_[i].temp != t) { this->ac_[i].temp = t; this->mark_dirty_(DIRTY_AC); }
     }));
   }
@@ -260,6 +264,9 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
   switch (domain) {
     case rnp::DOM_AC: {
       if (idx >= AC_LIST_COUNT) return;
+      // Answer every AC command with the full AC frame, even if HA's state ends up unchanged
+      // (the unit clamped the value, or it was already set), so the remote always gets an echo.
+      this->mark_dirty_(DIRTY_AC);
       const ACEntity &ac = AC_LIST[idx];
       std::string eid = ac.entity_id;
       if (action == rnp::AC_SET_MODE) {

@@ -32,6 +32,13 @@ sensor:
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then: [ script.execute: settings_draw ]
+        # Report every changed reading to the hub (and so to Home Assistant), whatever triggered it:
+        # the wake-up read, the 60 s poll or the Settings screen. A timer wake sends its own report.
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake) && id(battery_pct) != id(battery_pct_sent);' }
+            then:
+              - lambda: 'id(battery_pct_sent) = id(battery_pct);'
+              - script.execute: hub_send_battery
 
 globals:
   - id: selected_setting_index
@@ -51,6 +58,10 @@ globals:
   - id: battery_mv          # battery voltage in mV (0 = not yet read)
     type: int
     initial_value: '0'
+
+  - id: battery_pct_sent    # last percentage reported to the hub (-1 = nothing sent since boot)
+    type: int
+    initial_value: '-1'
 
   - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
     type: int

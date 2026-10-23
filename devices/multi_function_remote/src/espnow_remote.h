@@ -33,6 +33,13 @@ public:
 
   // ── AC cache ───────────────────────────────────────────────────────────────
 
+  // True when the hub snapshot has filled in every AC unit (an empty mode means no state yet).
+  static bool allAcKnown() {
+    for (int i = 0; i < AC_LIST_COUNT; i++)
+      if (acModeRef(i).empty()) return false;
+    return true;
+  }
+
   static float acTemp(int idx) {
     if (idx < 0 || idx >= AC_LIST_COUNT) return NAN;
     int8_t t = acTempRaw(idx);
