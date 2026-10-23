@@ -28,7 +28,7 @@ public:
     it->display();
   }
 
-  // Connection error screen — status: 1=no wifi  2=no HA
+  // Connection error screen — status: 1=no wifi  2=no HA  3=no ESP-NOW hub
   template<class D, class F>
   static void drawConnError(D* it, F* font_large, F* font_small, int status) {
     const char* title = "";
@@ -42,6 +42,10 @@ public:
       title = "HA UNREACHABLE";
       line1 = "Check API key";
       line2 = "and permissions";
+    } else if (status == 3) {
+      title = "NO HUB";
+      line1 = "Check hub power";
+      line2 = "and channel";
     }
     it->clear();
     it->print(64,  8, font_large, COLOR_ON, display::TextAlign::CENTER, title);

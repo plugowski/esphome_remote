@@ -112,7 +112,8 @@ esphome:
   #   homeassistant.action / action:  -> 2024.8
   #   ota: as a list with platform:   -> 2024.6
   # 2024.11 is the tested baseline; raise, never lower.
-  min_version: 2024.11.0
+  #   adc attenuation: 12db                -> 2025.12 (11db is deprecated)
+  min_version: 2025.12.0
   name_add_mac_suffix: false
   includes:
     - src/menu_entities.h

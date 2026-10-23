@@ -39,19 +39,29 @@ inline const uint8_t* grab_raw_buffer(T* display) {
 //   left=pin22, center=pin5, right=pin33
 //
 // Special sentinel values (drawn as pixel icons, no font glyph needed):
-//   center == nullptr or ""  →  ☰ hamburger (3 horizontal lines)
+//   center == nullptr        →  ☰ hamburger (3 horizontal lines)
+//   center == ""             →  nothing drawn in centre
 //   left   == "<"            →  ◀ left-pointing filled triangle
 //   right  == ">"            →  ▶ right-pointing filled triangle
 //   any other string         →  rendered as text
+//
+// center_box: when true (default) draws vertical dividers around the centre slot.
+// separator:  when true (default) draws the horizontal line at y=53.
 inline void draw_bottom_menu(
-    esphome::display::DisplayBuffer *it,
+    esphome::display::Display *it,
     esphome::font::Font *font,
     const char *left,
     const char *center,
-    const char *right
+    const char *right,
+    bool center_box = true,
+    bool separator = true
 ) {
-    it->rectangle(0, 53, 128, 1);
-    it->rectangle(46, 53, 36, 19);  // narrower centre box (36 px)
+    if (separator) {
+        it->rectangle(0, 53, 128, 1);
+    }
+    if (center_box) {
+        it->rectangle(46, 53, 36, 19);  // vertical dividers around centre slot
+    }
 
     if (left && left[0] == '<' && left[1] == '\0') {
         // ◀ rotated down-arrow; tip at left, base at right; 6×6 px centred at (20, 59)
@@ -66,14 +76,16 @@ inline void draw_bottom_menu(
         it->print(23, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, left);
     }
 
-    if (center && center[0] != '\0') {
-        it->print(64, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, center);
-    } else {
-        // ☰ hamburger — 3 narrow horizontal lines
+    if (!center) {
+        // nullptr → ☰ hamburger
         it->line(58, 56, 70, 56);
         it->line(58, 59, 70, 59);
         it->line(58, 62, 70, 62);
+    } else if (center[0] != '\0') {
+        // non-empty string → text
+        it->print(64, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, center);
     }
+    // empty string "" → nothing drawn
 
     if (right && right[0] == '>' && right[1] == '\0') {
         // ▶ rotated down-arrow; base at left, tip at right; 6×6 px centred at (105, 59)

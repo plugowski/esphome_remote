@@ -1,0 +1,324 @@
+# ── espnow/mode_ac.yaml ──────────────────────────────────────────────────────
+# AC mode over ESP-NOW.  Same scripts and globals as packages/mode_ac.yaml,
+# but state comes from the hub snapshot cached in EspNowRemote and commands
+# go out as rnp::CMD packets (espnow_cmd in espnow/transport.yaml).
+#
+# Entity configuration lives in src/ac_entities.h (shared with the hub).
+#
+# Button entry points (via buttons.yaml / layout):
+#   ac_btn_left / ac_btn_right   → previous / next unit
+#   ac_btn_fan / ac_btn_mode     → cycle fan / HVAC mode
+#   ac_btn_temp_up / _down, ac_btn_power_on / _off
+# Main update called by main_update: ac_update
+#
+# Send guard: after a command is sent, ac_pending_command blocks re-sends
+# until the hub echoes the new state (or 3 s pass).  Without it the remote
+# would resend every 500 ms while HA is still applying the change.
+
+esphome:
+  on_boot:
+    - priority: 249
+      then:
+        # The selected unit is persisted as an INDEX, not as an entity_id string.
+        # A restored index can outlive the config that produced it (three ACs
+        # configured yesterday, one today), so clamp it before anything reads
+        # AC_LIST with it. wrap_index is safe for a count of 0.
+        - lambda: 'id(selected_ac_index) = wrap_index(id(selected_ac_index), AC_LIST_COUNT);'
+  includes:
+    - src/ac_entities.h     # must come before ac_controller.h (struct definition)
+    - src/ac_controller.h
+
+# ── AC-specific symbol fonts ──────────────────────────────────────────────────
+font:
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: ac_symbols
+    size: 24
+    glyphs:
+      - "\uf168"  # fan
+      - "\ueb3b"  # ac_unit
+      - "\uef55"  # local_fire_department (heat)
+      - "\uf164"  # dry
+      - "\ue8ac"  # power_off
+      - "\uec12"  # curtain (reused by cover_controller)
+      - "\uf16b"  # mode_heat_cool (heat_cool mode)
+      - "\uf077"  # thermostat_auto (auto mode)
+      - "\ueb9b"  # rocket_launch (turbo fan speed)
+      - "\ue04f"  # volume_off (quiet fan speed)
+
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 700
+    id: ac_symbols_big
+    size: 36
+    glyphs:
+      - "\ue8ac"  # power_off (shown when AC is off)
+      - "\ue5d5"  # refresh (shown while waiting for HA's first state update)
+
+# ── AC globals ────────────────────────────────────────────────────────────────
+globals:
+  # Persisting the INDEX is both correct and safe. The entity_id was previously
+  # kept in a `type: std::string` global with restore_value: true — ESPHome
+  # persists globals by copying their raw bytes, so for a std::string that
+  # stores the object's internal pointer and restores it into a heap that no
+  # longer exists. Anything past libstdc++'s 15-char small-string buffer (every
+  # realistic entity_id) is heap-allocated and comes back as garbage.
+  - id: selected_ac_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+  - id: selected_ac_mode_index
+    type: int
+    initial_value: '0'
+
+  - id: current_ac_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: selected_ac_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: current_temp
+    type: int
+    initial_value: '-1'
+
+  - id: selected_temp
+    type: int
+    initial_value: '-1'
+
+  - id: selected_fan_index
+    type: int
+    initial_value: '0'
+
+  - id: current_fan_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: selected_fan_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: ac_pending_command
+    type: bool
+    initial_value: 'false'
+
+# ── AC scripts ────────────────────────────────────────────────────────────────
+script:
+
+  # ── button actions ────────────────────────────────────────────────────────
+
+  - id: ac_btn_left
+    then:
+      - lambda: 'ACController::prevUnit(id(selected_ac_index));'
+      - script.execute: ac_select_unit
+
+  - id: ac_btn_right
+    then:
+      - lambda: 'ACController::nextUnit(id(selected_ac_index));'
+      - script.execute: ac_select_unit
+
+  - id: ac_btn_power_on
+    then:
+      - lambda: >-
+          ACController::turnOn(id(selected_ac_index), id(selected_ac_mode_index),
+                               id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_power_off
+    then:
+      - lambda: 'ACController::turnOff(id(selected_ac_mode), id(updated_ui));'
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  # Single-button on/off for layouts with no separate power-on/power-off
+  # buttons (layout_v1's TOGGLE). turnOn()/turnOff() are already no-ops in
+  # the state they'd otherwise turn on/off into, so checking selected_ac_mode
+  # here is what actually makes this alternate instead of doing nothing on
+  # every other press.
+  - id: ac_btn_power_toggle
+    then:
+      - if:
+          condition: { lambda: 'return id(selected_ac_mode) == "off";' }
+          then: [ script.execute: ac_btn_power_on ]
+          else: [ script.execute: ac_btn_power_off ]
+
+  - id: ac_btn_fan
+    then:
+      - lambda: >-
+          ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
+                                 id(selected_fan_mode), id(updated_ui));
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_mode
+    then:
+      - lambda: 'ACController::cycleMode(id(selected_ac_index), id(selected_ac_mode_index));'
+      - lambda: >-
+          ACController::applyMode(id(selected_ac_index), id(selected_ac_mode_index),
+                                  id(selected_ac_mode), id(updated_ui));
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_temp_up
+    then:
+      - lambda: 'ACController::tempUp(id(selected_temp), id(updated_ui));'
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  - id: ac_btn_temp_down
+    then:
+      - lambda: 'ACController::tempDown(id(selected_temp), id(updated_ui));'
+      - script.execute: ac_draw
+      - script.execute: ac_await
+
+  # ── state management ──────────────────────────────────────────────────────
+
+  # Reads the hub snapshot cache for the selected AC and updates current_*.
+  - id: ac_set_current_states
+    mode: restart
+    then:
+      - lambda: |-
+          int idx = id(selected_ac_index);
+          ACController::applyCurrentStates(
+            EspNowRemote::acTemp(idx), EspNowRemote::acMode(idx), EspNowRemote::acFan(idx),
+            id(current_ac_mode), id(current_fan_mode),
+            id(current_temp), id(is_booting));
+
+  # Syncs selected_* from current_* when the hub pushes an external change.
+  # Never runs while a button debounce or a pending command is in flight,
+  # otherwise the user's selection would be reverted before it is sent.
+  - id: ac_set_selections
+    mode: restart
+    then:
+      - if:
+          condition: { lambda: 'return !id(debounce_active) && !id(ac_pending_command);' }
+          then:
+            - lambda: >-
+                ACController::syncSelections(
+                  id(current_ac_mode), id(current_fan_mode), id(current_temp),
+                  id(selected_ac_mode), id(selected_ac_mode_index),
+                  id(selected_fan_mode), id(selected_fan_index),
+                  id(selected_temp), id(selected_ac_index), id(updated_ui));
+
+  - id: ac_sync_states
+    mode: restart
+    then:
+      - script.execute: ac_set_current_states
+      - script.execute: ac_set_selections
+      - script.execute: ac_draw
+
+  - id: ac_select_unit
+    then:
+      - lambda: |-
+          ACController::resetUnit(id(selected_ac_index),
+            id(selected_ac_mode_index), id(selected_ac_mode),
+            id(selected_fan_index), id(selected_fan_mode), id(selected_temp));
+          id(ac_pending_command) = false;
+          id(updated_ui) = true;
+      - script.execute: ac_set_current_states
+      - script.execute: ac_set_selections
+      - script.execute: ac_draw
+
+  # ── hub commands ──────────────────────────────────────────────────────────
+
+  - id: ac_send_mode_update
+    mode: single
+    then:
+      - script.execute: ac_mark_pending
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_AC;'
+          idx: !lambda 'return id(selected_ac_index);'
+          action: !lambda 'return rnp::AC_SET_MODE;'
+          value: !lambda 'return EspNowRemote::acModeValue(id(selected_ac_index), id(selected_ac_mode));'
+
+  - id: ac_send_temp_update
+    mode: single
+    then:
+      - script.execute: ac_mark_pending
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_AC;'
+          idx: !lambda 'return id(selected_ac_index);'
+          action: !lambda 'return rnp::AC_SET_TEMP;'
+          value: !lambda 'return id(selected_temp);'
+
+  - id: ac_send_fan_update
+    mode: single
+    then:
+      - script.execute: ac_mark_pending
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_AC;'
+          idx: !lambda 'return id(selected_ac_index);'
+          action: !lambda 'return rnp::AC_SET_FAN;'
+          value: !lambda 'return EspNowRemote::acFanValue(id(selected_ac_index), id(selected_fan_mode));'
+
+  # Pending flag: cleared when the hub echoes a matching state, or after 3 s.
+  - id: ac_mark_pending
+    mode: restart
+    then:
+      - lambda: 'id(ac_pending_command) = true;'
+      - delay: 3s
+      - lambda: 'id(ac_pending_command) = false;'
+
+  # ── debounce (300 ms settle before sending) ───────────────────────────────
+
+  - id: ac_await
+    mode: restart
+    then:
+      - lambda: 'id(debounce_active) = true;'
+      - delay: 300ms
+      - lambda: 'id(debounce_active) = false;'
+      # Send the settled change now instead of waiting for the next 500ms
+      # interval tick — ac_update() also runs from the main loop, so this is
+      # only closing the gap between "debounce cleared" and "next tick".
+      - script.execute: ac_update
+
+  # ── main AC update (called from main_update every 500 ms) ────────────────
+
+  - id: ac_update
+    then:
+      - lambda: |-
+          if (id(ac_pending_command) &&
+              id(selected_ac_mode) == id(current_ac_mode) &&
+              id(selected_fan_mode) == id(current_fan_mode) &&
+              id(selected_temp)    == id(current_temp)) {
+            id(ac_pending_command) = false;
+            id(ac_mark_pending).stop();
+          }
+      - if:
+          condition:
+            lambda: 'return !id(debounce_active) && !id(ac_pending_command) && id(selected_ac_mode) != id(current_ac_mode);'
+          then: [ script.execute: ac_send_mode_update ]
+      - if:
+          condition:
+            lambda: 'return !id(debounce_active) && !id(ac_pending_command) && id(selected_fan_mode) != id(current_fan_mode);'
+          then: [ script.execute: ac_send_fan_update ]
+      - if:
+          condition:
+            lambda: 'return !id(debounce_active) && !id(ac_pending_command) && id(selected_temp) != id(current_temp);'
+          then: [ script.execute: ac_send_temp_update ]
+      - script.execute: ac_set_current_states
+      - script.execute: ac_draw
+
+  # ── display rendering ─────────────────────────────────────────────────────
+
+  - id: ac_draw
+    then:
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_AC && !id(menu_active) && !id(is_booting);'
+          then:
+            - lambda: >-
+                ACController::draw(id(oled_display),
+                  id(ac_symbols), id(ac_symbols_big),
+                  id(font_big), id(font_bigger), id(font_base), id(font_small),
+                  id(selected_ac_mode), id(selected_fan_mode),
+                  id(selected_ac_index), id(selected_temp), id(updated_ui), id(conn_status));
