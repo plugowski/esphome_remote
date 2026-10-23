@@ -2,6 +2,8 @@
 
 ESP32-based wireless remote with a 128×64 OLED display. Controls AC units, lights, covers, and automations via Home Assistant. All display and interaction logic lives in C++ header files under `src/`; ESPHome YAML handles connectivity, sensors, and button wiring.
 
+Two firmware flavours share the same code: the original **WiFi remote** (`remote.yaml`, talks to Home Assistant directly) and the **ESP-NOW remote** (`remote_espnow.yaml`, talks to a small always-on hub for sub-second wake and much longer battery life). See [ESP-NOW variant](#esp-now-variant).
+
 - Full project write-up: [tech.lugowski.dev/guides/smart-oled-remote](https://tech.lugowski.dev/guides/smart-oled-remote/)
 - 3D-printed case: [MakerWorld](https://makerworld.com/en/models/1902607-home-assistant-esphome-remote-with-oled-display#profileId-2039332)
 - ESPHome docs: [esphome.io](https://esphome.io/)
@@ -25,8 +27,12 @@ esphome_remote/
 ├── tools/
 │   └── screenshot.py                   ← OLED framebuffer → PNG converter
 └── devices/
+    ├── espnow_hub/                     ← ESP-NOW hub (always-on ESP32, bridges remotes ↔ HA)
+    │   ├── hub.yaml                    ← hub firmware (reuses the remote's src/*_entities.h)
+    │   └── components/remote_hub/      ← ESPHome external component (state cache + relay)
     ├── multi_function_remote/          ← current device (v2 hardware, 6-button pad)
-    │   ├── remote.yaml                 ← production firmware  (edit substitutions at the top)
+    │   ├── remote.yaml                 ← production firmware, WiFi (edit substitutions at the top)
+    │   ├── remote_espnow.yaml          ← production firmware, ESP-NOW (needs espnow_hub)
     │   ├── remote_demo.yaml            ← offline demo firmware (no HA/WiFi required)
     │   ├── secrets.yaml                ← WiFi credentials
     │   ├── Makefile                    ← CLI build targets
@@ -41,6 +47,9 @@ esphome_remote/
     │   │   ├── mode_automations.yaml
     │   │   ├── mode_settings.yaml
     │   │   ├── buttons.yaml            ← abstract btn_* dispatcher (v2 layout)
+    │   │   ├── espnow/                 ← ESP-NOW counterparts of the mode packages
+    │   │   │   ├── transport.yaml      ← HELLO / channel scan / command sending
+    │   │   │   └── mode_*.yaml         ← same scripts, state from hub instead of HA
     │   │   └── layouts/
     │   │       ├── layout_v1.yaml      ← original AC board pinout (self-contained)
     │   │       └── layout_v2.yaml      ← 6-button generic layout (default)
@@ -51,6 +60,8 @@ esphome_remote/
     │       ├── cover_entities.h        ← ★ configure covers
     │       ├── automation_entities.h   ← ★ configure automations
     │       ├── *_controller.h          ← logic for each mode (no need to be modified!)
+    │       ├── espnow_protocol.h       ← packet format shared by remote and hub
+    │       ├── espnow_remote.h         ← remote-side packet ↔ controller glue
     │       ├── display_utils.h
     │       └── remote_core.h
     └── oled_remote/                    ← legacy device (v1 hardware, original AC board)
@@ -167,6 +178,9 @@ All `make` targets run from the `devices/multi_function_remote/` directory.
 | `make logs` | Open serial monitor |
 | `make logs-ota IP=192.168.1.42` | Stream logs over WiFi |
 | `make clean` | Remove build artefacts |
+| `make espnow` / `make flash-espnow` | Compile / flash the ESP-NOW remote (USB only, no OTA) |
+| `make hub` / `make flash-hub` / `make ota-hub IP=…` | Compile / flash the ESP-NOW hub |
+| `make logs-espnow` / `make logs-hub IP=…` | Serial monitor for the ESP-NOW remote / hub logs over WiFi |
 
 ### First flash (USB)
 
@@ -332,6 +346,48 @@ static const AutomationEntity AUTOMATION_LIST[] = {
 
 ---
 
+## ESP-NOW variant
+
+The WiFi remote has to boot, associate with WiFi, open the Home Assistant API connection and wait for entity states on every wake. That takes several seconds and costs battery. The ESP-NOW variant moves all of that to a small always-on **hub**:
+
+```
+ ┌──────────────┐  ESP-NOW (no WiFi association)  ┌─────────────┐  WiFi + native API  ┌────────────────┐
+ │ Remote(s)    │ ───── HELLO / CMD / BATTERY ───▶ │ espnow_hub  │ ◀─────────────────▶ │ Home Assistant │
+ │ deep sleep   │ ◀──── STATE_* snapshot ───────── │ state cache │                     │                │
+ └──────────────┘                                  └─────────────┘                     └────────────────┘
+```
+
+- **Wake**: the remote broadcasts `HELLO`; the hub answers from its cache with the full state within a few milliseconds and the UI draws. No WiFi stack is started on the remote.
+- **Commands**: every button action becomes one small `CMD` packet; the hub turns it into the Home Assistant service call.
+- **Live updates**: while the remote is awake the hub broadcasts changes, so external changes still show up.
+- **Sleep**: idle timeout defaults to 1 minute (Settings → SLEEP). Timer wakes only send a `BATTERY` packet and go back to sleep; the hub exposes it as `sensor.remote_battery`.
+- **Several remotes** can share one hub.
+
+The remote-side code is the same as the WiFi remote: all `src/*_controller.h` logic, the menu, button layouts and the `src/*_entities.h` lists are reused unchanged. Only the transport differs (`packages/espnow/`).
+
+### Hub setup (`devices/espnow_hub/`)
+
+1. Any ESP32 board on permanent power.
+2. `secrets.yaml` → WiFi credentials, `hub.yaml` → `API_KEY` and `NETWORK_KEY` (any `uint32`, shared with the remote; it keeps other ESP-NOW traffic from being interpreted).
+3. Flash: `make flash-hub` from `devices/multi_function_remote/`, later `make ota-hub IP=…`.
+4. Add the hub to Home Assistant like any ESPHome device. It exposes *Remote Battery*, *Remote Battery Voltage*, *Last Remote* (MAC of the last remote that talked) and a *Resync Remotes* button.
+
+The hub includes the **same** `src/*_entities.h` files as the remote, so entities are configured once. Entity indices are what travel over the air: rebuild and flash **both** the hub and the remote(s) after changing a list.
+
+### Remote setup (`remote_espnow.yaml`)
+
+1. `NETWORK_KEY` → same value as the hub.
+2. `ESPNOW_CHANNEL` → your router's 2.4 GHz channel. This is only the first guess: the remote remembers the channel on which the hub last answered and scans all 13 channels if it gets no reply (about 250 ms per channel). Pin the router to a fixed channel for the fastest wake.
+3. Flash over USB: `make flash-espnow`. There is no OTA without WiFi.
+
+On the Settings screen the two network rows show `ESPNOW CH <n>` and the hub's MAC (or `NO HUB`). If the hub cannot be reached the remote shows **NO HUB** and retries every 5 seconds.
+
+### Protocol
+
+Documented in `src/espnow_protocol.h`. Every packet starts with `R N <version> <type> <key>`; state packets carry per-entity records (index + values), commands carry `domain / index / action / value`. Packets are plain ESP-NOW frames, so treat the key as a filter, not as encryption.
+
+---
+
 ## Troubleshooting
 
 **Device won't connect to WiFi**
@@ -345,6 +401,15 @@ static const AutomationEntity AUTOMATION_LIST[] = {
 **Buttons not responding**
 - Check pin assignments match your hardware revision (v1 vs v2 layout)
 - Pins use internal pull-ups — button should connect GPIO to GND
+
+**ESP-NOW remote shows NO HUB**
+- Hub powered and connected to WiFi? (`make logs-hub IP=…`)
+- `NETWORK_KEY` identical on both sides
+- The remote scans all channels; a hub on a 5 GHz-only network cannot be reached (ESP-NOW is 2.4 GHz)
+
+**ESP-NOW remote shows stale or missing entity state**
+- Both firmwares must be built from the same `src/*_entities.h`; reflash the hub after editing a list
+- Press *Resync Remotes* on the hub (or wake the remote again)
 
 **API connection fails after flashing**
 - Make sure `api_key` in `secrets.yaml` matches what you entered in HA

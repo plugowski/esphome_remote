@@ -36,7 +36,7 @@ static const int SETTING_MAX           = 8;   // total rows that exist; not all 
 // (all three are build-time substitutions passed in from mode_settings.yaml).
 // contrast_level:           int 1–10  →  0.1–1.0 for set_contrast()
 // sleep_timeout_mins:       int 1–30
-// battery_interval_mins:    int 15–1440, steps of 15   (hidden if !battery_enabled)
+// battery_interval_mins:    int 15–20160 (14 days), a fixed ladder (hidden if !battery_enabled)
 // deep_sleep_fallback_mins: int 0 (off) or 5-1440, steps of 5 (hidden unless light_sleep)
 // quiet_hours_start/end:    int 0–23, wraps              (hidden unless light_sleep && quiet_hours_on_device)
 
@@ -111,14 +111,20 @@ public:
     if (mins > 1) { mins--; updated_ui = true; }
   }
 
-  // ── battery check interval (15–1440 minutes, step 15) ────────────────────────
+  // ── battery check interval (15 minutes to 14 days, on the same ladder as the generator slider) ──
 
   static void battIntervalUp(int& mins, bool& updated_ui) {
-    if (mins < 1440) { mins += 15; updated_ui = true; }
+    static const int ladder[] = {15, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080, 20160};
+    for (int v : ladder) {
+      if (v > mins) { mins = v; updated_ui = true; return; }
+    }
   }
 
   static void battIntervalDown(int& mins, bool& updated_ui) {
-    if (mins > 15) { mins -= 15; updated_ui = true; }
+    static const int ladder[] = {15, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080, 20160};
+    for (int i = 11; i >= 0; i--) {
+      if (ladder[i] < mins) { mins = ladder[i]; updated_ui = true; return; }
+    }
   }
 
   // Light Sleep only (0-1440 minutes, step 5). 0 disables the fallback
@@ -303,6 +309,8 @@ private:
       snprintf(buf, buf_size, "OFF");
     else if (mins < 60)
       snprintf(buf, buf_size, "%d MIN", mins);
+    else if (mins >= 1440 && mins % 1440 == 0)
+      snprintf(buf, buf_size, "%d D", mins / 1440);
     else if (mins % 60 == 0)
       snprintf(buf, buf_size, "%d H", mins / 60);
     else

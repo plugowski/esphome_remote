@@ -8,3 +8,4 @@ devices/*/secrets.yaml
 
 # macOS
 .DS_Store
+.idea

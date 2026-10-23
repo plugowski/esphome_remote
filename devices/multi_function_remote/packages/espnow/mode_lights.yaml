@@ -1,0 +1,91 @@
+# ── espnow/mode_lights.yaml ──────────────────────────────────────────────────
+# Lights mode over ESP-NOW.  Light states arrive in STATE_LIGHTS packets and
+# are pushed into LightsController by EspNowRemote::handle; commands go out as
+# rnp::CMD packets.  Entity configuration lives in src/light_entities.h.
+#
+# Button entry points (via buttons.yaml / layout):
+#   lights_btn_prev / lights_btn_next           → scroll
+#   lights_btn_toggle                           → on/off
+#   lights_btn_brightness_up / _down            → ±10 %
+# Main update loop: lights_update
+
+esphome:
+  includes:
+    - src/light_entities.h      # must come before lights_controller.h
+    - src/lights_controller.h
+
+globals:
+  - id: selected_light_index
+    type: int
+    initial_value: '0'
+    restore_value: true
+
+script:
+
+  - id: lights_btn_prev
+    then:
+      - lambda: 'LightsController::prevLight(id(selected_light_index)); id(updated_ui) = true;'
+      - script.execute: lights_draw
+
+  - id: lights_btn_next
+    then:
+      - lambda: 'LightsController::nextLight(id(selected_light_index)); id(updated_ui) = true;'
+      - script.execute: lights_draw
+
+  - id: lights_btn_toggle
+    then:
+      - lambda: 'LightsController::toggleLight(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_toggle
+      - script.execute: lights_draw
+
+  - id: lights_btn_brightness_up
+    then:
+      - lambda: 'LightsController::brightnessUp(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_brightness
+      - script.execute: lights_draw
+
+  - id: lights_btn_brightness_down
+    then:
+      - lambda: 'LightsController::brightnessDown(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_brightness
+      - script.execute: lights_draw
+
+  # ── hub commands ──────────────────────────────────────────────────────────
+
+  - id: lights_do_toggle
+    mode: queued
+    then:
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_LIGHTS;'
+          idx: !lambda 'return id(selected_light_index);'
+          action: !lambda 'return rnp::LIGHT_TOGGLE;'
+          value: 0
+
+  - id: lights_do_brightness
+    mode: restart
+    then:
+      - delay: 300ms    # debounce — coalesce rapid presses before sending
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_LIGHTS;'
+          idx: !lambda 'return id(selected_light_index);'
+          action: !lambda 'return rnp::LIGHT_SET_BRIGHTNESS;'
+          value: !lambda 'return LightsController::getBrightness(id(selected_light_index));'
+
+  # ── display ───────────────────────────────────────────────────────────────
+
+  - id: lights_update
+    then:
+      - lambda: 'if (id(selected_light_index) >= LIGHTS_LIST_COUNT) id(selected_light_index) = 0;'
+      - script.execute: lights_draw
+
+  - id: lights_draw
+    then:
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_LIGHTS && !id(menu_active) && !id(is_booting);'
+          then:
+            - lambda: >-
+                LightsController::draw(id(oled_display), id(font_small),
+                                       id(selected_light_index), id(updated_ui), id(conn_status));

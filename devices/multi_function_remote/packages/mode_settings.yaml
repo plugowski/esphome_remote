@@ -53,7 +53,7 @@ sensor:
     state_class: measurement
     accuracy_decimals: 2
     entity_category: diagnostic
-    attenuation: 11db
+    attenuation: 12db
     update_interval: 60s
     filters:
       - multiply: 2.0
@@ -100,7 +100,7 @@ globals:
     initial_value: '${SLEEP_TIMEOUT_MIN}'
     restore_value: true
 
-  - id: battery_interval_mins  # timer-wake interval for battery check (15–1440 min)
+  - id: battery_interval_mins  # timer-wake interval for battery check (15 min to 14 days)
     type: int
     initial_value: '${BATTERY_INTERVAL_MIN}'
     restore_value: true

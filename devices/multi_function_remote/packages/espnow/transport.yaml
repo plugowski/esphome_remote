@@ -1,0 +1,190 @@
+# ── espnow/transport.yaml ────────────────────────────────────────────────────
+# ESP-NOW link to the hub (devices/espnow_hub).  Replaces wifi/api in the
+# ESP-NOW variant of the remote.  Requires substitutions:
+#   NETWORK_KEY    — uint32 shared with the hub (any number, e.g. 305419896)
+#   ESPNOW_CHANNEL — initial WiFi channel of the hub's router (1-13);
+#                    the remote remembers the last channel that answered and
+#                    scans all 13 channels when the hub stops answering.
+#
+# Flow on every wake:
+#   hub_connect → broadcast HELLO → hub answers with STATE_* + STATE_DONE
+#   (unicast) → hub_synced = true → UI draws from fresh state.
+#
+# Scripts exposed to the mode packages:
+#   espnow_cmd (domain, idx, action, value) → sends one rnp::CMD packet
+#   hub_connect                              → HELLO + channel scan
+#   hub_send_battery                         → BATTERY packet (timer wake)
+
+esphome:
+  includes:
+    - src/espnow_protocol.h
+    - src/espnow_remote.h
+
+espnow:
+  id: espnow_bus
+  channel: ${ESPNOW_CHANNEL}
+  auto_add_peer: true          # hub becomes a known peer after its first reply
+  on_receive:
+    - then:
+        - lambda: |-
+            bool done = false, ac_changed = false;
+            uint8_t t = EspNowRemote::handle(data, size, ${NETWORK_KEY}UL, id(updated_ui), done, ac_changed);
+            if (t == 0) return;
+            if (!id(hub_known)) {
+              memcpy(id(hub_mac).data(), info.src_addr, 6);
+              id(hub_known) = true;
+              ESP_LOGI("hub", "Hub is %s", EspNowRemote::macToString(info.src_addr).c_str());
+            }
+            id(rx_type) = t;
+            if (ac_changed) id(rx_ac_changed) = true;
+            if (done) id(hub_synced) = true;
+        - script.execute: hub_apply_state
+  on_broadcast:
+    - then:
+        - lambda: |-
+            bool done = false, ac_changed = false;
+            uint8_t t = EspNowRemote::handle(data, size, ${NETWORK_KEY}UL, id(updated_ui), done, ac_changed);
+            if (t == 0) return;
+            id(rx_type) = t;
+            if (ac_changed) id(rx_ac_changed) = true;
+            if (done) id(hub_synced) = true;
+        - script.execute: hub_apply_state
+
+globals:
+  - id: espnow_channel          # last channel on which the hub answered
+    type: int
+    initial_value: '${ESPNOW_CHANNEL}'
+    restore_value: true
+
+  - id: hub_mac
+    type: 'std::array<uint8_t, 6>'
+    initial_value: '{{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}}'
+
+  - id: hub_known               # hub MAC learned in this boot
+    type: bool
+    initial_value: 'false'
+
+  - id: hub_synced              # full snapshot received in this boot
+    type: bool
+    initial_value: 'false'
+
+  - id: hub_tries
+    type: int
+    initial_value: '0'
+
+  - id: rx_type                 # last received packet type (for hub_rx)
+    type: int
+    initial_value: '0'
+
+  - id: rx_ac_changed
+    type: bool
+    initial_value: 'false'
+
+script:
+
+  # ── receive path ──────────────────────────────────────────────────────────
+  # The espnow triggers parse the packet (see espnow: section) and set
+  # rx_type; this script then pokes the right mode package.
+  - id: hub_apply_state
+    mode: queued
+    then:
+      - if:
+          condition: { lambda: 'return id(rx_type) == rnp::STATE_AC && id(rx_ac_changed);' }
+          then:
+            - lambda: 'id(rx_ac_changed) = false;'
+            - script.execute: ac_sync_states
+      - if:
+          condition: { lambda: 'return id(rx_type) == rnp::STATE_LIGHTS;' }
+          then: [ script.execute: lights_draw ]
+      - if:
+          condition: { lambda: 'return id(rx_type) == rnp::STATE_COVERS;' }
+          then: [ script.execute: covers_draw ]
+
+  # ── HELLO + channel scan ──────────────────────────────────────────────────
+  - id: hub_send_hello
+    mode: restart
+    then:
+      - espnow.broadcast:
+          data: !lambda 'return rnp::build_hello(${NETWORK_KEY}UL, true);'
+          wait_for_sent: true
+          continue_on_error: true
+
+  # Tries the remembered channel first, then every other channel once.
+  # ~250 ms per attempt → worst case ≈ 3.5 s when the hub is unreachable.
+  - id: hub_connect
+    mode: restart
+    then:
+      - lambda: |-
+          id(hub_tries)  = 0;
+          id(hub_synced) = false;
+          if (id(espnow_channel) < 1 || id(espnow_channel) > 13) id(espnow_channel) = ${ESPNOW_CHANNEL};
+          id(espnow_bus).set_wifi_channel(id(espnow_channel));
+          id(espnow_bus).apply_wifi_channel();
+      - while:
+          condition: { lambda: 'return !id(hub_synced) && id(hub_tries) < 13;' }
+          then:
+            - if:
+                condition: { lambda: 'return id(hub_tries) > 0;' }
+                then:
+                  - lambda: |-
+                      int ch = ((id(espnow_channel) - 1 + id(hub_tries)) % 13) + 1;
+                      ESP_LOGI("hub", "No answer, scanning channel %d", ch);
+                      id(espnow_bus).set_wifi_channel(ch);
+                      id(espnow_bus).apply_wifi_channel();
+            - lambda: 'id(hub_tries)++;'
+            - script.execute: hub_send_hello
+            - script.wait: hub_send_hello
+            - wait_until:
+                condition: { lambda: 'return id(hub_synced);' }
+                timeout: 250ms
+      - if:
+          condition: { lambda: 'return id(hub_synced);' }
+          then:
+            - lambda: |-
+                int ch = id(espnow_bus).get_wifi_channel();
+                if (ch != id(espnow_channel)) {
+                  ESP_LOGI("hub", "Hub found on channel %d (saved)", ch);
+                  id(espnow_channel) = ch;
+                }
+                id(conn_status) = 0;
+          else:
+            - lambda: 'ESP_LOGW("hub", "Hub not found on any channel"); id(conn_status) = 3;'
+
+  # ── command path ──────────────────────────────────────────────────────────
+  # Unicast to the hub when its MAC is known (acknowledged by the radio),
+  # otherwise broadcast.  Retries once on failure.
+  - id: espnow_cmd
+    mode: queued
+    parameters:
+      domain: int
+      idx: int
+      action: int
+      value: int
+    then:
+      - lambda: 'RemoteCore::resetIdleTimer(id(last_active));'
+      - espnow.send:
+          address: !lambda |-
+            if (id(hub_known)) return id(hub_mac);
+            return esphome::espnow::peer_address_t{{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
+          data: !lambda 'return rnp::build_cmd(${NETWORK_KEY}UL, domain, idx, action, value);'
+          wait_for_sent: true
+          continue_on_error: true
+          on_error:
+            - lambda: 'ESP_LOGW("hub", "CMD send failed, retrying as broadcast");'
+            - espnow.broadcast:
+                data: !lambda 'return rnp::build_cmd(${NETWORK_KEY}UL, domain, idx, action, value);'
+                wait_for_sent: true
+                continue_on_error: true
+
+  # ── battery report (timer wake) ───────────────────────────────────────────
+  - id: hub_send_battery
+    mode: single
+    then:
+      - lambda: |-
+          if (id(espnow_channel) < 1 || id(espnow_channel) > 13) id(espnow_channel) = ${ESPNOW_CHANNEL};
+          id(espnow_bus).set_wifi_channel(id(espnow_channel));
+          id(espnow_bus).apply_wifi_channel();
+      - espnow.broadcast:
+          data: !lambda 'return rnp::build_battery(${NETWORK_KEY}UL, id(battery_pct), id(battery_mv));'
+          wait_for_sent: true
+          continue_on_error: true
