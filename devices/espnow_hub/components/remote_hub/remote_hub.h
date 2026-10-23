@@ -63,6 +63,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
     uint32_t exp_mode_at{0}, exp_fan_at{0}, exp_temp_at{0};
     bool due{false};
     uint32_t due_at{0};
+    uint32_t last_cmd_at{0};
     bool repeat{false};  // announce the result once more shortly after applying it
     uint32_t repeat_at{0};
   };
