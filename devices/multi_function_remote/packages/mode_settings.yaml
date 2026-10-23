@@ -53,7 +53,7 @@ sensor:
     state_class: measurement
     accuracy_decimals: 2
     entity_category: diagnostic
-    attenuation: 11db
+    attenuation: 12db
     update_interval: 60s
     filters:
       - multiply: 2.0
