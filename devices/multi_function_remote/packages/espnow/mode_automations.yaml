@@ -103,4 +103,4 @@ script:
             - lambda: >-
                 id(updated_ui) = true;
                 AutomationController::draw(id(oled_display), id(font_small),
-                                           id(selected_auto_index), id(updated_ui));
+                                           id(selected_auto_index), id(updated_ui), id(conn_status));

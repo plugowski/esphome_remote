@@ -112,4 +112,4 @@ script:
                 CoverController::draw(id(oled_display),
                   id(ac_symbols), id(menu_icon_small),
                   id(font_big), id(font_base), id(font_small),
-                  id(selected_cover_index), id(updated_ui));
+                  id(selected_cover_index), id(updated_ui), id(conn_status));
