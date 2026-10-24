@@ -27,6 +27,11 @@ substitutions:
   PIN_I2C_SCL: "25"
   PIN_OLED_EN: "15"
   PIN_BAT_ADC: "32"
+  # Lights mode view: "true" (default) shows one light per screen (card view:
+  # big bulb, ON/OFF, brightness bar, LOW/FULL presets on the outer circles);
+  # "false" keeps the original scrollable list. Button mapping for both is
+  # documented at the top of src/lights_controller.h.
+  LIGHTS_CARD_VIEW: "true"
   # "LIGHT" (default) lets the radio modem sleep between DTIM beacons while
   # awake — lower average current, at the cost of a little response jitter.
   # "NONE" keeps the radio fully powered for the whole awake window — more

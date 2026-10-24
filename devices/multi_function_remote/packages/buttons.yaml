@@ -13,18 +13,18 @@
 #
 #   btn_*      │ menu  │ AC             │ Lights         │ Covers          │ Automations
 #   ───────────┼───────┼────────────────┼────────────────┼─────────────────┼─────────────────
-#   btn_left   │ prev  │ prev unit      │ brightness –   │ prev cover      │ L slot
-#   btn_right  │ next  │ next unit      │ brightness +   │ next cover      │ R slot
-#   btn_ok     │ confm │ cycle HVAC     │ toggle on/off  │ open ↔ close    │ trigger selected
-#   btn_up     │  —    │ temp +         │ scroll up ▲    │ position +10 %  │ scroll up ▲
-#   btn_down   │  —    │ temp –         │ scroll down ▼  │ position –10 %  │ scroll down ▼
-#   btn_stop   │ cancl │ cycle fan      │  —             │ stop            │  —
+#   btn_left   │ prev  │ prev unit      │ list: bri – / card: prev  │ prev cover      │ L slot
+#   btn_right  │ next  │ next unit      │ list: bri + / card: next  │ next cover      │ R slot
+#   btn_ok     │ confm │ cycle HVAC     │ list: toggle / card: ON   │ open ↔ close    │ trigger selected
+#   btn_up     │  —    │ temp +         │ list: prev  / card: bri + │ position +10 %  │ scroll up ▲
+#   btn_down   │  —    │ temp –         │ list: next  / card: bri – │ position –10 %  │ scroll down ▼
+#   btn_stop   │ cancl │ cycle fan      │ list: —     / card: OFF   │ stop            │  —
 #   btn_menu_open │ — │  —             │  —             │  —              │  —  (opens menu)
 
 script:
 
   # ── btn_left ──────────────────────────────────────────────────────────────
-  # Menu: prev  |  AC: prev unit  |  Lights: brightness ↓
+  # Menu: prev  |  AC: prev unit  |  Lights: lights_btn_left (view-dependent)
   # Covers: prev cover  |  Automations: trigger L slot
 
   - id: btn_left
@@ -37,7 +37,7 @@ script:
           then: [ script.execute: ac_btn_left ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-          then: [ script.execute: lights_btn_brightness_down ]
+          then: [ script.execute: lights_btn_left ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
           then: [ script.execute: covers_btn_left ]
@@ -62,7 +62,7 @@ script:
           then: [ script.execute: ac_btn_right ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-          then: [ script.execute: lights_btn_brightness_up ]
+          then: [ script.execute: lights_btn_right ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
           then: [ script.execute: covers_btn_right ]
@@ -93,7 +93,7 @@ script:
                 then: [ script.execute: ac_btn_power_on ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
-                then: [ script.execute: lights_btn_toggle ]
+                then: [ script.execute: lights_btn_ok ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
                 then: [ script.execute: covers_btn_ok ]
@@ -116,7 +116,7 @@ script:
           then: [ script.execute: ac_btn_temp_up ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-          then: [ script.execute: lights_btn_prev ]
+          then: [ script.execute: lights_btn_up ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
           then: [ script.execute: covers_btn_pos_up ]
@@ -141,7 +141,7 @@ script:
           then: [ script.execute: ac_btn_temp_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-          then: [ script.execute: lights_btn_next ]
+          then: [ script.execute: lights_btn_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
           then: [ script.execute: covers_btn_pos_down ]
@@ -154,7 +154,7 @@ script:
 
   # ── btn_stop ──────────────────────────────────────────────────────────────
   # Menu / action view: back to carousel  |  Menu / carousel: cancel
-  # AC: turn OFF  |  Covers: stop
+  # AC: turn OFF  |  Lights (card view): OFF  |  Covers: stop
 
   - id: btn_stop
     then:
@@ -169,6 +169,9 @@ script:
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_AC;' }
                 then: [ script.execute: ac_btn_power_off ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                then: [ script.execute: lights_btn_stop ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
                 then: [ script.execute: covers_btn_stop ]

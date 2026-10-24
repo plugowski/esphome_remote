@@ -14,8 +14,8 @@
 #
 # Always-present hardware buttons (shared with v1):
 #    5  ☰  menu           open / confirm menu
-#   22  MODE / <<         menu prev | AC: HVAC mode | Lights: prev | Covers: close | Autos: L slot
-#   33  FAN  / >>         menu next | AC: fan speed | Covers: open | Autos: R slot
+#   22  MODE / <<         menu prev | AC: HVAC mode | Lights: prev or LOW | Covers: close | Autos: L slot
+#   33  FAN  / >>         menu next | AC: fan speed | Lights: next or FULL | Covers: open | Autos: R slot
 #
 # btn_* routing logic lives in packages/buttons.yaml.
 # Pins 5 / 22 / 33 are dispatched inline (different semantics from btn_left/right).
@@ -174,7 +174,7 @@ binary_sensor:
                         then: [ script.execute: menu_back_to_carousel ]
                         else: [ script.execute: menu_confirm ]
 
-  # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: prev ─────────
+  # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: circle L ─────
   # Covers: close | Autos: L slot
   - platform: gpio
     pin:
@@ -197,7 +197,7 @@ binary_sensor:
                   then: [ script.execute: ac_btn_mode ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-                  then: [ script.execute: lights_btn_prev ]
+                  then: [ script.execute: lights_btn_circle_l ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
                   then: [ script.execute: covers_btn_close ]
@@ -231,7 +231,7 @@ binary_sensor:
                   then: [ script.execute: ac_btn_fan ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-                  then: [ script.execute: lights_btn_next ]
+                  then: [ script.execute: lights_btn_circle_r ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
                   then: [ script.execute: covers_btn_open ]

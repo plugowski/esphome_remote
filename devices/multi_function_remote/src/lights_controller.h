@@ -9,20 +9,34 @@
 #include "remote_core.h"
 
 // ── LightsController ──────────────────────────────────────────────────────────
-// Lights mode: scrollable list with on/off toggle, dimmable indicator,
-// brightness control (5 % steps, snapped to a clean multiple of 5 in the
-// direction of travel), and real-time HA state sync.
+// Lights mode. Two views, chosen at build time by the LIGHTS_CARD_VIEW
+// substitution (global lights_card_view):
 //
-// Button mapping:
-//   MODE  (pin22)   -> prevLight   (labeled ▲ on screen)
-//   FAN   (pin33)   -> nextLight   (labeled ▼ on screen)
-//   LEFT  (pin14)   -> nextLight   (mirrors FAN — scrolls down the list)
-//   RIGHT (pin26)   -> toggleLight (on/off)
-//   T_UP  (pin23/17)-> brightnessUp
-//   T_DN  (pin19/18)-> brightnessDown
-//   MENU  (pin5)    -> opens mode menu
+//   list view (draw)     — scrollable 4-row list, on/off toggle, ±5 % steps
+//   card view (drawCard) — one light per screen: name row, big bulb icon,
+//                          ON/OFF + brightness bar, LOW/FULL presets
 //
-// Display layout (128x64, 4 visible rows of 13 px + bottom menu at y=53):
+// Button mapping, list view (original):
+//   circles L/R (pin22/33) -> prev / next light   (▲ / ▼ in the bar)
+//   ← →  (btn_left/right)  -> brightness − / +
+//   OK                      -> toggle on/off
+//   ↑ ↓                     -> prev / next light
+//   ⏸                       -> (nothing)
+//
+// Button mapping, card view:
+//   circles L/R (pin22/33) -> dimmable: LOW (25 %) / FULL (100 %)
+//                             non-dimmable: OFF / ON
+//   ← →  (btn_left/right)  -> prev / next light
+//   OK                      -> ON   (keeps last brightness)
+//   ⏸                       -> OFF
+//   ↑ ↓                     -> brightness + / −
+//   MENU (pin5)             -> opens mode menu  (both views)
+//
+// The routing itself lives in packages/mode_lights.yaml (lights_btn_*
+// dispatcher scripts), so buttons.yaml / layout_v2.yaml never need to know
+// which view is active.
+//
+// List view layout (128x64, 4 visible rows of 13 px + bottom menu at y=53):
 //   x=4            name (font_small, CENTER_LEFT — vertically centred in row)
 //   x=after name   filled_circle r=2 (dimmable indicator) — placed 5 px after
 //                  text right edge via get_text_bounds
@@ -30,15 +44,31 @@
 //   x=119 r=4      radio button — filled=ON, outline=OFF
 //   y=53..63       ▲ | ☰ | ▼  bottom bar (draw_bottom_menu)
 //
+// Card view layout:
+//   y=0..15        name (font_base, TOP_LEFT at x=2), "n/N" counter (font_small,
+//                  TOP_RIGHT at x=126); divider at y=16
+//   x=2..34        26 px bulb \ue0f0 centred at (18, 34): filled glyph
+//                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
+//   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=25) over a
+//                  86x9 outline bar at y=36 (filled when ON, tick when OFF)
+//                  non-dimmable: "ON"/"OFF" in font_base centred at (83, 34)
+//   y=53..63       LOW | ☰ | FULL  (dimmable)   or   OFF | ☰ | ON
+//
 // YAML usage:
 //   LightsController::prevLight(id(selected_light_index)); id(updated_ui)=true;
 //   LightsController::nextLight(id(selected_light_index)); id(updated_ui)=true;
 //   LightsController::toggleLight(id(selected_light_index), id(updated_ui));
+//   LightsController::turnOn(id(selected_light_index), id(updated_ui));
+//   LightsController::turnOff(id(selected_light_index), id(updated_ui));
+//   LightsController::setPreset(id(selected_light_index), LightsController::PRESET_LOW, id(updated_ui));
 //   LightsController::brightnessUp(id(selected_light_index), id(updated_ui));
 //   LightsController::brightnessDown(id(selected_light_index), id(updated_ui));
 //   LightsController::syncLight(idx, ha_state, ha_brightness, id(updated_ui));
 //   LightsController::draw(id(oled_display), id(font_small),
-//                          id(selected_light_index), id(updated_ui));
+//                          id(selected_light_index), id(updated_ui), id(conn_status));
+//   LightsController::drawCard(id(oled_display), id(font_base), id(font_small),
+//                              id(lights_icon_on), id(lights_icon_off),
+//                              id(selected_light_index), id(updated_ui), id(conn_status));
 
 class LightsController {
 public:
@@ -59,6 +89,48 @@ public:
     if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
     lightOn(idx) = !lightOn(idx);
     updated_ui   = true;
+  }
+
+  static void turnOn(int idx, bool& updated_ui) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+    lightOn(idx) = true;
+    updated_ui   = true;
+  }
+
+  static void turnOff(int idx, bool& updated_ui) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+    lightOn(idx) = false;
+    updated_ui   = true;
+  }
+
+  // ── presets (card view circles) ───────────────────────────────────────────
+  // Dimmable light: ON at the given percentage (0 % means OFF).
+  // Non-dimmable light: the circles degrade to plain OFF / ON.
+  static const int PRESET_LOW  = 25;
+  static const int PRESET_FULL = 100;
+
+  static void setPreset(int idx, int pct, bool& updated_ui) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    if (LIGHTS_LIST[idx].dimmable) {
+      lightBrightness(idx) = pct;
+      lightOn(idx)         = (pct > 0);
+    } else {
+      // No dimmer: the circles are plain OFF (low preset) / ON (full preset).
+      lightOn(idx) = (pct >= PRESET_FULL);
+    }
+    updated_ui = true;
+  }
+
+  static bool isDimmable(int idx) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return false;
+    return LIGHTS_LIST[idx].dimmable;
+  }
+
+  static bool isOn(int idx) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return false;
+    return lightOn(idx);
   }
 
   // ── brightness (5 % steps, clamped 0-100, dimmable + ON only) ─────────────
@@ -147,11 +219,25 @@ public:
         fg = COLOR_OFF;
       }
 
-      // Name — CENTER_LEFT anchors vertical centre to y_center
+      // Name — CENTER_LEFT anchors vertical centre to y_center.
+      // Names may be up to 12 chars (generator limit); trim until the text
+      // (plus the dimmable dot, 7 px) clears the brightness column that
+      // starts at x=83 ("100%" right-aligned to 110) — 4 px gap.
       char buf[16];
       strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
       buf[sizeof(buf) - 1] = '\0';
       for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
+      {
+        const int name_max = (dim ? 83 - 7 : 83) - 4 - 4;
+        int tx, ty, tw, th;
+        it->get_text_bounds(4, y_center, buf, font_small,
+                            display::TextAlign::CENTER_LEFT, &tx, &ty, &tw, &th);
+        while (tw > name_max && strlen(buf) > 1) {
+          buf[strlen(buf) - 1] = '\0';
+          it->get_text_bounds(4, y_center, buf, font_small,
+                              display::TextAlign::CENTER_LEFT, &tx, &ty, &tw, &th);
+        }
+      }
       it->print(4, y_center, font_small, fg, display::TextAlign::CENTER_LEFT, buf);
 
       // Dimmable indicator — small filled circle (r=2) placed 5 px after name.
@@ -177,7 +263,84 @@ public:
       }
     }
 
-    draw_bottom_menu(it, font_small, "\u25b2", "", "\u25bc");
+    draw_bottom_menu(it, font_small, "\u25b2", nullptr, "\u25bc");
+    RemoteCore::drawConnBadge(it, conn_status);
+    it->display();
+  }
+
+  // Renders the card view — one light per screen. No-ops when updated_ui is false.
+  // icon_on:  26 px filled bulb (lightbulb \ue0f0, FILL=1 font) when ON
+  // icon_off: 26 px outline bulb (lightbulb \ue0f0, regular font) when OFF
+  template<class D, class F>
+  static void drawCard(D* it, F* font_base, F* font_small, F* icon_on, F* icon_off,
+                       int selected_idx, bool& updated_ui, int conn_status) {
+    if (!updated_ui) return;
+    updated_ui = false;
+
+    it->clear();
+
+    if (LIGHTS_LIST_COUNT <= 0) {
+      it->print(64, 28, font_base, COLOR_ON, display::TextAlign::CENTER, "NO LIGHTS");
+      draw_bottom_menu(it, font_small, "", nullptr, "");
+      RemoteCore::drawConnBadge(it, conn_status);
+      it->display();
+      return;
+    }
+
+    const int  li  = wrap_index(selected_idx, LIGHTS_LIST_COUNT);
+    const bool on  = lightOn(li);
+    const int  bri = lightBrightness(li);
+    const bool dim = LIGHTS_LIST[li].dimmable;
+
+    // ── name row: name left, "n/N" right, divider ────────────────────────────
+    char cnt[8];
+    snprintf(cnt, sizeof(cnt), "%d/%d", li + 1, LIGHTS_LIST_COUNT);
+    int cx, cy, cw, ch;
+    it->get_text_bounds(126, 2, cnt, font_small, display::TextAlign::TOP_RIGHT, &cx, &cy, &cw, &ch);
+    it->print(126, 2, font_small, COLOR_ON, display::TextAlign::TOP_RIGHT, cnt);
+
+    char buf[16];
+    strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
+    // Trim the name until it clears the counter (4 px gap).
+    const int name_max = cx - 4 - 2;
+    int tx, ty, tw, th;
+    it->get_text_bounds(2, 1, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
+    while (tw > name_max && strlen(buf) > 1) {
+      buf[strlen(buf) - 1] = '\0';
+      it->get_text_bounds(2, 1, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
+    }
+    it->print(2, 1, font_base, COLOR_ON, display::TextAlign::TOP_LEFT, buf);
+    it->line(0, 16, 127, 16);
+
+    // ── icon: lit bulb when ON, plain bulb when OFF ──────────────────────────
+    it->print(18, 34, on ? icon_on : icon_off, COLOR_ON, display::TextAlign::CENTER, "\ue0f0");
+
+    if (dim) {
+      // state + percentage on one line, brightness bar below
+      it->print(40, 25, font_small, COLOR_ON, display::TextAlign::CENTER_LEFT, on ? "ON" : "OFF");
+      char pbuf[6];
+      snprintf(pbuf, sizeof(pbuf), "%d%%", bri);
+      it->print(126, 25, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
+
+      it->rectangle(40, 36, 86, 9);                 // outline, inner span x=42..123 (82 px)
+      const int w = (82 * ((bri < 0) ? 0 : (bri > 100) ? 100 : bri)) / 100;
+      if (on) {
+        if (w > 0) it->filled_rectangle(42, 38, w, 5);
+      } else {
+        // OFF: remembered level as a 2 px tick inside the empty bar
+        int x = 42 + w;
+        if (x > 123) x = 123;
+        it->filled_rectangle(x, 36, 2, 9);
+      }
+      draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
+    } else {
+      // non-dimmable: big state word centred in the free area right of the icon
+      it->print(83, 34, font_base, COLOR_ON, display::TextAlign::CENTER, on ? "ON" : "OFF");
+      draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
+    }
+
     RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
