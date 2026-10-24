@@ -330,7 +330,7 @@ public:
       it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label.c_str());
 
       bool show_fan = isSetpointMode(mode) || mode == "fan_only";
-      draw_bottom_menu(it, font_small, "MODE", "", show_fan ? "FAN" : nullptr);
+      draw_bottom_menu(it, font_small, "MODE", nullptr, show_fan ? "FAN" : nullptr);
     }
 
     RemoteCore::drawConnBadge(it, conn_status);

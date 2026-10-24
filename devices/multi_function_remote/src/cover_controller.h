@@ -138,7 +138,7 @@ public:
     it->line(0, 38, 127, 38);
     it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label);
 
-    draw_bottom_menu(it, font_small, "CLOSE", "", "OPEN");
+    draw_bottom_menu(it, font_small, "CLOSE", nullptr, "OPEN");
 
     RemoteCore::drawConnBadge(it, conn_status);
     it->display();

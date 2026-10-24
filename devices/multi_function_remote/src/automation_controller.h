@@ -165,7 +165,7 @@ public:
       }
     }
 
-    draw_bottom_menu(it, font_small, l_label, "", r_label);
+    draw_bottom_menu(it, font_small, l_label, nullptr, r_label);
     RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
