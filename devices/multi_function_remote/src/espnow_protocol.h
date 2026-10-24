@@ -64,7 +64,8 @@ enum Domain : uint8_t {
 enum AcAction : uint8_t { AC_SET_MODE = 0, AC_SET_FAN = 1, AC_SET_TEMP = 2 };
 static const int16_t AC_MODE_OFF = 255;
 
-enum LightAction : uint8_t { LIGHT_TOGGLE = 0, LIGHT_SET_BRIGHTNESS = 1 };   // value = pct
+enum LightAction : uint8_t { LIGHT_TOGGLE = 0, LIGHT_SET_BRIGHTNESS = 1,     // value = pct
+                             LIGHT_ON = 2, LIGHT_OFF = 3 };
 enum CoverAction : uint8_t { COVER_OPEN = 0, COVER_CLOSE = 1, COVER_STOP = 2, COVER_SET_POSITION = 3 };
 enum AutoAction  : uint8_t { AUTO_TRIGGER = 0 };                             // idx into list
 

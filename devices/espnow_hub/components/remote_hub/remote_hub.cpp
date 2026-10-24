@@ -115,7 +115,11 @@ void RemoteHub::subscribe_all_() {
 void RemoteHub::send_(const uint8_t *dest, const std::vector<uint8_t> &payload) {
   auto *bus = espnow::global_esp_now;
   if (bus == nullptr) return;
-  esp_err_t err = bus->send(dest, payload);
+  // Always hand over a callback: ESPHome 2026.4's espnow component invokes the
+  // send-complete callback unconditionally when the frame goes out, and an
+  // empty std::function there aborts the firmware (bad_function_call) — the
+  // hub rebooted on its very first transmission without this.
+  esp_err_t err = bus->send(dest, payload, [](esp_err_t) {});
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "send to %s failed: %d", mac_str_(dest).c_str(), (int) err);
   } else {
@@ -288,6 +292,10 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
         if (value > 100) value = 100;
         this->call_homeassistant_service("light.turn_on",
                                          {{"entity_id", eid}, {"brightness_pct", std::to_string((int) value)}});
+      } else if (action == rnp::LIGHT_ON) {
+        this->call_homeassistant_service("light.turn_on", {{"entity_id", eid}});
+      } else if (action == rnp::LIGHT_OFF) {
+        this->call_homeassistant_service("light.turn_off", {{"entity_id", eid}});
       }
       break;
     }
