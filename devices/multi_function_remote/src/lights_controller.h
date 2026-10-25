@@ -58,7 +58,7 @@
 //                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
 //   x=38..         name (font_base) beside the bulb, vertically centred, two
 //                  lines split at the first space when it doesn't fit
-//                  (print_name_beside), up to x=106 (dimmable) / 124
+//                  (print_name_beside), up to x=114 (dimmable) / 124
 //   x=117..125     dimmable: 9x39 slider (draw_vslider), rows 12..50, filled
 //                  from the bottom when ON; when OFF a tick marks the level it
 //                  comes back at. "75%" (font_small) right-aligned at x=114,
@@ -348,7 +348,8 @@ public:
     strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
     for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
-    print_name_beside(it, font_base, font_small, buf, 38, CARD_CY, dim ? VSLIDER_TEXT_R - 8 : 124);
+    // up to the slider when dimmable - its % sits below the name rows
+    print_name_beside(it, font_base, font_small, buf, 38, CARD_CY, dim ? VSLIDER_TEXT_R : 124);
 
     if (dim) {
       // slider on the right edge: the level while ON, a tick at the level it

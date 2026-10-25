@@ -23,7 +23,7 @@
 //   x=5..28      24 px curtain icon, vertically centred; under it the state
 //                in the 3x5 font, centred on x=17, rows 44..48 (OPEN /
 //                CLOSED / OPENING / CLOSING / STOPPED, UNKNOWN before data)
-//   x=38..106    name (font_base) beside the icon, vertically centred, two
+//   x=38..114    name (font_base) beside the icon, vertically centred, two
 //                lines split at the first space when it doesn't fit
 //                (print_name_beside) - the same card as a dimmable light
 //   x=117..125   9x39 slider (draw_vslider), rows 12..50, filled from the
@@ -176,7 +176,8 @@ public:
     strncpy(name, COVER_LIST[ci].name, sizeof(name) - 1);
     name[sizeof(name) - 1] = '\0';
     for (int k = 0; name[k]; k++) name[k] = toupper((unsigned char) name[k]);
-    print_name_beside(it, font_base, font_small, name, 38, CY, VSLIDER_TEXT_R - 8);  // x=38 like the lights card
+    // x=38 like the lights card; up to the slider - the % sits below the name rows
+    print_name_beside(it, font_base, font_small, name, 38, CY, VSLIDER_TEXT_R);
 
     // ── slider on the right: position, plus the target tick while moving ──────
     int tick = -1;
