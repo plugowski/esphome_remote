@@ -89,7 +89,7 @@ public:
     it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
     it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
     draw_bottom_menu(it, font_small_f, "", "", "");
-    it->display();
+    Toast::present(it);
   }
 
   template<class D, class F>
@@ -121,6 +121,6 @@ public:
       draw_bottom_menu(it, font_small_f, "", "", "");
     }
 
-    it->display();
+    Toast::present(it);
   }
 };

@@ -343,6 +343,6 @@ public:
     draw_bottom_menu(it, font_small, "MODE", nullptr,
                      mode == "off" ? "ON" : show_fan ? "FAN" : "");
 
-    it->display();
+    Toast::present(it);
   }
 };

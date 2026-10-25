@@ -128,7 +128,7 @@ private:
 // entity count. Same 4-row, 10 px list as the lights list, a page at a time.
 //
 //   rows 0..8    context strip: "ROOM" chip, one dot per page of 4
-//   rows 10..49  4 rows: name (font_small, x=4), count right-aligned at x=124;
+//   rows 11..50  4 rows: name (font_small, x=4), count right-aligned at x=124;
 //                the cursor row is inverted, the active filter gets a 2 px
 //                bar at x=0
 //   y=53..63     ▲ | OK | ▼
@@ -155,7 +155,7 @@ public:
     for (int row = 0; row < ROWS; row++) {
       const int e = page * ROWS + row;
       if (e >= n) break;
-      const int y_top    = ContextStrip::CONTENT_Y + row * ROW_H;
+      const int y_top    = ContextStrip::CONTENT_Y + 1 + row * ROW_H;  // rows 11..50
       const int y_center = y_top + 4;
       Color fg = COLOR_ON;
       if (e == cur) {
@@ -175,6 +175,6 @@ public:
     }
 
     draw_bottom_menu(it, font_small, "▲", "OK", "▼");
-    it->display();
+    Toast::present(it);
   }
 };

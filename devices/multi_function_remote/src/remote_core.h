@@ -52,7 +52,7 @@ public:
     it->rectangle(0, 20, 128, 1);
     it->print(64, 36, font_small, COLOR_ON, display::TextAlign::CENTER, line1);
     it->print(64, 49, font_small, COLOR_ON, display::TextAlign::CENTER, line2);
-    it->display();
+    Toast::present(it);
   }
 
   // Reset the 120 s idle counter to now
@@ -71,14 +71,23 @@ public:
   // tap after screen-off only wakes it, nothing underneath it fires. A
   // no-op in Deep Sleep builds: is_light_sleeping is never true there, so
   // this always returns false and behaves exactly like resetIdleTimer.
+  //
+  // A press while a toast is showing closes it and is consumed the same way.
   template<class D>
   static bool onUserActivity(D* it, int& last_active, bool& is_light_sleeping, bool& updated_ui) {
     resetIdleTimer(last_active);
-    if (!is_light_sleeping) return false;
-    is_light_sleeping = false;
-    it->turn_on();
-    updated_ui = true;
-    return true;
+    if (is_light_sleeping) {
+      is_light_sleeping = false;
+      it->turn_on();
+      updated_ui = true;
+      return true;
+    }
+    if (Toast::active()) {
+      Toast::dismiss();
+      updated_ui = true;
+      return true;
+    }
+    return false;
   }
 
   // Returns true when the device has been idle for timeout_s seconds

@@ -1,0 +1,139 @@
+#pragma once
+#include <cstdint>
+#include <cstring>
+#include "esphome/core/hal.h"
+#include "esphome/components/display/display.h"
+#include "esphome/components/font/font.h"
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+// A short notification drawn on top of whatever screen is showing, for a set
+// time ("BATTERY 9%", later things like "TRIGGERED"). Any key closes it early;
+// that press does nothing else (RemoteCore::onUserActivity consumes it).
+//
+//        ┌──────────────────────────────┐
+//        │ ┌──────────────────────────┐ │   x=8..119, centred on row 31
+//        │ │ [icon]  BATTERY 9%       │ │   title: font_base (font_small if
+//        │ │         CHARGE SOON      │ │          it doesn't fit)
+//        │ └──────────────────────────┘ │   body:  font_small, optional
+//        └──────────────────────────────┘   icon:  optional, 16 px on the left
+//
+// Every controller sends its frames through Toast::present(it) instead of
+// it->display(), which is what puts the toast on top of any screen.
+//
+// YAML usage:
+//   Toast::setFonts(id(font_base), id(font_small));          // on boot
+//   Toast::show("BATTERY 9%", "CHARGE SOON", 2000);          // then:
+//   id(updated_ui) = true;                                   // draw it now
+//   if (Toast::expired()) id(updated_ui) = true;             // each tick: redraw
+//                                                            // once it's gone
+
+class Toast {
+public:
+  enum Icon { ICON_NONE, ICON_CHECK, ICON_BATTERY };
+
+  static void setFonts(esphome::font::Font* title, esphome::font::Font* body) {
+    st().title_font = title;
+    st().body_font  = body;
+  }
+
+  static void show(const char* title, const char* body = nullptr,
+                   uint32_t duration_ms = 2000, Icon icon = ICON_NONE) {
+    State& s = st();
+    copy(s.title, title);
+    copy(s.body, body);
+    s.icon  = icon;
+    s.until = esphome::millis() + duration_ms;
+    if (s.until == 0) s.until = 1;  // 0 means "none"
+    s.shown = true;
+  }
+
+  static bool active() {
+    const State& s = st();
+    return s.until != 0 && static_cast<int32_t>(esphome::millis() - s.until) < 0;
+  }
+
+  static void dismiss() { st().until = 0; }
+
+  // True exactly once after the toast timed out or was dismissed, so the
+  // caller can redraw the screen underneath without it.
+  static bool expired() {
+    State& s = st();
+    if (!s.shown || active()) return false;
+    s.shown = false;
+    s.until = 0;
+    return true;
+  }
+
+  // Draws the toast on top (while it's active) and sends the frame.
+  template<class D>
+  static void present(D* it) {
+    if (active()) draw(it);
+    it->display();
+  }
+
+private:
+  struct State {
+    char     title[24];
+    char     body[24];
+    Icon     icon;
+    uint32_t until;   // millis() deadline, 0 = no toast
+    bool     shown;   // set until expired() has reported the end
+    esphome::font::Font* title_font;
+    esphome::font::Font* body_font;
+  };
+
+  static State& st() { static State s{}; return s; }
+
+  static void copy(char* dst, const char* src) {
+    if (!src) { dst[0] = '\0'; return; }
+    strncpy(dst, src, 23);
+    dst[23] = '\0';
+  }
+
+  template<class D>
+  static void draw(D* it) {
+    State& s = st();
+    if (!s.title_font || !s.body_font) return;
+    const bool has_body = s.body[0] != '\0';
+    const int  w = 112, h = has_body ? 30 : 22;
+    const int  x0 = (128 - w) / 2, y0 = 31 - h / 2;
+
+    // clear margin, double frame
+    it->filled_rectangle(x0 - 2, y0 - 2, w + 4, h + 4, COLOR_OFF);
+    it->rectangle(x0, y0, w, h, COLOR_ON);
+    it->rectangle(x0 + 2, y0 + 2, w - 4, h - 4, COLOR_ON);
+
+    int text_l = x0 + 4, text_r = x0 + w - 4;
+    const int cy = y0 + h / 2;
+    if (s.icon != ICON_NONE) {
+      drawIcon(it, s.icon, x0 + 7, cy);
+      text_l = x0 + 7 + 16 + 3;
+    }
+    const int cx    = (text_l + text_r) / 2;
+    const int avail = text_r - text_l;
+
+    esphome::font::Font* tf = s.title_font;
+    int bx, by, bw, bh;
+    it->get_text_bounds(cx, 0, s.title, tf, esphome::display::TextAlign::CENTER, &bx, &by, &bw, &bh);
+    if (bw > avail) tf = s.body_font;
+    const int title_y = has_body ? y0 + 10 : cy;
+    it->print(cx, title_y, tf, COLOR_ON, esphome::display::TextAlign::CENTER, s.title);
+    if (has_body)
+      it->print(cx, y0 + 21, s.body_font, COLOR_ON, esphome::display::TextAlign::CENTER, s.body);
+  }
+
+  // 16 px wide icons, vertically centred on cy.
+  template<class D>
+  static void drawIcon(D* it, Icon icon, int x, int cy) {
+    if (icon == ICON_CHECK) {
+      for (int t = 0; t < 2; t++) {
+        it->line(x + 1, cy + t,     x + 5,  cy + 4 + t, COLOR_ON);
+        it->line(x + 5, cy + 4 + t, x + 14, cy - 5 + t, COLOR_ON);
+      }
+    } else if (icon == ICON_BATTERY) {
+      it->rectangle(x, cy - 4, 14, 9, COLOR_ON);
+      it->filled_rectangle(x + 14, cy - 2, 2, 5, COLOR_ON);
+      it->filled_rectangle(x + 2, cy - 2, 2, 5, COLOR_ON);  // almost empty
+    }
+  }
+};

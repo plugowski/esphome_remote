@@ -84,7 +84,7 @@ public:
     }
     it->clear();
     it->print(64, 32, font_base, COLOR_ON, display::TextAlign::CENTER, label);
-    it->display();
+    Toast::present(it);
   }
 
   // ── display ────────────────────────────────────────────────────────────────
@@ -167,6 +167,6 @@ public:
 
     draw_bottom_menu(it, font_small, l_label, nullptr, r_label);
     RemoteCore::drawConnBadge(it, conn_status);
-    it->display();
+    Toast::present(it);
   }
 };

@@ -279,7 +279,7 @@ public:
 
     draw_bottom_menu(it, font_small, "▲", nullptr, "▼");
     RemoteCore::drawConnBadge(it, conn_status);
-    it->display();
+    Toast::present(it);
   }
 
 private:
