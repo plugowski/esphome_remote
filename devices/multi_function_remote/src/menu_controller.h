@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #include "menu_entities.h"
 #include "quick_action_entities.h"
 #include "display_utils.h"
@@ -18,11 +19,11 @@
 //   Stop          — carousel view: cancel menu  | action view: back to carousel
 //   Round keys    — carousel view: prev / next  | action view: BACK / RUN
 //
-// Layout (both views): context strip on rows 0..8 ("MENU" chip with one dot
-// per item / "ACTIONS" chip; the room filter's room in the badge, if any),
+// Layout: context strip on rows 0..8 ("MENU" chip with one dot per item /
+// "ACTIONS" chip; the room filter's room in the badge, if any). Carousel:
 // 32 px icon centred at y=24 (rows 12..37), name in font_base centred at
-// y=46 (caps 41..50), bottom bar from y=53. The
-// quick-action view, scrolled with up/down or left/right, shows its position
+// y=46 (caps 41..50), bottom bar from y=53. Quick actions: the icon on the
+// left and the name beside it (see ACTION_* below). The quick-action view, scrolled with up/down or left/right, shows its position
 // as vertical dots at the right edge instead (ContextStrip::drawVerticalDots)
 // and BACK / RUN badge buttons (draw_soft_buttons) with no centre slot: left
 // round key / stop = back to the carousel, right round key / OK = run, the
@@ -44,6 +45,14 @@ public:
 
   static const int ICON_Y = 24;  // centre of the 32 px icon, below the context strip
   static const int NAME_Y = 46;  // centre of the font_base name, above the bottom bar
+
+  // Quick-action view: 32 px icon centred at (20, 31), name left-aligned at
+  // x=40 and vertically centred on the icon, in the space up to the vertical
+  // dots (x=120).
+  static const int ACTION_ICON_X = 20;
+  static const int ACTION_CY     = 31;
+  static const int ACTION_NAME_X = 40;
+  static const int ACTION_NAME_R = 120;
 
   static void open(int& menu_index, int app_mode, bool& menu_active) {
     if (MENU_LIST_COUNT <= 1) return;
@@ -86,6 +95,31 @@ public:
       quick_idx = wrap_index(quick_idx, QUICK_ACTION_COUNT, +1);
   }
 
+  // Name beside the action icon: one line in font_base when it fits, else two
+  // lines split at the first space (rows 24 / 39), else one line in font_small.
+  template<class D, class F>
+  static void drawActionName(D* it, F* font_base, F* font_small_f, const char* name) {
+    const int avail = ACTION_NAME_R - ACTION_NAME_X;
+    int x, y, w, h;
+    it->get_text_bounds(ACTION_NAME_X, ACTION_CY, name, font_base, display::TextAlign::CENTER_LEFT, &x, &y, &w, &h);
+    if (w <= avail) {
+      it->print(ACTION_NAME_X, ACTION_CY, font_base, COLOR_ON, display::TextAlign::CENTER_LEFT, name);
+      return;
+    }
+    const char* space = strchr(name, ' ');
+    if (space) {
+      char first[24];
+      const size_t n = static_cast<size_t>(space - name) < sizeof(first) - 1
+                       ? static_cast<size_t>(space - name) : sizeof(first) - 1;
+      memcpy(first, name, n);
+      first[n] = '\0';
+      it->print(ACTION_NAME_X, ACTION_CY - 7, font_base, COLOR_ON, display::TextAlign::CENTER_LEFT, first);
+      it->print(ACTION_NAME_X, ACTION_CY + 8, font_base, COLOR_ON, display::TextAlign::CENTER_LEFT, space + 1);
+      return;
+    }
+    it->print(ACTION_NAME_X, ACTION_CY, font_small_f, COLOR_ON, display::TextAlign::CENTER_LEFT, name);
+  }
+
   template<class D, class F>
   static void drawTriggered(D* it, F* action_icon, F* font_base, F* font_small_f, int quick_idx) {
     it->clear();
@@ -118,12 +152,12 @@ public:
       draw_bottom_menu(it, font_small_f, "<", "OK", ">");
 
     } else {
-      // ── quick-action view (big icon + name, no side icons) ────────────────
+      // ── quick-action view: icon on the left, name beside it ───────────────
       const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
       ContextStrip::draw(it, "ACTIONS", 0, 0, conn_status, RoomFilter::name());
       ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
-      it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
-      it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
+      it->print(ACTION_ICON_X, ACTION_CY, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
+      drawActionName(it, font_base, font_small_f, qa.name);
       // BACK / RUN as badge buttons over the round keys, no bar or centre
       // slot: set apart from the carousel and the mode screens, whose middle
       // key is always the menu
