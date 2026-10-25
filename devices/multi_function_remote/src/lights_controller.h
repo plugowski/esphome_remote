@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cmath>
 #include "light_entities.h"
+#include "room_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
 #include "context_strip.h"
@@ -38,9 +39,9 @@
 // which view is active.
 //
 // Both views start with the context strip (rows 0..8): "LIGHTS" chip, dots
-// per page (list view: one per 4 lights, card view: one per light), an "ALL"
-// badge (lights have no room filter yet), clock and battery. See
-// src/context_strip.h.
+// per page (list view: one per 4 lights, card view: one per light), a badge
+// (list view: "ALL", there's no room filter yet; card view: the light's room,
+// none without one), clock and battery. See src/context_strip.h.
 //
 // List view layout (128x64, 4 visible rows of 10 px from y=10, bottom menu
 // at y=53; scrolls a whole page of 4 at a time so the dots match):
@@ -302,8 +303,9 @@ public:
     const int  bri = lightBrightness(li);
     const bool dim = LIGHTS_LIST[li].dimmable;
 
-    // ── context strip: one dot per light ─────────────────────────────────────
-    ContextStrip::draw(it, "LIGHTS", li, LIGHTS_LIST_COUNT, conn_status, "ALL");
+    // ── context strip: one dot per light, the light's room in the badge ──────
+    ContextStrip::draw(it, "LIGHTS", li, LIGHTS_LIST_COUNT, conn_status,
+                       roomName(LIGHTS_LIST[li].room));
 
     // ── name row ─────────────────────────────────────────────────────────────
     char buf[16];

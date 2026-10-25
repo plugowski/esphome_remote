@@ -19,6 +19,7 @@ esphome:
   includes:
     - src/display_utils.h
     - src/context_strip.h
+    - src/room_entities.h
     - src/menu_entities.h         # APP_* IDs + MENU_LIST — edit here to configure carousel
     - src/ac_entities.h           # must come before ac_controller.h
     - src/ac_controller.h
