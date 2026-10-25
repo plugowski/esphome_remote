@@ -49,9 +49,9 @@
 //                  TOP_RIGHT at x=126); divider at y=16
 //   x=2..34        26 px bulb \ue0f0 centred at (18, 34): filled glyph
 //                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
-//   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=25) over a
+//   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=26) over a
 //                  86x9 outline bar at y=36 (filled when ON, tick when OFF)
-//                  non-dimmable: "ON"/"OFF" in font_base centred at (83, 34)
+//                  non-dimmable: "ON"/"OFF" in font_base centred at (80, 34)
 //   y=53..63       LOW | ☰ | FULL  (dimmable)   or   OFF | ☰ | ON
 //
 // YAML usage:
@@ -319,10 +319,10 @@ public:
 
     if (dim) {
       // state + percentage on one line, brightness bar below
-      it->print(40, 25, font_small, COLOR_ON, display::TextAlign::CENTER_LEFT, on ? "ON" : "OFF");
+      it->print(40, 26, font_small, COLOR_ON, display::TextAlign::CENTER_LEFT, on ? "ON" : "OFF");
       char pbuf[6];
       snprintf(pbuf, sizeof(pbuf), "%d%%", bri);
-      it->print(126, 25, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
+      it->print(126, 26, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
 
       it->rectangle(40, 36, 86, 9);                 // outline, inner span x=42..123 (82 px)
       const int w = (82 * ((bri < 0) ? 0 : (bri > 100) ? 100 : bri)) / 100;
@@ -337,7 +337,7 @@ public:
       draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
     } else {
       // non-dimmable: big state word centred in the free area right of the icon
-      it->print(83, 34, font_base, COLOR_ON, display::TextAlign::CENTER, on ? "ON" : "OFF");
+      it->print(80, 34, font_base, COLOR_ON, display::TextAlign::CENTER, on ? "ON" : "OFF");
       draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
     }
 
