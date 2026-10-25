@@ -7,6 +7,8 @@
 #include "cover_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
+#include "room_entities.h"
+#include "room_filter.h"
 
 // ── CoverController ───────────────────────────────────────────────────────────
 // Cover mode: entity selection, open/close/stop/position actions, display.
@@ -14,6 +16,17 @@
 // State and position for every cover are stored in private static arrays so
 // that switching covers immediately shows the last received values instead of
 // reverting to Unknown while waiting for HA to re-push data.
+//
+// Layout (same frame as the climate screen):
+//   rows 0..8    context strip: "COVERS" chip, one dot per cover in the room
+//                filter, the cover's room (its name without one) in the badge
+//   hero row     centred on HERO_CY = 29: 24 px curtain icon top-left at
+//                (5, 14); position in font_big centred at (64, 30) with "%"
+//                in font_base after it; 18 px state icon centred at (116, 29)
+//                (open / closed / opening / closing / stopped)
+//   y=53..63     CLOSE | ••• | OPEN
+// Prev / next skip covers outside the room filter; a room with no cover in
+// it shows the empty-room screen (room_filter.h).
 //
 // YAML usage:
 //   CoverController::prevCover(id(selected_cover_index));
@@ -35,14 +48,16 @@
 class CoverController {
 public:
 
+  static const int HERO_CY = 29;  // centre row of the hero, below the context strip
+
   // ── navigation ─────────────────────────────────────────────────────────────
 
   static void prevCover(int& idx) {
-    idx = wrap_index(idx, COVER_LIST_COUNT, -1);
+    idx = RoomFilter::step(idx, COVER_LIST_COUNT, -1, coverRoom);
   }
 
   static void nextCover(int& idx) {
-    idx = wrap_index(idx, COVER_LIST_COUNT, +1);
+    idx = RoomFilter::step(idx, COVER_LIST_COUNT, +1, coverRoom);
   }
 
   // ── HA state sync — always stores for every sensor index ──────────────────
@@ -108,39 +123,43 @@ public:
     if (!updated_ui) return;
     updated_ui = false;
 
-    const std::string& state = st(selected_idx);
-    int position             = pos(selected_idx);
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (COVER_LIST_COUNT > 0 && !RoomFilter::any(COVER_LIST_COUNT, coverRoom)) {
+      drawEmptyRoom(it, font_base, font_small, "COVERS", "covers", conn_status);
+      return;
+    }
+
+    const int ci             = wrap_index(selected_idx, COVER_LIST_CAPACITY);
+    const std::string& state = st(ci);
+    const int position       = pos(ci);
 
     it->clear();
 
-    char label[12];
-    strncpy(label, COVER_LIST[wrap_index(selected_idx, COVER_LIST_CAPACITY)].name, sizeof(label) - 1);
-    label[sizeof(label) - 1] = '\0';
-    for (int i = 0; label[i]; i++) label[i] = toupper((unsigned char)label[i]);
+    // ── context strip: "COVERS" chip, one dot per cover in the room filter;
+    //    the badge names the cover's room, or the cover itself without one ──
+    const char* room = roomName(COVER_LIST[ci].room);
+    ContextStrip::draw(it, "COVERS",
+                       RoomFilter::position(ci, COVER_LIST_COUNT, coverRoom),
+                       RoomFilter::visibleCount(COVER_LIST_COUNT, coverRoom), conn_status,
+                       room ? room : COVER_LIST[ci].name);
 
-    // Curtain icon top-left
-    it->print(5, 8, symbols, "");
+    // ── hero row ──────────────────────────────────────────────────────────────
+    it->print(5, HERO_CY - 15, symbols, "\uec12");   // curtain
 
     if (position < 0 || state == "unknown" || state == "unavailable" || state.empty()) {
-      // Centred between icon right edge (~29 px) and screen right edge (127 px)
-      it->print(78, 18, font_base, COLOR_ON, display::TextAlign::CENTER, "Unknown");
+      it->print(72, HERO_CY, font_base, COLOR_ON, display::TextAlign::CENTER, "UNKNOWN");
     } else {
       char pos_buf[5];
       snprintf(pos_buf, sizeof(pos_buf), "%d", position);
-      it->print(64, 22, font_big, COLOR_ON, display::TextAlign::CENTER, pos_buf);
-
-      int pct_x = (position < 10) ? 77 : (position < 100) ? 88 : 99;
-      it->print(pct_x, 4, font_base, COLOR_ON, "%");
-
-      it->print(110, 8, state_icons, stateIcon(state));
+      int bx, by, bw, bh;
+      it->get_text_bounds(64, HERO_CY + 1, pos_buf, font_big, display::TextAlign::CENTER, &bx, &by, &bw, &bh);
+      it->print(64, HERO_CY + 1, font_big, COLOR_ON, display::TextAlign::CENTER, pos_buf);
+      it->print(bx + bw + 1, HERO_CY - 17, font_base, COLOR_ON, "%");
+      it->print(116, HERO_CY, state_icons, COLOR_ON, display::TextAlign::CENTER, stateIcon(state));
     }
-
-    it->line(0, 38, 127, 38);
-    it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label);
 
     draw_bottom_menu(it, font_small, "CLOSE", nullptr, "OPEN");
 
-    RemoteCore::drawConnBadge(it, conn_status);
     Toast::present(it);
   }
 

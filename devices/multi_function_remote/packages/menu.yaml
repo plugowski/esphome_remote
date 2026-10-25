@@ -196,6 +196,7 @@ script:
           id(room_filter)        = id(room_picker_index);
           RoomFilter::current()  = id(room_filter);
           id(selected_light_index) = RoomFilter::first(id(selected_light_index), LIGHTS_LIST_COUNT, lightRoom);
+          id(selected_cover_index) = RoomFilter::first(id(selected_cover_index), COVER_LIST_COUNT, coverRoom);
       - if:
           condition: { lambda: 'return RoomFilter::first(id(selected_ac_index), AC_LIST_COUNT, acRoom) != id(selected_ac_index);' }
           then:

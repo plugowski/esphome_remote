@@ -50,7 +50,7 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_left ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_left ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
@@ -81,7 +81,7 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_right ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_right ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
@@ -115,7 +115,7 @@ script:
                 condition: { lambda: 'return id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                 then: [ script.execute: lights_btn_ok ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                condition: { lambda: 'return id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                 then: [ script.execute: covers_btn_ok ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
@@ -141,7 +141,7 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_up ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_pos_up ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
@@ -169,7 +169,7 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_down ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_pos_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
@@ -202,7 +202,7 @@ script:
                 condition: { lambda: 'return id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                 then: [ script.execute: lights_btn_stop ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
+                condition: { lambda: 'return id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                 then: [ script.execute: covers_btn_stop ]
 
   # ── btn_menu_open ─────────────────────────────────────────────────────────
