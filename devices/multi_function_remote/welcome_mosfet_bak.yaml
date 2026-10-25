@@ -1,0 +1,473 @@
+# ── welcome_mosfet.yaml ──────────────────────────────────────────────────────
+# Reconstructed from firmware binary (compiled 2026-03-23, ESPHome 2026.3.0)
+# + Key Test page added
+#
+# Purpose: welcome / info screen device — cycles through feature-overview pages,
+#          shows a QR code, and includes a Key Test diagnostics mode.
+#
+# GPIO map:
+#   Power            : GPIO0   (deep-sleep wakeup + OFF button)
+#   Left Circle      : GPIO22
+#   Mid Circle       : GPIO5
+#   Right Circle     : GPIO33
+#   Left Rectangle   : GPIO14
+#   Light Rectangle  : GPIO26
+#   Long Btn 1 L/R   : GPIO23 / GPIO17
+#   Long Btn 2 L/R   : GPIO19 / GPIO18
+#   SDA              : GPIO27
+#   SCL              : GPIO25
+#   OLED ON/OFF      : GPIO15
+#   Voltage Divider  : GPIO32 (ADC, not a push button)
+# ─────────────────────────────────────────────────────────────────────────────
+
+substitutions:
+  BOARD: "esp32dev"
+  DEVICE_NAME: "welcome"
+  FRIENDLY_NAME: "Off Remote"
+
+esphome:
+  name: ${DEVICE_NAME}
+  friendly_name: ${FRIENDLY_NAME}
+  min_version: 2024.11.0
+  on_boot:
+    - priority: 700
+      then:
+        - output.turn_on: oled_power
+        - delay: 10ms
+    - priority: -200
+      then:
+        - script.execute: welcome
+
+esp32:
+  board: ${BOARD}
+  framework:
+    type: arduino
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  power_save_mode: LIGHT
+
+api:
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+
+logger:
+
+# ── power ─────────────────────────────────────────────────────────────────────
+output:
+  - platform: gpio
+    pin: 15
+    id: oled_power
+
+deep_sleep:
+  id: go_sleep
+  wakeup_pin:
+    number: 0
+    allow_other_uses: true
+  wakeup_pin_mode: INVERT_WAKEUP
+
+# ── I²C & display ─────────────────────────────────────────────────────────────
+i2c:
+  sda: 27
+  scl: 25
+  frequency: 400kHz
+  scan: false
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1106 128x64"
+    address: 0x3C
+    rotation: 180
+    contrast: 0.5
+    id: oled_display
+    update_interval: never
+    lambda: |-
+      // All rendering is driven by scripts
+
+# ── fonts ─────────────────────────────────────────────────────────────────────
+font:
+  - file: "fonts/arial_bold.ttf"
+    id: font_base
+    size: 14
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!:/-()|"
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_small
+    size: 10
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!:/-()|="
+
+  - file: "fonts/arial_bold.ttf"
+    id: font_big
+    size: 22
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ! "
+
+  # Material Design Icons — automation U+E88A, lights U+E0F0, curtains U+EC12, AC U+EB3B
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: font_icon
+    size: 16
+    glyphs:
+      - "\U0000E88A"
+      - "\U0000E0F0"
+      - "\U0000EC12"
+      - "\U0000EB3B"
+
+# ── QR code ───────────────────────────────────────────────────────────────────
+qr_code:
+  - id: qr_remote
+    value: "http://tech.lugowski.dev/remote"
+
+# ── globals ───────────────────────────────────────────────────────────────────
+globals:
+  - id: current_page        # 0=welcome/QR  1=features  2=preferences  3=key test
+    type: int
+    initial_value: '0'
+    restore_value: false
+
+  - id: key_test_mode       # true while in key test — suppresses deep-sleep on Power
+    type: bool
+    initial_value: 'false'
+
+  - id: last_key_name
+    type: std::string
+    initial_value: '""'
+
+  - id: last_key_gpio
+    type: int
+    initial_value: '-1'
+
+# ── buttons ───────────────────────────────────────────────────────────────────
+binary_sensor:
+
+  # Power — GPIO0 (also deep-sleep wakeup)
+  # In normal mode: power off / sleep.  In key-test mode: exit key test.
+  - platform: gpio
+    id: btn_power
+    name: "Power"
+    pin:
+      number: 0
+      mode: INPUT_PULLUP
+      allow_other_uses: true
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(key_test_mode);'
+          then:
+            - script.execute: exit_key_test
+          else:
+            - script.execute: turn_off
+
+  - platform: gpio
+    id: btn_left_circle
+    name: "Left Circle"
+    pin:
+      number: 22
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Left Circle"' }
+            - globals.set: { id: last_key_gpio, value: '22' }
+            - script.execute: draw_key_test
+          else:
+            - script.execute: page_prev
+
+  - platform: gpio
+    id: btn_mid_circle
+    name: "Mid Circle"
+    pin:
+      number: 5
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Mid Circle"' }
+            - globals.set: { id: last_key_gpio, value: '5' }
+            - script.execute: draw_key_test
+
+  - platform: gpio
+    id: btn_right_circle
+    name: "Right Circle"
+    pin:
+      number: 33
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Right Circle"' }
+            - globals.set: { id: last_key_gpio, value: '33' }
+            - script.execute: draw_key_test
+          else:
+            - script.execute: page_next
+
+  - platform: gpio
+    id: btn_left_rect
+    name: "Left Rectangle"
+    pin:
+      number: 14
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Left Rectangle"' }
+            - globals.set: { id: last_key_gpio, value: '14' }
+            - script.execute: draw_key_test
+
+  - platform: gpio
+    id: btn_light_rect
+    name: "Light Rectangle"
+    pin:
+      number: 26
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Light Rectangle"' }
+            - globals.set: { id: last_key_gpio, value: '26' }
+            - script.execute: draw_key_test
+
+  - platform: gpio
+    id: btn_long1_l
+    name: "Long Btn 1 L"
+    pin:
+      number: 23
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Long Btn 1 L"' }
+            - globals.set: { id: last_key_gpio, value: '23' }
+            - script.execute: draw_key_test
+
+  - platform: gpio
+    id: btn_long1_r
+    name: "Long Btn 1 R"
+    pin:
+      number: 17
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Long Btn 1 R"' }
+            - globals.set: { id: last_key_gpio, value: '17' }
+            - script.execute: draw_key_test
+
+  - platform: gpio
+    id: btn_long2_l
+    name: "Long Btn 2 L"
+    pin:
+      number: 19
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Long Btn 2 L"' }
+            - globals.set: { id: last_key_gpio, value: '19' }
+            - script.execute: draw_key_test
+
+  - platform: gpio
+    id: btn_long2_r
+    name: "Long Btn 2 R"
+    pin:
+      number: 18
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - if:
+          condition: { lambda: 'return id(key_test_mode);' }
+          then:
+            - globals.set: { id: last_key_name, value: '"Long Btn 2 R"' }
+            - globals.set: { id: last_key_gpio, value: '18' }
+            - script.execute: draw_key_test
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  # Boot entry point
+  - id: welcome
+    mode: single
+    then:
+      - lambda: 'id(current_page) = 0; id(key_test_mode) = false;'
+      - script.execute: draw_screen
+
+  # Forward navigation (Right Circle in normal mode)
+  - id: page_next
+    mode: single
+    then:
+      - lambda: 'id(current_page) = (id(current_page) + 1) % 4;'
+      - if:
+          condition: { lambda: 'return id(current_page) == 3;' }
+          then:
+            - script.execute: enter_key_test
+          else:
+            - script.execute: draw_screen
+
+  # Backward navigation (Left Circle in normal mode)
+  - id: page_prev
+    mode: single
+    then:
+      - lambda: 'id(current_page) = (id(current_page) + 3) % 4;'
+      - if:
+          condition: { lambda: 'return id(current_page) == 3;' }
+          then:
+            - script.execute: enter_key_test
+          else:
+            - script.execute: draw_screen
+
+  # Enter key test mode
+  - id: enter_key_test
+    then:
+      - lambda: |-
+          id(key_test_mode) = true;
+          id(last_key_name) = "";
+          id(last_key_gpio) = -1;
+      - lambda: |-
+          auto *d = id(oled_display);
+          d->clear();
+          d->print(64, 0,  id(font_big),   TextAlign::TOP_CENTER,    "KEY TEST");
+          d->print(64, 28, id(font_base),  TextAlign::TOP_CENTER,    "Press any button");
+          d->print(64, 50, id(font_small), TextAlign::TOP_CENTER,    "POWER = exit");
+          d->display();
+
+  # Exit key test mode — return to page 0
+  - id: exit_key_test
+    then:
+      - lambda: |-
+          id(key_test_mode) = false;
+          id(current_page) = 0;
+      - script.execute: draw_screen
+
+  # Render key test result for a pressed button
+  - id: draw_key_test
+    then:
+      - lambda: |-
+          auto *d = id(oled_display);
+          char gpio_str[16];
+          snprintf(gpio_str, sizeof(gpio_str), "GPIO: %d", id(last_key_gpio));
+          d->clear();
+          d->print(64, 0,  id(font_big),   TextAlign::TOP_CENTER, "KEY TEST");
+          d->draw_pixel_at(0, 14, COLOR_ON); // separator line
+          d->horizontal_line(0, 14, 128);
+          d->print(64, 20, id(font_base),  TextAlign::TOP_CENTER, id(last_key_name).c_str());
+          d->print(64, 38, id(font_base),  TextAlign::TOP_CENTER, gpio_str);
+          d->print(64, 56, id(font_small), TextAlign::BOTTOM_CENTER, "POWER = exit");
+          d->display();
+
+  # Main render dispatcher (normal pages)
+  - id: draw_screen
+    then:
+      - lambda: |-
+          id(oled_display)->clear();
+          switch (id(current_page)) {
+            case 0: id(draw_welcome).execute();     break;
+            case 1: id(draw_features).execute();    break;
+            case 2: id(draw_preferences).execute(); break;
+          }
+
+  # Page 0 — QR code + thank-you
+  - id: draw_welcome
+    then:
+      - lambda: |-
+          auto *d = id(oled_display);
+          d->print(64, 0, id(font_big), TextAlign::TOP_CENTER, "THANK YOU!");
+          d->qr_code(2, 20, id(qr_remote), COLOR_ON, 2);
+          d->print(72, 22, id(font_small), TextAlign::TOP_LEFT, "tech.lugowski");
+          d->print(72, 34, id(font_small), TextAlign::TOP_LEFT, ".dev/remote");
+          d->print(0,  56, id(font_small), TextAlign::BOTTOM_LEFT,  "PREV");
+          d->print(128,56, id(font_small), TextAlign::BOTTOM_RIGHT, "NEXT");
+          d->display();
+
+  # Page 1 — feature list with MDI icons
+  - id: draw_features
+    then:
+      - lambda: |-
+          auto *d = id(oled_display);
+          int y = 0;
+          d->print(2,  y,   id(font_icon),  "\U0000E88A");
+          d->print(22, y+3, id(font_small), "TRIGGER AUTOMATIONS");
+          y += 16;
+          d->print(2,  y,   id(font_icon),  "\U0000E0F0");
+          d->print(22, y+3, id(font_small), "AND LIGHTS");
+          y += 16;
+          d->print(2,  y,   id(font_icon),  "\U0000EC12");
+          d->print(22, y+3, id(font_small), "AND CURTAINS");
+          y += 16;
+          d->print(2,  y,   id(font_icon),  "\U0000EB3B");
+          d->print(22, y+3, id(font_small), "CONTROL YOUR AC");
+          d->print(0,  56, id(font_small), TextAlign::BOTTOM_LEFT,  "PREV");
+          d->print(128,56, id(font_small), TextAlign::BOTTOM_RIGHT, "NEXT");
+          d->display();
+
+  # Page 2 — configuration / version
+  - id: draw_preferences
+    then:
+      - lambda: |-
+          auto *d = id(oled_display);
+          d->print(64, 4,  id(font_base), TextAlign::TOP_CENTER, "Configuration");
+          d->print(64, 20, id(font_base), TextAlign::TOP_CENTER, "and setup:");
+          d->print(64, 40, id(font_base), TextAlign::TOP_CENTER, "v3.1");
+          d->print(0,  56, id(font_small), TextAlign::BOTTOM_LEFT,  "PREV");
+          d->print(128,56, id(font_small), TextAlign::BOTTOM_RIGHT, "NEXT");
+          d->display();
+
+  # Power off — "BYE" screen + deep sleep
+  - id: turn_off
+    mode: single
+    then:
+      - lambda: |-
+          auto *d = id(oled_display);
+          d->clear();
+          d->print(64, 28, id(font_big), TextAlign::CENTER, "BYE");
+          d->display();
+      - delay: 1s
+      - lambda: |-
+          id(oled_display)->clear();
+          id(oled_display)->display();
+      - delay: 300ms
+      - output.turn_off: oled_power
+      - delay: 5ms
+      - deep_sleep.enter:
+          sleep_duration: 0s

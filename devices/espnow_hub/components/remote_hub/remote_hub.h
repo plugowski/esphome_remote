@@ -29,6 +29,8 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   float get_setup_priority() const override { return setup_priority::AFTER_CONNECTION; }
 
   void set_network_key(uint32_t key) { this->key_ = key; }
+  /// Testing aid: simulate the covers locally instead of using Home Assistant (see emulate_cover_).
+  void set_cover_emulator(bool on) { this->cover_emu_ = on; }
   void set_battery_sensor(sensor::Sensor *s) { this->battery_sensor_ = s; }
   void set_battery_voltage_sensor(sensor::Sensor *s) { this->battery_voltage_sensor_ = s; }
   void set_last_remote_sensor(text_sensor::TextSensor *s) { this->last_remote_sensor_ = s; }
@@ -38,6 +40,11 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
 
   /// Broadcast the full state to every remote that is awake (also wired to a button).
   void broadcast_all();
+
+  /// Ask a remote for its OLED framebuffer (HA "Remote Screenshot" button). Sent right away to
+  /// the last remote heard from; if it is asleep (no radio ACK) it goes out on the next HELLO / CMD. The
+  /// image is logged as SCREENSHOT_BEGIN / 8 hex lines / SCREENSHOT_END for tools/screenshot.py.
+  void request_screenshot();
 
   uint32_t packets_rx() const { return this->rx_count_; }
   uint32_t packets_tx() const { return this->tx_count_; }
@@ -70,6 +77,18 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
     uint8_t on{rnp::LIGHT_UNKNOWN};
     uint8_t brightness{rnp::VALUE_UNKNOWN};
   };
+  // Same idea as AcGuard, for brightness only: a run of brightness presses is held until they
+  // stop for LIGHT_SETTLE_MS, then Home Assistant gets the last value once. Until HA reports it
+  // (or EXPECT_TTL_MS pass) the commanded value is what the remotes are told, so HA's
+  // in-between states never make a remote's brightness jump back.
+  struct LightGuard {
+    bool want{false};
+    uint8_t want_v{0};
+    uint32_t due_at{0};
+    bool exp{false};
+    uint8_t exp_v{0};
+    uint32_t exp_at{0};
+  };
   struct CoverState {
     std::string state;
     uint8_t position{rnp::VALUE_UNKNOWN};
@@ -79,6 +98,9 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   void mark_dirty_(uint8_t domain_bit);
 
   void apply_ac_(int i);
+  void apply_light_brightness_(int i);
+  void emulate_cover_(int i, uint8_t action, int value);
+  void step_emulated_covers_();
   void confirm_ac_expected_(int i);
   std::string eff_ac_mode_(int i) const;
   std::string eff_ac_fan_(int i) const;
@@ -92,13 +114,32 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
 
   void handle_cmd_(const uint8_t *src, rnp::Reader &r);
   void handle_battery_(const uint8_t *src, rnp::Reader &r);
+  void handle_screenshot_data_(const uint8_t *src, rnp::Reader &r);
+  void maybe_send_screenshot_req_(const uint8_t *src);
+  void send_screenshot_req_(const uint8_t *dest);
 
   static std::string mac_str_(const uint8_t *mac);
   static uint8_t pct_from_ha_(const std::string &v, float scale);
 
   uint8_t last_src_[6]{0, 0, 0, 0, 0, 0};  // remote that sent the latest AC command
   bool have_src_{false};
+  uint8_t last_rx_src_[6]{0, 0, 0, 0, 0, 0};  // remote that sent the latest packet of any kind
+  bool have_rx_src_{false};
+  bool shot_pending_{false};
+  uint32_t shot_req_at_{0};  // 0 = request not sent yet
+  uint8_t shot_mask_{0};     // bit n = chunk n received
+  uint8_t shot_buf_[rnp::SCREENSHOT_CHUNKS * rnp::SCREENSHOT_CHUNK_SIZE]{};
   uint32_t key_{0};
+
+  // Cover emulator (cover_emulator: true): each cover moves 5 % every EMU_STEP_MS towards its
+  // target, reporting opening / closing on the way and open / closed when it gets there.
+  struct EmuCover {
+    uint8_t target{0};
+    bool moving{false};
+    uint32_t last_step{0};
+  };
+  bool cover_emu_{false};
+  EmuCover emu_[COVER_LIST_COUNT > 0 ? COVER_LIST_COUNT : 1];
   sensor::Sensor *battery_sensor_{nullptr};
   sensor::Sensor *battery_voltage_sensor_{nullptr};
   text_sensor::TextSensor *last_remote_sensor_{nullptr};
@@ -106,6 +147,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   AcState ac_[AC_LIST_COUNT > 0 ? AC_LIST_COUNT : 1];
   AcGuard ac_guard_[AC_LIST_COUNT > 0 ? AC_LIST_COUNT : 1];
   LightState lights_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
+  LightGuard light_guard_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
   CoverState covers_[COVER_LIST_COUNT > 0 ? COVER_LIST_COUNT : 1];
 
   static const uint8_t DIRTY_AC = 1, DIRTY_LIGHTS = 2, DIRTY_COVERS = 4;

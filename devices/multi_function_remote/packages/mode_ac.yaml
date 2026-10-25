@@ -193,13 +193,19 @@ script:
           then: [ script.execute: ac_btn_power_on ]
           else: [ script.execute: ac_btn_power_off ]
 
+  # Right-hand key: cycles the fan speed, or turns the unit on (labelled ON)
+  # while it is off.
   - id: ac_btn_fan
     then:
-      - lambda: >-
-          ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
-                                 id(selected_fan_mode), id(updated_ui));
-      - script.execute: ac_draw
-      - script.execute: ac_await
+      - if:
+          condition: { lambda: 'return id(selected_ac_mode) == "off";' }
+          then: [ script.execute: ac_btn_power_on ]
+          else:
+            - lambda: >-
+                ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
+                                       id(selected_fan_mode), id(updated_ui));
+            - script.execute: ac_draw
+            - script.execute: ac_await
 
   - id: ac_btn_mode
     then:
@@ -343,11 +349,17 @@ script:
 
   # ── display rendering ─────────────────────────────────────────────────────
 
+  # Only while the AC screen is showing, so a state update never paints over
+  # the menu or the room picker (same guard as the ESP-NOW package).
   - id: ac_draw
     then:
-      - lambda: >-
-          ACController::draw(id(oled_display),
-            id(ac_symbols), id(ac_symbols_big),
-            id(font_big), id(font_bigger), id(font_base), id(font_small),
-            id(selected_ac_mode), id(selected_fan_mode),
-            id(selected_ac_index), id(selected_temp), id(updated_ui), id(conn_status));
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_AC && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
+          then:
+            - lambda: >-
+                ACController::draw(id(oled_display),
+                  id(ac_symbols), id(ac_symbols_big),
+                  id(font_big), id(font_bigger), id(font_base), id(font_small),
+                  id(selected_ac_mode), id(selected_fan_mode),
+                  id(selected_ac_index), id(selected_temp), id(updated_ui), id(conn_status));

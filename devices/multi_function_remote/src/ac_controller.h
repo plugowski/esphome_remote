@@ -3,8 +3,11 @@
 #include <cstring>
 #include <cmath>
 #include "ac_entities.h"
+#include "room_entities.h"
+#include "room_filter.h"
 #include "display_utils.h"
 #include "remote_core.h"
+#include "context_strip.h"
 
 // ── ACController ──────────────────────────────────────────────────────────────
 // All AC mode logic: button actions, state management, and display rendering.
@@ -40,12 +43,13 @@ public:
 
   // ── button actions ─────────────────────────────────────────────────────────
 
+  // Both skip units outside the room filter (see room_filter.h).
   static void prevUnit(int& idx) {
-    idx = wrap_index(idx, AC_LIST_COUNT, -1);
+    idx = RoomFilter::step(idx, AC_LIST_COUNT, -1, acRoom);
   }
 
   static void nextUnit(int& idx) {
-    idx = wrap_index(idx, AC_LIST_COUNT, +1);
+    idx = RoomFilter::step(idx, AC_LIST_COUNT, +1, acRoom);
   }
 
   // Reverse-lookup: find the index for a given entity_id string (fallback 0)
@@ -212,19 +216,30 @@ public:
     return "\ueb3b";                            // ac_unit (cool, and fallback)
   }
 
-  // Fan speed in the top-right corner. Ordered speeds are stacked bars; the
-  // named speeds with no place on that scale get an icon, the same way "auto"
-  // has always used a letter.
+  // Layout below the context strip (rows 0..8: "CLIMATE" chip, one dot per
+  // unit, the unit's room - or its name, without a room - in the badge). The free area is rows 10..52; everything in the hero row
+  // is centred on HERO_CY = 31:
+  //   x=5          24 px mode icon, top-left (5, 16) → rows 21..40
+  //   x=64         40 px temperature centred at (64, 32) → digits rows 17..45
+  //   x=85         "C" in font_base, top-left (85, 14) → caps start on row 17
+  //   x=108..127   fan indicator (below)
+  //   y=53..63     MODE | ••• | FAN
+  static constexpr int HERO_CY = 31;
+
+  // Fan speed on the right of the hero row. Ordered speeds are stacked bars;
+  // the named speeds with no place on that scale get an icon, the same way
+  // "auto" has always used a letter.
   //
-  // All three share one slot. "A" is printed top-left-anchored at (108, 8) with
-  // font_bigger (Arial Bold 28), which inks the box x=108..127, y=14..34. The
-  // icons are centred on that same box — (118, 24) — rather than sharing the
-  // (108, 8) anchor: these are 24 px glyphs of differing widths, so a common
-  // top-left origin would both overrun the 128 px panel on the right and make
-  // each glyph sit in a slightly different place. Centring keeps them locked to
-  // the "A" position whatever the glyph.
+  // All three share one slot. "A" is printed top-left-anchored at (108, 15)
+  // with font_bigger (Arial Bold 28), which inks the box x=108..127,
+  // y=21..40. The icons are centred on that same box — (118, 30) — rather
+  // than sharing the top-left anchor: these are 24 px glyphs of differing
+  // widths, so a common top-left origin would both overrun the 128 px panel
+  // on the right and make each glyph sit in a slightly different place.
+  // Centring keeps them locked to the "A" position whatever the glyph. The
+  // three bars (7 px, 3 px apart) span rows 18..44.
   static constexpr int FAN_ICON_CX = 118;
-  static constexpr int FAN_ICON_CY = 24;
+  static constexpr int FAN_ICON_CY = 30;
 
   template<class D, class F>
   static void drawFanIndicator(D* it, F* symbols, F* font_bigger,
@@ -240,15 +255,15 @@ public:
       return;
     }
     if (fan_mode == "auto") {
-      it->print(108, 8, font_bigger, "A");
+      it->print(108, 15, font_bigger, "A");
       return;
     }
     if (fan_mode == "high")
-      it->filled_rectangle(110, 8, 20, 7);
-    if (fan_mode == "high" || fan_mode == "medium")
       it->filled_rectangle(110, 18, 20, 7);
-    if (fan_mode == "high" || fan_mode == "medium" || fan_mode == "low")
+    if (fan_mode == "high" || fan_mode == "medium")
       it->filled_rectangle(110, 28, 20, 7);
+    if (fan_mode == "high" || fan_mode == "medium" || fan_mode == "low")
+      it->filled_rectangle(110, 38, 20, 7);
   }
 
   // ── display ────────────────────────────────────────────────────────────────
@@ -274,66 +289,66 @@ public:
     if (!updated_ui) return;
     updated_ui = false;
 
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (AC_LIST_COUNT > 0 && !RoomFilter::any(AC_LIST_COUNT, acRoom)) {
+      drawEmptyRoom(it, font_base, font_small, "CLIMATE", "climate", conn_status);
+      return;
+    }
+
     it->clear();
 
-    std::string label = AC_LIST[ac_idx].name;
-    for (auto& c : label) c = toupper(static_cast<unsigned char>(c));
+    // ── context strip: "CLIMATE" chip, one dot per unit in the room filter;
+    //    the badge names the unit's room, or the unit itself without one ─────
+    const char* room = roomName(AC_LIST[ac_idx].room);
+    ContextStrip::draw(it, "CLIMATE",
+                       RoomFilter::position(ac_idx, AC_LIST_COUNT, acRoom),
+                       RoomFilter::visibleCount(AC_LIST_COUNT, acRoom), conn_status,
+                       room ? room : AC_LIST[ac_idx].name);
 
-    // ── mode-specific upper area ──────────────────────────────────────────────
+    // ── mode-specific hero row ────────────────────────────────────────────────
     if (mode == "off") {
 
-      it->print(64, 22, symbols_big, COLOR_ON, display::TextAlign::CENTER, "\ue8ac");
-      it->line(0, 44, 127, 44);
-      it->print(64, 56, font_base, COLOR_ON, display::TextAlign::CENTER, label.c_str());
+      it->print(64, HERO_CY + 1, symbols_big, COLOR_ON, display::TextAlign::CENTER, "\ue8ac");
 
     } else if (isSetpointMode(mode)) {
 
       // Setpoint modes share one screen: mode icon + big temperature + fan bars.
-      it->print(5,  8, symbols, modeIcon(mode));
-      it->print(64, 22, font_big, COLOR_ON, display::TextAlign::CENTER,
+      it->print(5,  HERO_CY - 15, symbols, modeIcon(mode));
+      it->print(64, HERO_CY + 1, font_big, COLOR_ON, display::TextAlign::CENTER,
                 std::to_string(temp).c_str());
-      it->print(85, 4, font_base, "C");
+      it->print(85, HERO_CY - 17, font_base, "C");
 
       drawFanIndicator(it, symbols, font_bigger, fan_mode);
 
     } else if (mode == "fan_only") {
 
-      it->print(5, 8, symbols, "\uf168");    // fan icon
+      it->print(5, HERO_CY - 15, symbols, "\uf168");    // fan icon
       std::string lbl = (fan_mode == "medium") ? std::string("MID") : fan_mode;
       for (auto& c : lbl) c = toupper(static_cast<unsigned char>(c));
-      it->print(80, 22, font_bigger, COLOR_ON, display::TextAlign::CENTER, lbl.c_str());
+      it->print(80, HERO_CY, font_bigger, COLOR_ON, display::TextAlign::CENTER, lbl.c_str());
 
     } else if (mode == "dry") {
 
-      it->print(5, 8, symbols, "\uf164");    // dry icon
-      it->print(80, 22, font_bigger, COLOR_ON, display::TextAlign::CENTER, "DRY");
+      it->print(5, HERO_CY - 15, symbols, "\uf164");    // dry icon
+      it->print(80, HERO_CY, font_bigger, COLOR_ON, display::TextAlign::CENTER, "DRY");
 
     } else {
 
       // unknown / loading — HA hasn't reported a mode for this unit yet
       // (freshly booted or just switched to it); also reachable if HA ever
       // sends a genuinely unrecognized mode string. A refresh icon in the
-      // same hero-icon slot the "off" branch uses reads as "still fetching"
-      // rather than looking broken, paired with the real unit name already
-      // shown in the lower bar so it's clear what's still loading. y=19
-      // centers it between the top edge and the y=38 separator line below
-      // (the "off" branch's own icon sits lower, at y=22, to leave room
-      // for its OWN separator+label at y=44/56 instead of the shared
-      // y=38/46 used here).
-      it->print(64, 19, symbols_big, COLOR_ON, display::TextAlign::CENTER, "");
+      // hero slot reads as "still fetching" rather than looking broken, and
+      // the chip above already says which unit is loading.
+      it->print(64, HERO_CY, symbols_big, COLOR_ON, display::TextAlign::CENTER, "");
 
     }
 
-    // ── lower bar (unit name + button labels) — shown for all non-off modes ──
-    if (mode != "off") {
-      it->line(0, 38, 127, 38);
-      it->print(64, 46, font_base, COLOR_ON, display::TextAlign::CENTER, label.c_str());
+    // ── button bar — FAN only where the fan speed means something; ON while
+    //    the unit is off (the right key turns it on, see ac_btn_fan) ─────────
+    bool show_fan = isSetpointMode(mode) || mode == "fan_only";
+    draw_bottom_menu(it, font_small, "MODE", nullptr,
+                     mode == "off" ? "ON" : show_fan ? "FAN" : "");
 
-      bool show_fan = isSetpointMode(mode) || mode == "fan_only";
-      draw_bottom_menu(it, font_small, "MODE", "", show_fan ? "FAN" : nullptr);
-    }
-
-    RemoteCore::drawConnBadge(it, conn_status);
-    it->display();
+    Toast::present(it);
   }
 };

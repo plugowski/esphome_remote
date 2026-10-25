@@ -7,6 +7,14 @@ substitutions:
   PIN_I2C_SCL: "25"
   PIN_OLED_EN: "15"
   PIN_BAT_ADC: "32"
+  # Lights mode view: "true" (default) shows one light per screen (card view:
+  # big bulb, ON/OFF, brightness bar, LOW/FULL presets on the outer circles);
+  # "false" keeps the original scrollable list. Button mapping for both is
+  # documented at the top of src/lights_controller.h.
+  LIGHTS_CARD_VIEW: "true"
+  # Automations screen: "true" (default) one automation per screen (card:
+  # icon and name), "false" the 4-row list.
+  AUTOMATIONS_CARD_VIEW: "true"
   # "LIGHT" (default) lets the radio modem sleep between DTIM beacons while
   # awake — lower average current, at the cost of a little response jitter.
   # "NONE" keeps the radio fully powered for the whole awake window — more
@@ -120,7 +128,11 @@ esphome:
     - src/quick_action_entities.h
     - src/remote_core.h
     - src/wake_utils.h
+    - src/toast.h
     - src/display_utils.h
+    - src/context_strip.h
+    - src/room_entities.h
+    - src/room_filter.h
     - src/menu_controller.h
     - src/ac_entities.h
     - src/ac_controller.h
@@ -130,6 +142,9 @@ esphome:
     - src/cover_controller.h
     - src/automation_entities.h
     - src/automation_controller.h
+    - src/system_stats.h
+    - src/about_face.h
+    - src/about_screen.h
     - src/settings_controller.h
   on_boot:
     - priority: 700
@@ -146,7 +161,10 @@ esphome:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then:
               - lambda: |-
+                  if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
                   if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
+                  RoomFilter::current() = id(room_filter);
+                  Toast::setFonts(id(font_base), id(font_small));
                   RemoteCore::resetIdleTimer(id(last_active));
                   id(is_booting) = true;
                   // The display's own `contrast:` config below is a fixed
@@ -191,6 +209,15 @@ esphome:
                   mark_normal_wake();
                   id(is_booting) = false;
                   id(updated_ui) = true;
+                  // Low-battery notice. MOCK: the reading is pinned to 9 % so the
+                  // toast shows on every boot; swap in id(battery_pct) once the
+                  // real reading is trusted here.
+                  const int battery_now = 9;
+                  if (battery_now >= 0 && battery_now < 10) {
+                    char msg[16];
+                    snprintf(msg, sizeof(msg), "BATTERY %d%%", battery_now);
+                    Toast::show(msg, "CHARGE SOON", 10000, Toast::ICON_BATTERY);  // any key closes it sooner
+                  }
               - script.execute: main_update
               - script.execute: boot_connect_watchdog
 
@@ -201,6 +228,8 @@ esp32:
     sdkconfig_options:
       CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP: "y"
       CONFIG_BOOTLOADER_LOG_LEVEL_NONE: "y"
+      # Settings > SYSTEM reads each core's idle time for its CPU bar
+      CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS: "y"
       # CONFIG_PM_ENABLE (automatic FreeRTOS-tickless-idle light sleep) was
       # tried here and reverted: on real hardware it destabilized WiFi/API
       # (dropped connections, "took a long time" component warnings from the
@@ -352,7 +381,13 @@ script:
                 id(is_light_sleeping) = true;
                 id(oled_display)->turn_off();
           else:
-            - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
+            # halt: from here on no refresh loop (Settings SYSTEM / ABOUT tick,
+            # state updates, the display's own poll) can draw or send a frame,
+            # and every key press is swallowed until deep sleep.
+            - lambda: |-
+                id(is_shutting_down) = true;
+                RemoteCore::halt(id(oled_display));
+                RemoteCore::drawPowerOff(id(oled_display), id(font_base));
             - delay: 1s
             - lambda: |-
                 id(oled_display)->clear();
@@ -370,7 +405,7 @@ script:
   - id: deep_sleep_fallback
     mode: single
     then:
-      - lambda: 'id(is_shutting_down) = true;'
+      - lambda: 'id(is_shutting_down) = true; RemoteCore::halt(id(oled_display));'
       - output.turn_off: oled_power
       - delay: 5ms
       - deep_sleep.enter:
@@ -400,6 +435,8 @@ script:
   # dispatches to the active mode's update/draw on every interval tick
   - id: main_update
     then:
+      # Toast ran out or was dismissed: redraw the screen underneath
+      - lambda: 'if (Toast::expired()) id(updated_ui) = true;'
       - if:
           condition: { lambda: 'return !id(is_shutting_down);' }
           then:
@@ -431,6 +468,9 @@ script:
                               - if:
                                   condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
                                   then: [ script.execute: settings_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                                  then: [ script.execute: room_picker_draw ]
 
 # ── main loop ─────────────────────────────────────────────────────────────────
 interval:

@@ -3,10 +3,15 @@
 # are pushed into LightsController by EspNowRemote::handle; commands go out as
 # rnp::CMD packets.  Entity configuration lives in src/light_entities.h.
 #
-# Button entry points (via buttons.yaml / layout):
-#   lights_btn_prev / lights_btn_next           → scroll
-#   lights_btn_toggle                           → on/off
-#   lights_btn_brightness_up / _down            → ±10 %
+# Two views selected at build time by ${LIGHTS_CARD_VIEW} (card = default,
+# list = original); the button mapping for both is documented at the top of
+# src/lights_controller.h.
+#
+# Button entry points (via buttons.yaml / layout_v2.yaml):
+#   lights_btn_circle_l / _circle_r / _left / _right / _ok / _stop / _up / _down
+# dispatch to the primitive actions:
+#   lights_btn_prev / _next / _toggle / _on / _off / _preset_low / _preset_full
+#   lights_btn_brightness_up / _down
 # Main update loop: lights_update
 
 esphome:
@@ -14,11 +19,37 @@ esphome:
     - src/light_entities.h      # must come before lights_controller.h
     - src/lights_controller.h
 
+# ── card-view icons ───────────────────────────────────────────────────────────
+# The ON bulb is the same Material "lightbulb" glyph with the FILL axis set to
+# 1. Google Fonts cannot serve that axis through ESPHome's gfonts loader, so a
+# 2 KB static subset (just this glyph) ships in fonts/ instead.
+font:
+  - file: "fonts/material_symbols_rounded_fill.ttf"
+    id: lights_icon_on
+    size: 26
+    glyphs:
+      - "\ue0f0"  # lightbulb, filled (card view, light ON)
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: lights_icon_off
+    size: 26
+    glyphs:
+      - "\ue0f0"  # lightbulb — plain bulb (card view, light OFF)
+
 globals:
   - id: selected_light_index
     type: int
     initial_value: '0'
     restore_value: true
+
+  # true  → card view (one light per screen, LOW/FULL presets on the circles)
+  # false → original scrollable list.  Set from the LIGHTS_CARD_VIEW
+  # substitution in remote*.yaml (the generator's "Lights view" selector).
+  - id: lights_card_view
+    type: bool
+    initial_value: '${LIGHTS_CARD_VIEW}'
 
 script:
 
@@ -41,14 +72,124 @@ script:
   - id: lights_btn_brightness_up
     then:
       - lambda: 'LightsController::brightnessUp(id(selected_light_index), id(updated_ui));'
-      - script.execute: lights_do_brightness
+      # Only a dimmable light that is ON has anything to send - the controller
+      # ignores the step otherwise, and a brightness command would switch a
+      # non-dimmable light on behind the screen's back.
+      - if:
+          condition: { lambda: 'return LightsController::isDimmable(id(selected_light_index)) && LightsController::isOn(id(selected_light_index));' }
+          then: [ script.execute: lights_do_brightness ]
       - script.execute: lights_draw
 
   - id: lights_btn_brightness_down
     then:
       - lambda: 'LightsController::brightnessDown(id(selected_light_index), id(updated_ui));'
-      - script.execute: lights_do_brightness
+      # Only a dimmable light that is ON has anything to send - the controller
+      # ignores the step otherwise, and a brightness command would switch a
+      # non-dimmable light on behind the screen's back.
+      - if:
+          condition: { lambda: 'return LightsController::isDimmable(id(selected_light_index)) && LightsController::isOn(id(selected_light_index));' }
+          then: [ script.execute: lights_do_brightness ]
       - script.execute: lights_draw
+
+
+  # ── view-aware dispatchers ────────────────────────────────────────────────
+  # buttons.yaml / layout_v2.yaml call these; which action a button performs
+  # depends on the active view (lights_card_view). See the mapping table at
+  # the top of src/lights_controller.h.
+
+  - id: lights_btn_circle_l         # pin22 — list: prev | card: LOW / OFF
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_preset_low ]
+          else: [ script.execute: lights_btn_prev ]
+
+  - id: lights_btn_circle_r         # pin33 — list: next | card: FULL / ON
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_preset_full ]
+          else: [ script.execute: lights_btn_next ]
+
+  - id: lights_btn_left             # ← — list: brightness − | card: prev
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_prev ]
+          else: [ script.execute: lights_btn_brightness_down ]
+
+  - id: lights_btn_right            # → — list: brightness + | card: next
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_next ]
+          else: [ script.execute: lights_btn_brightness_up ]
+
+  - id: lights_btn_ok               # OK — list: toggle | card: ON
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_on ]
+          else: [ script.execute: lights_btn_toggle ]
+
+  - id: lights_btn_up               # ↑ — list: prev | card: brightness +
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_brightness_up ]
+          else: [ script.execute: lights_btn_prev ]
+
+  - id: lights_btn_down             # ↓ — list: next | card: brightness −
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_brightness_down ]
+          else: [ script.execute: lights_btn_next ]
+
+  - id: lights_btn_stop             # ⏸ — list: nothing | card: OFF
+    then:
+      - if:
+          condition: { lambda: 'return id(lights_card_view);' }
+          then: [ script.execute: lights_btn_off ]
+
+  # ── card-view actions ─────────────────────────────────────────────────────
+
+  - id: lights_btn_on
+    then:
+      - lambda: 'LightsController::turnOn(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_on
+      - script.execute: lights_draw
+
+  - id: lights_btn_off
+    then:
+      - lambda: 'LightsController::turnOff(id(selected_light_index), id(updated_ui));'
+      - script.execute: lights_do_off
+      - script.execute: lights_draw
+
+  # Presets: a dimmable light gets turn_on + brightness; a non-dimmable one
+  # just goes OFF (low) / ON (full).
+  - id: lights_btn_preset_low
+    then:
+      - lambda: 'LightsController::setPreset(id(selected_light_index), LightsController::PRESET_LOW, id(updated_ui));'
+      - script.execute: lights_send_preset
+      - script.execute: lights_draw
+
+  - id: lights_btn_preset_full
+    then:
+      - lambda: 'LightsController::setPreset(id(selected_light_index), LightsController::PRESET_FULL, id(updated_ui));'
+      - script.execute: lights_send_preset
+      - script.execute: lights_draw
+
+  - id: lights_send_preset
+    then:
+      - if:
+          condition: { lambda: 'return LightsController::isDimmable(id(selected_light_index));' }
+          then: [ script.execute: lights_do_brightness ]
+          else:
+            - if:
+                condition: { lambda: 'return LightsController::isOn(id(selected_light_index));' }
+                then: [ script.execute: lights_do_on ]
+                else: [ script.execute: lights_do_off ]
 
   # ── hub commands ──────────────────────────────────────────────────────────
 
@@ -73,6 +214,26 @@ script:
           action: !lambda 'return rnp::LIGHT_SET_BRIGHTNESS;'
           value: !lambda 'return LightsController::getBrightness(id(selected_light_index));'
 
+  - id: lights_do_on
+    mode: queued
+    then:
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_LIGHTS;'
+          idx: !lambda 'return id(selected_light_index);'
+          action: !lambda 'return rnp::LIGHT_ON;'
+          value: 0
+
+  - id: lights_do_off
+    mode: queued
+    then:
+      - script.execute:
+          id: espnow_cmd
+          domain: !lambda 'return rnp::DOM_LIGHTS;'
+          idx: !lambda 'return id(selected_light_index);'
+          action: !lambda 'return rnp::LIGHT_OFF;'
+          value: 0
+
   # ── display ───────────────────────────────────────────────────────────────
 
   - id: lights_update
@@ -84,8 +245,16 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(app_mode) == APP_LIGHTS && !id(menu_active) && !id(is_booting);'
+            lambda: 'return id(app_mode) == APP_LIGHTS && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
           then:
-            - lambda: >-
-                LightsController::draw(id(oled_display), id(font_small),
-                                       id(selected_light_index), id(updated_ui), id(conn_status));
+            - if:
+                condition: { lambda: 'return id(lights_card_view);' }
+                then:
+                  - lambda: >-
+                      LightsController::drawCard(id(oled_display), id(font_base), id(font_small),
+                                                 id(lights_icon_on), id(lights_icon_off),
+                                                 id(selected_light_index), id(updated_ui), id(conn_status));
+                else:
+                  - lambda: >-
+                      LightsController::draw(id(oled_display), id(font_small),
+                                             id(selected_light_index), id(updated_ui), id(conn_status));

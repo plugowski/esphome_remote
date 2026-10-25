@@ -37,7 +37,18 @@ script:
       - lambda: 'id(updated_ui) = true;'
       - script.execute: covers_draw
 
+  # OPEN key: STOP while the cover is already moving that way (the bar
+  # labels it STOP then), otherwise open it.
   - id: covers_btn_open
+    then:
+      - if:
+          condition: { lambda: 'return CoverController::isOpening(id(selected_cover_index));' }
+          then: [ script.execute: covers_btn_stop ]
+          else:
+            - lambda: 'CoverController::setTarget(id(selected_cover_index), 100);'
+            - script.execute: covers_send_open
+
+  - id: covers_send_open
     then:
       - script.execute:
           id: espnow_cmd
@@ -46,7 +57,18 @@ script:
           action: !lambda 'return rnp::COVER_OPEN;'
           value: 0
 
+  # CLOSE key: STOP while the cover is already moving that way (the bar
+  # labels it STOP then), otherwise close it.
   - id: covers_btn_close
+    then:
+      - if:
+          condition: { lambda: 'return CoverController::isClosing(id(selected_cover_index));' }
+          then: [ script.execute: covers_btn_stop ]
+          else:
+            - lambda: 'CoverController::setTarget(id(selected_cover_index), 0);'
+            - script.execute: covers_send_close
+
+  - id: covers_send_close
     then:
       - script.execute:
           id: espnow_cmd
@@ -106,10 +128,10 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(app_mode) == APP_COVERS && !id(menu_active) && !id(is_booting);'
+            lambda: 'return id(app_mode) == APP_COVERS && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
           then:
             - lambda: >-
                 CoverController::draw(id(oled_display),
                   id(ac_symbols), id(menu_icon_small),
-                  id(font_big), id(font_base), id(font_small),
+                  id(font_bigger), id(font_base), id(font_small),
                   id(selected_cover_index), id(updated_ui), id(conn_status));

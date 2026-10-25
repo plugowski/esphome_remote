@@ -13,9 +13,9 @@
 #    0  power off  (shared with deep-sleep wake pin — allow_other_uses: true)
 #
 # Always-present hardware buttons (shared with v1):
-#    5  ☰  menu           open / confirm menu
-#   22  MODE / <<         menu prev | AC: HVAC mode | Lights: prev | Covers: close | Autos: L slot
-#   33  FAN  / >>         menu next | AC: fan speed | Covers: open | Autos: R slot
+#    5  ☰  menu           short: open / confirm menu | long (0.8 s): room picker
+#   22  MODE / <<         menu prev | AC: HVAC mode | Lights: prev or LOW | Covers: close | Autos: L slot
+#   33  FAN  / >>         menu next | AC: fan speed | Lights: next or FULL | Covers: open | Autos: R slot
 #
 # btn_* routing logic lives in packages/buttons.yaml.
 # Pins 5 / 22 / 33 are dispatched inline (different semantics from btn_left/right).
@@ -37,6 +37,8 @@ binary_sensor:
         # this press should wake it, same as every other button, instead of
         # re-blanking a screen that's already blank. Deep Sleep builds never
         # see is_light_sleeping true, so this is always the else branch there.
+        # No conn_status here, unlike every other key: Power Off still works
+        # on the NO HUB / NO WIFI / HA UNREACHABLE screen.
         - if:
             condition:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
@@ -55,7 +57,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - script.execute: btn_left
 
@@ -71,7 +73,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - script.execute: btn_right
 
@@ -87,7 +89,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - script.execute: btn_ok
 
@@ -103,7 +105,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - script.execute: btn_up
 
@@ -119,7 +121,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - script.execute: btn_down
 
@@ -139,7 +141,7 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
               then:
                 - script.execute: btn_stop
       - min_length: 800ms
@@ -147,7 +149,7 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
               then:
                 - script.execute: btn_menu_open
 
@@ -159,22 +161,43 @@ binary_sensor:
     name: "Button Menu"
     internal: true
     filters: [ invert:, delayed_on: 30ms ]
-    on_press:
-      then:
-        - if:
-            condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-            then:
-              - if:
-                  condition: { lambda: 'return !id(menu_active);' }
-                  then: [ script.execute: menu_open ]
-                  else:
-                    - if:
-                        condition: { lambda: 'return id(menu_quick_index) >= 0;' }
-                        then: [ script.execute: menu_back_to_carousel ]
-                        else: [ script.execute: menu_confirm ]
+    on_multi_click:
+      # long press (0.8 s) → open / close the room picker (src/room_filter.h)
+      - timing:
+          - ON for at least 800ms
+        then:
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
+              then:
+                - if:
+                    condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                    then: [ script.execute: room_picker_cancel ]
+                    else: [ script.execute: room_picker_open ]
+      # short press → menu as before; OK while the room picker is open
+      - timing:
+          - ON for at most 700ms
+          - OFF for at least 10ms
+        then:
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
+              then:
+                - if:
+                    condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                    then: [ script.execute: room_picker_select ]
+                    else:
+                      - if:
+                          condition: { lambda: 'return !id(menu_active);' }
+                          then: [ script.execute: menu_open ]
+                          else:
+                            - if:
+                                # quick-action view: the middle key has no job there (BACK / RUN
+                                # are the round keys), so only the carousel confirms
+                                condition: { lambda: 'return id(menu_quick_index) < 0;' }
+                                then: [ script.execute: menu_confirm ]
 
-  # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: prev ─────────
+  # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: circle L ─────
   # Covers: close | Autos: L slot
   - platform: gpio
     pin:
@@ -187,19 +210,25 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
-                  condition: { lambda: 'return id(menu_active);' }
+                  condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
                   then: [ script.execute: menu_prev ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+                  condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
+                  then: [ script.execute: menu_back_to_carousel ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_up ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
                   then: [ script.execute: ac_btn_mode ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-                  then: [ script.execute: lights_btn_prev ]
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
+                  then: [ script.execute: lights_btn_circle_l ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_close ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
@@ -221,19 +250,25 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
-                  condition: { lambda: 'return id(menu_active);' }
+                  condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
                   then: [ script.execute: menu_next ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+                  condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
+                  then: [ script.execute: menu_quick_trigger ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_down ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
                   then: [ script.execute: ac_btn_fan ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
-                  then: [ script.execute: lights_btn_next ]
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
+                  then: [ script.execute: lights_btn_circle_r ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_open ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }

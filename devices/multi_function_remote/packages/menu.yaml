@@ -4,6 +4,8 @@
 
 esphome:
   includes:
+    - src/context_strip.h
+    - src/room_filter.h
     - src/menu_controller.h
     - src/quick_action_entities.h
 
@@ -43,18 +45,55 @@ font:
       - "\uf8ab"  # cover: closing
       - "\ue034"  # cover: stopped (pause)
 
-  # ── Quick-action icon font (32 px — matches carousel icon size) ──────────
-  # Add a glyph here for every icon codepoint used in quick_action_entities.h.
+  # ── Shortcut-key icon font (10 px, fits the 11 px soft buttons) ─────────
+  # Every icon on the Automations screen's left / right shortcut keys
+  # (AUTOMATION_SHORTCUT_L / _R in automation_entities.h).
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: shortcut_icon
+    size: 10
+    glyphs:
+      - "\uef44"  # bedtime     (Good Night)
+      - "\ue02c"  # movie       (Movie Time)
+
+  # ── Automation card icon font (26 px — same as the lights / covers cards) ─
+  # Every icon on the Automations cards (automation_entities.h).
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: automation_icon
+    size: 26
+    glyphs:
+      - "\uea05"  # local_fire_department (Boost Heat)
+      - "\uea35"  # eco         (Eco Mode)
+      - "\ue88d"  # lock        (Lock Door)
+      - "\ue32a"  # security    (Arm Alarm)
+      - "\uef44"  # bedtime     (Good Night)
+      - "\ue02c"  # movie       (Movie Time)
+      - "\ue8f9"  # work        (Start Work)
+      - "\uf0ff"  # cleaning_services (Vacuum)
+
+  # ── Quick action icon font (26 px — same as the lights / covers cards) ──
+  # Every icon codepoint used in quick_action_entities.h.
   - file:
       type: gfonts
       family: Material+Symbols+Rounded
       weight: 400
     id: menu_action_icon
-    size: 32
+    size: 26
     glyphs:
-      - "\ue7fb"  # person_off  (Empty Office)
-      - "\ue02e"  # weekend     (Sofa Half)
       - "\ue8f9"  # work        (Start Work)
+      - "\ue510"  # person_off  (Empty Office)
+      - "\ue16b"  # weekend     (Sofa Half)
+      - "\ue430"  # wb_sunny    (Good Morning)
+      - "\ue541"  # local_cafe  (Coffee)
+      - "\ue02c"  # movie       (Movie Time)
+      - "\uef44"  # bedtime     (Good Night)
+      - "\ue9ba"  # logout      (Leave Home)
+      - "\ue9b8"  # light_off   (Lights Off)
 
 globals:
   - id: menu_quick_index
@@ -62,11 +101,34 @@ globals:
     initial_value: '-1'
     restore_value: false
 
+  # ── room filter (long press on the menu key) ──────────────────────────────
+  # 0 = all rooms, 1..ROOM_LIST_COUNT = that room. Restored like app_mode, so
+  # the remote wakes up still filtered to the room it was left in; mirrored
+  # into RoomFilter::current() on boot.
+  - id: room_filter
+    type: int
+    initial_value: '0'
+    restore_value: true
+  - id: room_picker_index   # cursor in the picker (0 = ALL ROOMS)
+    type: int
+    initial_value: '0'
+    restore_value: false
+  - id: room_picker_return  # app_mode to go back to when the picker closes
+    type: int
+    initial_value: '0'
+    restore_value: true
+  - id: room_picker_from_menu  # picker was opened over the menu: reopen it after
+    type: bool
+    initial_value: 'false'
+    restore_value: false
+
 script:
 
   - id: menu_open
     then:
       - lambda: |-
+          if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
+          id(room_picker_from_menu) = false;
           MenuController::open(id(menu_index), id(app_mode), id(menu_active));
           id(menu_quick_index) = -1;
       - script.execute: menu_draw
@@ -117,10 +179,11 @@ script:
           id(auto_entity)  = qa.entity_id;
           id(auto_service) = qa.service;
       - script.execute: auto_call_ha
+      # Confirmation over the card you stay on: just "✓ SENT", in a box the
+      # size of the battery notice, for 2 s; any key closes it.
       - lambda: |-
-          MenuController::drawTriggered(id(oled_display), id(menu_action_icon),
-            id(font_base), id(font_small), id(menu_quick_index));
-      - delay: 800ms
+          Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK_INLINE, 112, 30);
+          id(updated_ui) = true;
       - script.execute: menu_draw
 
   - id: menu_draw
@@ -130,3 +193,60 @@ script:
             id(menu_icon_big), id(menu_icon_small), id(menu_action_icon),
             id(font_base), id(font_small), id(menu_index), id(menu_quick_index),
             id(conn_status));
+
+  # ── room picker ───────────────────────────────────────────────────────────
+  # Opened by a long press on the menu key; runs as app_mode APP_ROOMS (see
+  # src/room_filter.h) so the per-mode button branches ignore it.
+  - id: room_picker_open
+    then:
+      - if:
+          condition: { lambda: 'return ROOM_LIST_COUNT > 0 && id(app_mode) != APP_ROOMS;' }
+          then:
+            - lambda: |-
+                id(room_picker_from_menu) = id(menu_active);
+                id(menu_active)        = false;
+                id(room_picker_return) = id(app_mode);
+                id(app_mode)           = APP_ROOMS;
+                id(room_picker_index)  = id(room_filter);
+            - script.execute: room_picker_draw
+
+  - id: room_picker_up
+    then:
+      - lambda: 'RoomPicker::up(id(room_picker_index));'
+      - script.execute: room_picker_draw
+
+  - id: room_picker_down
+    then:
+      - lambda: 'RoomPicker::down(id(room_picker_index));'
+      - script.execute: room_picker_draw
+
+  # Applies the highlighted room, moves each filtered screen onto an entity
+  # in that room, and goes back to where the picker was opened from.
+  - id: room_picker_select
+    then:
+      - lambda: |-
+          id(room_filter)        = id(room_picker_index);
+          RoomFilter::current()  = id(room_filter);
+          id(selected_light_index) = RoomFilter::first(id(selected_light_index), LIGHTS_LIST_COUNT, lightRoom);
+          id(selected_cover_index) = RoomFilter::first(id(selected_cover_index), COVER_LIST_COUNT, coverRoom);
+          id(selected_auto_index)  = RoomFilter::first(id(selected_auto_index), AUTOMATION_LIST_COUNT, automationRoom);
+      - if:
+          condition: { lambda: 'return RoomFilter::first(id(selected_ac_index), AC_LIST_COUNT, acRoom) != id(selected_ac_index);' }
+          then:
+            - lambda: 'id(selected_ac_index) = RoomFilter::first(id(selected_ac_index), AC_LIST_COUNT, acRoom);'
+            - script.execute: ac_select_unit
+      - script.execute: room_picker_cancel
+
+  # Back to where the picker was opened from: the mode screen, or the menu
+  # (same carousel position / quick-action view) when it was opened there.
+  - id: room_picker_cancel
+    then:
+      - lambda: |-
+          if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
+          id(menu_active)           = id(room_picker_from_menu);
+          id(room_picker_from_menu) = false;
+          id(updated_ui) = true;
+
+  - id: room_picker_draw
+    then:
+      - lambda: 'RoomPicker::draw(id(oled_display), id(font_small), id(room_picker_index), id(conn_status));'

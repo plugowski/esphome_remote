@@ -16,8 +16,14 @@ struct QuickAction {
 
 static const QuickAction QUICK_ACTION_LIST[] = {
   { "Start Work",   "\ue8f9", "scene.start_work",             "scene.turn_on"      },  // work
-  { "Empty Office", "\ue7fb", "automation.empty_office",      "automation.trigger" },  // person_off
-  { "Sofa Half",    "\ue02e", "script.toggle_sofa_half_mode", "script.turn_on"     },  // weekend
+  { "Empty Office", "\ue510", "automation.empty_office",      "automation.trigger" },  // person_off
+  { "Sofa Half",    "\ue16b", "script.toggle_sofa_half_mode", "script.turn_on"     },  // weekend
+  { "Good Morning", "\ue430", "scene.good_morning",           "scene.turn_on"      },  // wb_sunny
+  { "Coffee",       "\ue541", "script.coffee_machine_on",     "script.turn_on"     },  // local_cafe
+  { "Movie Time",   "\ue02c", "scene.movie_time",             "scene.turn_on"      },  // movie
+  { "Good Night",   "\uef44", "scene.good_night",             "scene.turn_on"      },  // bedtime
+  { "Leave Home",   "\ue9ba", "script.leave_home",            "script.turn_on"     },  // logout
+  { "Lights Off",   "\ue9b8", "script.all_lights_off",        "script.turn_on"     },  // light_off
 };
 // Physical array length (always >= 1). Static per-entity arrays in the
 // controllers are sized with this, never with the count.

@@ -23,6 +23,12 @@ static const uint32_t PUSH_DEBOUNCE_MS = 150;
 static const uint32_t SETTLE_MS = 900;
 static const uint32_t STEP_MS = 700;         // pause between a mode change and the fan / temperature
 static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stands in for HA's state
+// Brightness presses are applied this long after the last one (shorter than SETTLE_MS: a
+// light has no mode / fan sequencing to wait for, and a dimmer should feel quick).
+static const uint32_t LIGHT_SETTLE_MS = 500;
+static const uint32_t EMU_STEP_MS = 250;  // cover emulator: one 5 % step this often
+// Resend the screenshot request on the next packet if no image arrived by then.
+static const uint32_t SCREENSHOT_RETRY_MS = 5000;
 
 static bool older_than(uint32_t since, uint32_t ms) { return (uint32_t) (millis() - since) > ms; }
 using state_cb_t = std::function<void(const std::string &)>;
@@ -30,6 +36,16 @@ using state_cb_t = std::function<void(const std::string &)>;
 // ── lifecycle ─────────────────────────────────────────────────────────────────
 
 void RemoteHub::setup() {
+  if (this->cover_emu_) {
+    // start the emulated covers at different positions so every state is easy to reach
+    static const uint8_t START[3] = {50, 0, 100};
+    for (int i = 0; i < COVER_LIST_COUNT; i++) {
+      this->covers_[i].position = START[i % 3];
+      this->covers_[i].state = this->covers_[i].position == 0 ? "closed" : "open";
+    }
+    ESP_LOGW(TAG, "Cover emulator ON: %d covers simulated on the hub, not taken from Home Assistant",
+             COVER_LIST_COUNT);
+  }
   this->subscribe_all_();
   ESP_LOGI(TAG, "Subscribed to %d AC, %d lights, %d covers; %d automations, %d quick actions",
            AC_LIST_COUNT, LIGHTS_LIST_COUNT, COVER_LIST_COUNT, AUTOMATION_LIST_COUNT, QUICK_ACTION_COUNT);
@@ -57,6 +73,17 @@ void RemoteHub::loop() {
     if (g.exp_temp && older_than(g.exp_temp_at, EXPECT_TTL_MS)) { g.exp_temp = false; expired = true; }
     if (expired) this->mark_dirty_(DIRTY_AC);
   }
+  if (this->cover_emu_) this->step_emulated_covers_();
+  for (int i = 0; i < LIGHTS_LIST_COUNT; i++) {
+    LightGuard &g = this->light_guard_[i];
+    if (g.want && (int32_t) (millis() - g.due_at) >= 0) this->apply_light_brightness_(i);
+    if (g.exp && older_than(g.exp_at, EXPECT_TTL_MS)) {
+      ESP_LOGW(TAG, "Light %d: HA still reports brightness %u after commanding %u", i,
+               this->lights_[i].brightness, g.exp_v);
+      g.exp = false;
+      this->mark_dirty_(DIRTY_LIGHTS);
+    }
+  }
   if (this->dirty_ == 0) return;
   if (millis() - this->dirty_since_ < PUSH_DEBOUNCE_MS) return;
   uint8_t d = this->dirty_;
@@ -64,6 +91,59 @@ void RemoteHub::loop() {
   if (d & DIRTY_AC) this->send_ac_(rnp::BROADCAST_ADDR);
   if (d & DIRTY_LIGHTS) this->send_lights_(rnp::BROADCAST_ADDR);
   if (d & DIRTY_COVERS) this->send_covers_(rnp::BROADCAST_ADDR);
+}
+
+// Sends the held brightness for light i to Home Assistant; it stays the reported value until
+// HA confirms it or EXPECT_TTL_MS pass.
+void RemoteHub::apply_light_brightness_(int i) {
+  LightGuard &g = this->light_guard_[i];
+  g.want = false;
+  g.exp = true;
+  g.exp_v = g.want_v;
+  g.exp_at = millis();
+  ESP_LOGI(TAG, "Light %d: brightness %u%%", i, g.want_v);
+  this->call_homeassistant_service("light.turn_on", {{"entity_id", std::string(LIGHTS_LIST[i].entity_id)},
+                                                     {"brightness_pct", std::to_string((int) g.want_v)}});
+}
+
+// ── cover emulator (testing aid) ─────────────────────────────────────────────
+
+void RemoteHub::emulate_cover_(int i, uint8_t action, int value) {
+  CoverState &c = this->covers_[i];
+  EmuCover &e = this->emu_[i];
+  const uint8_t cur = c.position == rnp::VALUE_UNKNOWN ? 0 : c.position;
+  if (action == rnp::COVER_STOP) {
+    e.moving = false;
+    c.state = cur == 0 ? "closed" : "open";
+  } else {
+    int t = action == rnp::COVER_OPEN ? 100 : action == rnp::COVER_CLOSE ? 0 : value;
+    if (t < 0) t = 0;
+    if (t > 100) t = 100;
+    e.target = static_cast<uint8_t>(t);
+    e.moving = e.target != cur;
+    e.last_step = millis();
+    if (e.moving) c.state = e.target > cur ? "opening" : "closing";
+  }
+  ESP_LOGI(TAG, "Emulated cover %d: %s at %u%% -> %u%%", i, c.state.c_str(), cur, e.target);
+  this->mark_dirty_(DIRTY_COVERS);
+}
+
+void RemoteHub::step_emulated_covers_() {
+  for (int i = 0; i < COVER_LIST_COUNT; i++) {
+    EmuCover &e = this->emu_[i];
+    if (!e.moving || !older_than(e.last_step, EMU_STEP_MS)) continue;
+    e.last_step = millis();
+    CoverState &c = this->covers_[i];
+    int p = c.position == rnp::VALUE_UNKNOWN ? 0 : c.position;
+    p += (e.target > p) ? 5 : -5;
+    if ((e.target > c.position && p >= e.target) || (e.target < c.position && p <= e.target)) p = e.target;
+    c.position = static_cast<uint8_t>(p);
+    if (c.position == e.target) {
+      e.moving = false;
+      c.state = c.position == 0 ? "closed" : "open";
+    }
+    this->mark_dirty_(DIRTY_COVERS);
+  }
 }
 
 void RemoteHub::dump_config() {
@@ -130,11 +210,14 @@ void RemoteHub::subscribe_all_() {
       api->subscribe_home_assistant_state(eid, optional<std::string>{"brightness"}, state_cb_t([this, i](const std::string &s) {
         uint8_t b = pct_from_ha_(s, 100.0f / 255.0f);
         if (this->lights_[i].brightness != b) { this->lights_[i].brightness = b; this->mark_dirty_(DIRTY_LIGHTS); }
+        // HA reached the commanded brightness (±1 for the 0-255 rounding): stop standing in for it
+        LightGuard &g = this->light_guard_[i];
+        if (g.exp && !g.want && b != rnp::VALUE_UNKNOWN && (b + 1 >= g.exp_v && b <= g.exp_v + 1)) g.exp = false;
       }));
     }
   }
 
-  for (int i = 0; i < COVER_LIST_COUNT; i++) {
+  for (int i = 0; i < COVER_LIST_COUNT && !this->cover_emu_; i++) {
     std::string eid = COVER_LIST[i].entity_id;
     api->subscribe_home_assistant_state(eid, optional<std::string>{}, state_cb_t([this, i](const std::string &s) {
       if (this->covers_[i].state != s) { this->covers_[i].state = s; this->mark_dirty_(DIRTY_COVERS); }
@@ -281,7 +364,8 @@ void RemoteHub::send_lights_(const uint8_t *dest) {
       w.u8(0);
       count = 0;
     }
-    w.u8(i).u8(this->lights_[i].on).u8(this->lights_[i].brightness);
+    const LightGuard &g = this->light_guard_[i];
+    w.u8(i).u8(this->lights_[i].on).u8(g.exp ? g.exp_v : this->lights_[i].brightness);
     count++;
   }
   std::vector<uint8_t> out = w.take();
@@ -320,6 +404,71 @@ void RemoteHub::send_snapshot_(const uint8_t *dest) {
 
 void RemoteHub::broadcast_all() { this->send_snapshot_(rnp::BROADCAST_ADDR); }
 
+// ── screenshot ────────────────────────────────────────────────────────────────
+
+void RemoteHub::request_screenshot() {
+  this->shot_pending_ = true;
+  this->shot_req_at_ = 0;
+  this->shot_mask_ = 0;
+  // An awake remote may stay silent for a long time (browsing screens sends nothing), so try
+  // now. Unicast is ACKed by the radio: if the remote is asleep the send fails and the request
+  // waits for its next HELLO. With no remote seen since boot, broadcast and keep it pending.
+  this->send_screenshot_req_(this->have_rx_src_ ? this->last_rx_src_ : rnp::BROADCAST_ADDR);
+}
+
+void RemoteHub::maybe_send_screenshot_req_(const uint8_t *src) {
+  if (!this->shot_pending_) return;
+  if (this->shot_req_at_ != 0 && millis() - this->shot_req_at_ < SCREENSHOT_RETRY_MS) return;
+  this->send_screenshot_req_(src);
+}
+
+void RemoteHub::send_screenshot_req_(const uint8_t *dest) {
+  ESP_LOGI(TAG, "Requesting screenshot from %s", mac_str_(dest).c_str());
+  this->shot_mask_ = 0;
+  // The espnow component reports the delivery result through the callback, from its own loop.
+  bool unicast = memcmp(dest, rnp::BROADCAST_ADDR, 6) != 0;
+  auto *bus = espnow::global_esp_now;
+  if (bus == nullptr) return;
+  this->shot_req_at_ = millis();
+  esp_err_t err = bus->send(dest, rnp::build_screenshot_req(this->key_), [this, unicast](esp_err_t result) {
+    if (result == ESP_OK || !unicast) return;
+    ESP_LOGI(TAG, "Remote is asleep, screenshot will be taken on its next wake");
+    this->shot_req_at_ = 0;  // let the next HELLO resend right away
+  });
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Screenshot request send failed: %d", (int) err);
+    this->shot_req_at_ = 0;
+  } else {
+    this->tx_count_++;
+  }
+}
+
+void RemoteHub::handle_screenshot_data_(const uint8_t *src, rnp::Reader &r) {
+  uint8_t chunk = 0;
+  if (!r.u8(chunk) || chunk >= rnp::SCREENSHOT_CHUNKS) return;
+  uint8_t *dst = this->shot_buf_ + chunk * rnp::SCREENSHOT_CHUNK_SIZE;
+  for (size_t i = 0; i < rnp::SCREENSHOT_CHUNK_SIZE; i++) {
+    if (!r.u8(dst[i])) {
+      ESP_LOGW(TAG, "Short screenshot chunk %u from %s", chunk, mac_str_(src).c_str());
+      return;
+    }
+  }
+  this->shot_mask_ |= 1 << chunk;
+  if (this->shot_mask_ != 0xFF) return;
+
+  // Same format as the WiFi remote's packages/screenshot.yaml, so tools/screenshot.py parses it.
+  char line[rnp::SCREENSHOT_CHUNK_SIZE * 2 + 1];
+  ESP_LOGI("screenshot", "SCREENSHOT_BEGIN");
+  for (size_t c = 0; c < rnp::SCREENSHOT_CHUNKS; c++) {
+    for (size_t i = 0; i < rnp::SCREENSHOT_CHUNK_SIZE; i++)
+      snprintf(line + i * 2, 3, "%02X", this->shot_buf_[c * rnp::SCREENSHOT_CHUNK_SIZE + i]);
+    ESP_LOGI("screenshot", "%s", line);
+  }
+  ESP_LOGI("screenshot", "SCREENSHOT_END");
+  this->shot_pending_ = false;
+  this->shot_mask_ = 0;
+}
+
 // ── receiving ─────────────────────────────────────────────────────────────────
 
 void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t size) {
@@ -329,6 +478,8 @@ void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t s
     return;
   }
   this->rx_count_++;
+  memcpy(this->last_rx_src_, src, 6);
+  this->have_rx_src_ = true;
   rnp::Reader r(data, size);
 
   switch (type) {
@@ -339,10 +490,15 @@ void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t s
       ESP_LOGI(TAG, "HELLO from %s (proto %u)", mac_str_(src).c_str(), ver);
       if (this->last_remote_sensor_ != nullptr) this->last_remote_sensor_->publish_state(mac_str_(src));
       if (flags & 1) this->send_snapshot_(src);
+      this->maybe_send_screenshot_req_(src);
       break;
     }
     case rnp::CMD:
       this->handle_cmd_(src, r);
+      this->maybe_send_screenshot_req_(src);
+      break;
+    case rnp::SCREENSHOT_DATA:
+      this->handle_screenshot_data_(src, r);
       break;
     case rnp::BATTERY:
       this->handle_battery_(src, r);
@@ -414,19 +570,35 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
     case rnp::DOM_LIGHTS: {
       if (idx >= LIGHTS_LIST_COUNT) return;
       std::string eid = LIGHTS_LIST[idx].entity_id;
+      LightGuard &g = this->light_guard_[idx];
       if (action == rnp::LIGHT_TOGGLE) {
+        g.want = false;  // a held brightness must not switch it back on afterwards
         this->call_homeassistant_service("light.toggle", {{"entity_id", eid}});
       } else if (action == rnp::LIGHT_SET_BRIGHTNESS) {
         if (value < 0) value = 0;
         if (value > 100) value = 100;
-        this->call_homeassistant_service("light.turn_on",
-                                         {{"entity_id", eid}, {"brightness_pct", std::to_string((int) value)}});
+        // Hold it: every press restarts the wait, the last value goes to HA (loop()).
+        g.want = true;
+        g.want_v = static_cast<uint8_t>(value);
+        g.due_at = millis() + LIGHT_SETTLE_MS;
+        g.exp = true;
+        g.exp_v = g.want_v;
+        g.exp_at = millis();
+      } else if (action == rnp::LIGHT_ON) {
+        this->call_homeassistant_service("light.turn_on", {{"entity_id", eid}});
+      } else if (action == rnp::LIGHT_OFF) {
+        g.want = false;
+        this->call_homeassistant_service("light.turn_off", {{"entity_id", eid}});
       }
       break;
     }
 
     case rnp::DOM_COVERS: {
       if (idx >= COVER_LIST_COUNT) return;
+      if (this->cover_emu_) {
+        this->emulate_cover_(idx, action, value);
+        break;
+      }
       std::string eid = COVER_LIST[idx].entity_id;
       if (action == rnp::COVER_OPEN) {
         this->call_homeassistant_service("cover.open_cover", {{"entity_id", eid}});

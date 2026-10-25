@@ -1,0 +1,32 @@
+# ── espnow/screenshot.yaml ───────────────────────────────────────────────────
+# Screenshot over ESP-NOW. The hub's "Remote Screenshot" HA button sends
+# SCREENSHOT_REQ (right away; if the remote is asleep, again on its next
+# HELLO / CMD); the remote replies with its 1024-byte OLED framebuffer in
+# 8 SCREENSHOT_DATA packets and the hub logs it in the SCREENSHOT_BEGIN /
+# END format tools/screenshot.py reads.
+#
+# The hub's log is the one to capture, e.g. from the repository root:
+#   PYTHONUNBUFFERED=1 esphome logs devices/espnow_hub/hub.yaml | python3 tools/screenshot.py -
+
+globals:
+  - id: shot_buf
+    type: 'std::array<uint8_t, 1024>'
+
+script:
+  - id: screenshot_send
+    mode: single
+    then:
+      # Give the UI time to draw the snapshot that came with the same wake.
+      - delay: 1s
+      - lambda: 'memcpy(id(shot_buf).data(), grab_raw_buffer(id(oled_display)), id(shot_buf).size());'
+      - repeat:
+          count: 8
+          then:
+            - espnow.send:
+                address: !lambda |-
+                  if (id(hub_known)) return id(hub_mac);
+                  return esphome::espnow::peer_address_t{{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
+                data: !lambda 'return rnp::build_screenshot_data(${NETWORK_KEY}UL, iteration, id(shot_buf).data());'
+                wait_for_sent: true
+                continue_on_error: true
+      - lambda: 'ESP_LOGI("screenshot", "Framebuffer sent to the hub");'

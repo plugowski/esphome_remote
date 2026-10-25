@@ -1,4 +1,5 @@
 #pragma once
+#include "toast.h"
 
 // ── RemoteCore ───────────────────────────────────────────────────────────────
 // Shared boot/power-off screens and idle-timer helpers.
@@ -7,6 +8,7 @@
 //   RemoteCore::drawPowerOff(id(oled_display), id(font_base));
 //   RemoteCore::resetIdleTimer(id(last_active));
 //   RemoteCore::isIdle(id(last_active))
+//   RemoteCore::halt(id(oled_display));   // deep-sleep shutdown begins
 
 class RemoteCore {
 public:
@@ -19,6 +21,19 @@ public:
     it->print(64, 50, font_small, COLOR_ON, display::TextAlign::CENTER, "LOADING");
     it->display();
   }
+
+  // Deep-sleep shutdown begins: freezes the screen. No controller frame goes
+  // out any more (Toast::present stops sending), the display's own 1 s poll
+  // that pushes the framebuffer stops, and every key press is swallowed
+  // (onUserActivity). Only the shutdown script's direct it->display() calls
+  // (POWER OFF, then blank) still reach the panel.
+  template<class D>
+  static void halt(D* it) {
+    Toast::stop();
+    it->stop_poller();
+  }
+
+  static bool halted() { return Toast::stopped(); }
 
   // Power-off confirmation screen
   template<class D, class F>
@@ -52,7 +67,7 @@ public:
     it->rectangle(0, 20, 128, 1);
     it->print(64, 36, font_small, COLOR_ON, display::TextAlign::CENTER, line1);
     it->print(64, 49, font_small, COLOR_ON, display::TextAlign::CENTER, line2);
-    it->display();
+    Toast::present(it);
   }
 
   // Reset the 120 s idle counter to now
@@ -71,14 +86,42 @@ public:
   // tap after screen-off only wakes it, nothing underneath it fires. A
   // no-op in Deep Sleep builds: is_light_sleeping is never true there, so
   // this always returns false and behaves exactly like resetIdleTimer.
+  //
+  // A press while a toast is showing closes it and is consumed the same way.
+  //
+  // conn_status: pass id(conn_status) from every key except Power Off. While
+  // the NO HUB / NO WIFI / HA UNREACHABLE screen is up (non-zero) the press is
+  // consumed, so nothing navigates or draws under it; it only asks for a
+  // reconnect attempt right away (takeRetry). Once shutdown has begun
+  // (halt) every press is consumed, Power Off included.
   template<class D>
-  static bool onUserActivity(D* it, int& last_active, bool& is_light_sleeping, bool& updated_ui) {
+  static bool onUserActivity(D* it, int& last_active, bool& is_light_sleeping, bool& updated_ui,
+                             int conn_status = 0) {
+    if (halted()) return true;
     resetIdleTimer(last_active);
-    if (!is_light_sleeping) return false;
-    is_light_sleeping = false;
-    it->turn_on();
-    updated_ui = true;
-    return true;
+    if (is_light_sleeping) {
+      is_light_sleeping = false;
+      it->turn_on();
+      updated_ui = true;
+      return true;
+    }
+    if (Toast::active()) {
+      Toast::dismiss();
+      updated_ui = true;
+      return true;
+    }
+    if (conn_status != 0) {
+      retryFlag() = true;
+      return true;
+    }
+    return false;
+  }
+
+  // True once after a key was pressed on the connection-error screen.
+  static bool takeRetry() {
+    bool r = retryFlag();
+    retryFlag() = false;
+    return r;
   }
 
   // Returns true when the device has been idle for timeout_s seconds
@@ -109,4 +152,7 @@ public:
       it->filled_rectangle(119, 1, 8, 8, COLOR_ON);
     }
   }
+
+private:
+  static bool& retryFlag() { static bool f = false; return f; }
 };

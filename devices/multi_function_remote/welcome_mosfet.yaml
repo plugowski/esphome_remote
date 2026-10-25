@@ -18,7 +18,7 @@
 
 substitutions:
   BOARD: "esp32dev"
-  DEVICE_NAME: "welcome"
+  DEVICE_NAME: "welcome_31"
   FRIENDLY_NAME: "Off Remote"
   VERSION: "v3.1"
 
@@ -136,7 +136,7 @@ display:
         lambda: |-
           it.print(64, 18, id(symbols_big), COLOR_ON, display::TextAlign::CENTER, "");
           it.print(64, 43, id(small), COLOR_ON, display::TextAlign::CENTER, "CONTROL YOUR AC");
-          draw_bottom_menu(&it, id(small), "<", "${VERSION}", ">");
+          draw_bottom_menu(&it, id(small), "TEST", "${VERSION}", ">");
 
       - id: page2
         lambda: |-
@@ -170,28 +170,117 @@ display:
           auto x = (it.get_width() / 2) - (size / 2);
           auto y = (it.get_height() / 2) - (size / 2);
           it.qr_code(x, y, id(homepage_qr), COLOR_ON, 2);
-          draw_bottom_menu(&it, id(small), "<", "", ">", false, false);
+          // arrows vertically centred alongside QR code
+          int cy = 32;
+          it.line(20, cy,     20, cy + 1);
+          it.line(21, cy,     21, cy + 1);
+          it.line(22, cy - 1, 22, cy + 2);
+          it.line(23, cy - 1, 23, cy + 2);
+          it.line(24, cy - 2, 24, cy + 3);
+          it.line(25, cy - 2, 25, cy + 3);
+          it.line(102, cy - 2, 102, cy + 3);
+          it.line(103, cy - 2, 103, cy + 3);
+          it.line(104, cy - 1, 104, cy + 2);
+          it.line(105, cy - 1, 105, cy + 2);
+          it.line(106, cy,     106, cy + 1);
+          it.line(107, cy,     107, cy + 1);
 
-      # Layout selection — Left=AC Only, Right=Multifunction, Power=back
+      # Layout selection — Left circle=AC, Right circle=MULTI, Power=back
       - id: page_layout_select
         lambda: |-
           it.print(64, 0, id(basic), COLOR_ON, display::TextAlign::TOP_CENTER, "KEY TEST");
           it.line(0, 16, 128, 16);
-          it.print(64, 30, id(small), COLOR_ON, display::TextAlign::CENTER, "Select layout:");
-          draw_bottom_menu(&it, id(small), "AC", "", "MULTI", true);
+          it.print(64, 24, id(small), COLOR_ON, display::TextAlign::CENTER, "SELECT LAYOUT");
+          it.line(63, 31, 63, 63);
+          // ── AC layout (left panel) ────────────────────────────────────────
+          it.filled_circle(10, 38, 3, COLOR_ON);
+          it.filled_circle(29, 38, 3, COLOR_ON);
+          it.filled_circle(48, 38, 3, COLOR_ON);
+          it.filled_rectangle( 3, 44, 23, 5, COLOR_ON);
+          it.filled_rectangle(31, 44, 23, 5, COLOR_ON);
+          it.filled_rectangle( 3, 51, 51, 5, COLOR_ON);
+          it.filled_rectangle( 3, 58, 51, 5, COLOR_ON);
+          // ── MULTI layout (right panel, nudged right) ──────────────────────
+          it.filled_circle(80, 38, 3, COLOR_ON);
+          it.filled_circle(99, 38, 3, COLOR_ON);
+          it.filled_circle(118, 38, 3, COLOR_ON);
+          it.filled_rectangle( 73, 44, 51, 5, COLOR_ON);
+          it.filled_rectangle( 73, 51, 23, 5, COLOR_ON);
+          it.filled_rectangle(101, 51, 23, 5, COLOR_ON);
+          it.filled_rectangle( 73, 58, 23, 5, COLOR_ON);
+          it.filled_rectangle(101, 58, 23, 5, COLOR_ON);
 
       # Key test — updates on each button press
       - id: page_keytest
         lambda: |-
           it.print(64, 0, id(basic), COLOR_ON, display::TextAlign::TOP_CENTER, "KEY TEST");
           it.line(0, 16, 128, 16);
-          if (id(last_key_gpio) < 0) {
-            it.print(64, 32, id(small), COLOR_ON, display::TextAlign::CENTER, "Press any button");
+          if (id(remote_layout) == 1) {
+            // MULTI: pixel layout preview on left, button info on right
+            it.line(57, 17, 57, 52);
+            int g = id(last_key_gpio);
+            // circles — Left Circle=22, Mid Circle=5, Right Circle=33
+            if (g == 22) it.filled_circle(10, 22, 4, COLOR_ON); else it.circle(10, 22, 4);
+            if (g ==  5) it.filled_circle(29, 22, 4, COLOR_ON); else it.circle(29, 22, 4);
+            if (g == 33) it.filled_circle(48, 22, 4, COLOR_ON); else it.circle(48, 22, 4);
+            // wide bar — GPIO14=left half, GPIO26=right half; filled white + black dot when pressed
+            if (g == 14 || g == 26) {
+              it.filled_rectangle(3, 28, 51, 6, COLOR_ON);
+              it.filled_circle(g == 14 ? 16 : 41, 31, 2, COLOR_OFF);
+            } else {
+              it.rectangle(3, 28, 51, 6);
+            }
+            // row 3 — OK=GPIO23 (left) | Up=GPIO17 (right)
+            if (g == 23) it.filled_rectangle( 3, 36, 23, 6, COLOR_ON); else it.rectangle( 3, 36, 23, 6);
+            if (g == 17) it.filled_rectangle(31, 36, 23, 6, COLOR_ON); else it.rectangle(31, 36, 23, 6);
+            // row 4 — Stop=GPIO19 (left) | Down=GPIO18 (right)
+            if (g == 19) it.filled_rectangle( 3, 44, 23, 6, COLOR_ON); else it.rectangle( 3, 44, 23, 6);
+            if (g == 18) it.filled_rectangle(31, 44, 23, 6, COLOR_ON); else it.rectangle(31, 44, 23, 6);
+            // right panel — button name + GPIO number
+            if (g < 0) {
+              it.print(93, 28, id(small), COLOR_ON, display::TextAlign::CENTER, "Press");
+              it.print(93, 40, id(small), COLOR_ON, display::TextAlign::CENTER, "any button");
+            } else {
+              it.print(93, 28, id(small), COLOR_ON, display::TextAlign::CENTER, id(last_key_name).c_str());
+              char gpio_str[12];
+              snprintf(gpio_str, sizeof(gpio_str), "GPIO: %d", g);
+              it.print(93, 40, id(small), COLOR_ON, display::TextAlign::CENTER, gpio_str);
+            }
           } else {
-            it.print(64, 26, id(basic), COLOR_ON, display::TextAlign::CENTER, id(last_key_name).c_str());
-            char gpio_str[16];
-            snprintf(gpio_str, sizeof(gpio_str), "GPIO: %d", id(last_key_gpio));
-            it.print(64, 42, id(small), COLOR_ON, display::TextAlign::CENTER, gpio_str);
+            // AC: pixel layout preview on left, button info on right
+            it.line(57, 17, 57, 52);
+            int g = id(last_key_gpio);
+            // circles — Left Circle=22, Mid Circle=5, Right Circle=33
+            if (g == 22) it.filled_circle(10, 22, 4, COLOR_ON); else it.circle(10, 22, 4);
+            if (g ==  5) it.filled_circle(29, 22, 4, COLOR_ON); else it.circle(29, 22, 4);
+            if (g == 33) it.filled_circle(48, 22, 4, COLOR_ON); else it.circle(48, 22, 4);
+            // row 1 — AC=GPIO14 (left) | ON/OFF=GPIO26 (right)
+            if (g == 14) it.filled_rectangle( 3, 28, 23, 6, COLOR_ON); else it.rectangle( 3, 28, 23, 6);
+            if (g == 26) it.filled_rectangle(31, 28, 23, 6, COLOR_ON); else it.rectangle(31, 28, 23, 6);
+            // row 2 — Plus Left=GPIO23 (L) | Plus Right=GPIO17 (R)
+            if (g == 23 || g == 17) {
+              it.filled_rectangle(3, 36, 51, 6, COLOR_ON);
+              it.filled_circle(g == 23 ? 16 : 41, 39, 2, COLOR_OFF);
+            } else {
+              it.rectangle(3, 36, 51, 6);
+            }
+            // row 3 — Minus Left=GPIO19 (L) | Minus Right=GPIO18 (R)
+            if (g == 19 || g == 18) {
+              it.filled_rectangle(3, 44, 51, 6, COLOR_ON);
+              it.filled_circle(g == 19 ? 16 : 41, 47, 2, COLOR_OFF);
+            } else {
+              it.rectangle(3, 44, 51, 6);
+            }
+            // right panel — button name + GPIO number
+            if (g < 0) {
+              it.print(93, 28, id(small), COLOR_ON, display::TextAlign::CENTER, "Press");
+              it.print(93, 40, id(small), COLOR_ON, display::TextAlign::CENTER, "any button");
+            } else {
+              it.print(93, 28, id(small), COLOR_ON, display::TextAlign::CENTER, id(last_key_name).c_str());
+              char gpio_str[12];
+              snprintf(gpio_str, sizeof(gpio_str), "GPIO: %d", g);
+              it.print(93, 40, id(small), COLOR_ON, display::TextAlign::CENTER, gpio_str);
+            }
           }
           draw_bottom_menu(&it, id(small), nullptr, "POWER = exit", nullptr, false);
 
@@ -246,7 +335,14 @@ binary_sensor:
                   - globals.set: { id: remote_layout, value: '0' }
                   - script.execute: enter_key_test
                 else:
-                  - script.execute: nav_prev
+                  - if:
+                      condition: { lambda: 'return id(current_page) == 0;' }
+                      then:
+                        - lambda: 'id(current_page) = 6;'
+                        - display.page.show: page_layout_select
+                        - component.update: oled_display
+                      else:
+                        - script.execute: nav_prev
 
   # Mid Circle: key_test=record | normal=(no action)
   - platform: gpio

@@ -7,6 +7,9 @@ Usage
   # Live serial capture (device connected via USB):
   python3 tools/screenshot.py /dev/tty.usbserial-XXXX
 
+  # Live capture from any log stream on stdin, e.g. the ESP-NOW hub over WiFi:
+  PYTHONUNBUFFERED=1 esphome logs devices/espnow_hub/hub.yaml | python3 tools/screenshot.py -
+
   # From a previously saved log file:
   python3 tools/screenshot.py --file dump.log
 
@@ -15,7 +18,9 @@ Usage
 
 How it works
 ------------
-On the device, hold OK for 1 s to trigger the `screenshot` script.  It emits:
+Hold Pause for 3 s (demo firmware), press the "Screenshot" button in Home
+Assistant (WiFi remote), or the hub's "Remote Screenshot" button (ESP-NOW
+remote: the hub relays the framebuffer and logs it).  The device emits:
 
     I (12345) screenshot: SCREENSHOT_BEGIN
     I (12346) screenshot: <256 hex chars>   ← 128 bytes, 8 lines
@@ -107,30 +112,43 @@ def capture_from_serial(port: str, baud: int, scale: int, output_prefix: str) ->
     except ImportError:
         sys.exit("pyserial is required:  pip install pyserial")
 
-    print(f"Listening on {port} @ {baud} baud — hold Pause for 3 s to capture (Ctrl-C to quit)…")
-    lines = []  # type: List[str]
+    print(f"Listening on {port} @ {baud} baud — press the Screenshot button to capture (Ctrl-C to quit)…")
 
-    with serial.Serial(port, baud, timeout=0.5) as ser:
-        while True:
-            raw = ser.readline()
-            if not raw:
+    def serial_lines():
+        with serial.Serial(port, baud, timeout=0.5) as ser:
+            while True:
+                raw = ser.readline()
+                if raw:
+                    yield raw.decode("utf-8", errors="replace")
+
+    capture_from_lines(serial_lines(), scale, output_prefix)
+
+
+def capture_from_stdin(scale: int, output_prefix: str) -> None:
+    print("Reading log from stdin — press the Screenshot button to capture (Ctrl-C to quit)…")
+    capture_from_lines(sys.stdin, scale, output_prefix)
+
+
+def capture_from_lines(source, scale: int, output_prefix: str) -> None:
+    """Echo a live log and save a PNG for every complete SCREENSHOT block in it."""
+    lines = []  # type: List[str]
+    for raw in source:
+        line = _strip_ansi(raw.rstrip())
+        print(line, flush=True)
+        lines.append(line)
+        if "SCREENSHOT_END" in line:
+            buf = parse_hex_lines(lines)
+            lines = []  # reset for the next capture
+            if buf is None:
+                print("  [!] Incomplete capture — ignored.")
                 continue
-            line = _strip_ansi(raw.decode("utf-8", errors="replace").rstrip())
-            print(line)
-            lines.append(line)
-            if "SCREENSHOT_END" in line:
-                buf = parse_hex_lines(lines)
-                lines = []  # reset for the next capture
-                if buf is None:
-                    print("  [!] Incomplete capture — ignored.")
-                    continue
-                if len(buf) != 1024:
-                    print(f"  [!] Expected 1024 bytes, got {len(buf)} — ignored.")
-                    continue
-                out = Path(f"{output_prefix}{int(time.time())}.png")
-                img = buf_to_image(buf, scale)
-                img.save(out)
-                print(f"  >>> Saved {out}  ({img.width}×{img.height} px)")
+            if len(buf) != 1024:
+                print(f"  [!] Expected 1024 bytes, got {len(buf)} — ignored.")
+                continue
+            out = Path(f"{output_prefix}{int(time.time())}.png")
+            img = buf_to_image(buf, scale)
+            img.save(out)
+            print(f"  >>> Saved {out}  ({img.width}×{img.height} px)", flush=True)
 
 
 # ── file capture ──────────────────────────────────────────────────────────────
@@ -150,7 +168,7 @@ def main() -> None:
         description="Convert ESPHome serial framebuffer dump to PNG"
     )
     src = parser.add_mutually_exclusive_group(required=True)
-    src.add_argument("port", nargs="?", help="Serial port, e.g. /dev/tty.usbserial-XXXX")
+    src.add_argument("port", nargs="?", help="Serial port, e.g. /dev/tty.usbserial-XXXX, or - for stdin")
     src.add_argument("--file", "-f", metavar="LOG", help="Parse a saved log file instead")
 
     parser.add_argument("--baud",    "-b", type=int, default=115200)
@@ -173,7 +191,10 @@ def main() -> None:
     else:
         # Live mode: stay connected, save a new file on every capture.
         try:
-            capture_from_serial(args.port, args.baud, args.scale, "screenshot_")
+            if args.port == "-":
+                capture_from_stdin(args.scale, "screenshot_")
+            else:
+                capture_from_serial(args.port, args.baud, args.scale, "screenshot_")
         except KeyboardInterrupt:
             print("\nDone.")
 

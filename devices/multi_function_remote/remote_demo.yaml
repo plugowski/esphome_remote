@@ -17,7 +17,11 @@ esphome:
     build_flags:
       - -DDEMO_MODE
   includes:
+    - src/toast.h
     - src/display_utils.h
+    - src/context_strip.h
+    - src/room_entities.h
+    - src/room_filter.h
     - src/menu_entities.h         # APP_* IDs + MENU_LIST — edit here to configure carousel
     - src/ac_entities.h           # must come before ac_controller.h
     - src/ac_controller.h
@@ -36,7 +40,10 @@ esphome:
         - delay: 10ms
     - priority: 250
       then:
-        - lambda: 'id(last_active) = millis() / 1000;'
+        - lambda: |-
+            id(last_active) = millis() / 1000;
+            ContextStrip::setBattery(id(battery_pct));
+            ContextStrip::setClock(true, 8, 25);   // demo: fixed time for screenshots
     - priority: -100          # fires after the main loop starts
       then:
         - delay: 1500ms       # show boot screen for 1.5 s

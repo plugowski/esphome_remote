@@ -28,6 +28,7 @@ sensor:
             id(battery_mv) = static_cast<int>(x * 1000.0f);
             float pct = (x - 3.2f) / 1.0f * 100.0f;
             id(battery_pct) = static_cast<int>((pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct);
+            ContextStrip::setBattery(id(battery_pct));
             id(updated_ui) = true;
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }
@@ -63,7 +64,7 @@ globals:
     type: int
     initial_value: '-1'
 
-  - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
+  - id: sleep_timeout_mins  # idle time before sleeping (1–60 min)
     type: int
     initial_value: '${SLEEP_TIMEOUT_MIN}'
     restore_value: true
@@ -193,16 +194,35 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting);'
+            lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
           then:
             - lambda: |-
                 std::string link = "ESPNOW CH " + std::to_string(id(espnow_channel));
-                std::string hub  = id(hub_known) ? "HUB " + EspNowRemote::macToString(id(hub_mac).data()).substr(9)
-                                                 : std::string("NO HUB");
-                SettingsController::draw(id(oled_display), id(font_small),
+                // shown under LINK / HUB instead of WIFI / IP
+                std::string hub  = id(hub_known) ? EspNowRemote::macToString(id(hub_mac).data()).substr(9)
+                                                 : std::string("NOT PAIRED");
+                SettingsController::draw(id(oled_display), id(font_base), id(font_small),
                   id(selected_setting_index), id(contrast_level),
                   link, hub,
-                  id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+                  id(battery_pct), id(battery_mv), id(sleep_timeout_mins), id(battery_interval_mins),
                   id(deep_sleep_fallback_mins), id(quiet_hours_start), id(quiet_hours_end),
                   ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE},
-                  id(updated_ui), id(conn_status));
+                  id(updated_ui), id(conn_status), "LINK", "HUB");
+
+# ── Settings SYSTEM / ABOUT tick ──────────────────────────────────────────────
+# Redraws every 50 ms while the ABOUT intro plays or a SYSTEM sample is due
+# (SettingsController::needsTick); otherwise does nothing. Stops for good once
+# shutdown begins, and while a Light Sleep build has the screen blanked.
+interval:
+  - interval: 50ms
+    then:
+      - if:
+          condition:
+            lambda: >-
+              return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting)
+                && !id(is_timer_wake) && !id(is_shutting_down) && !id(is_light_sleeping)
+                && id(conn_status) == 0
+                && SettingsController::needsTick(id(selected_setting_index));
+          then:
+            - lambda: 'id(updated_ui) = true;'
+            - script.execute: settings_draw

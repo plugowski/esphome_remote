@@ -12,10 +12,63 @@ Two firmware flavours share the same code: the original **WiFi remote** (`remote
 
 ## Screenshots
 
+The UI was redesigned in October 2026: same calm screens, but every screen now says where you are and works the same way. The write-up with the reasoning behind each decision is at [tech.lugowski.dev/projects/smart-oled-remote-ui](https://tech.lugowski.dev/projects/smart-oled-remote-ui/).
+
+- **Context strip** on every screen: screen name, position dots (or `3/12` when they don't fit), the room, battery.
+- **One navigation rule:** left / right moves between items, up / down changes the value. Quick actions are one press away from anywhere in the menu (up / down).
+- **Soft buttons** over the round keys, like an ATM: a filled chip is a round key and says what it does on this screen; the outlined chip with three dots is the menu key.
+- **Cards** for lights, covers and automations (lists still available), with a vertical slider for brightness and cover position.
+- **Room filter:** hold the menu key to pick a room; entities without a room show everywhere.
+- **Toasts** for a low battery and for a sent action; **Settings** one per page, editable values in a box with up / down arrows.
+
+The images are rendered with the firmware's own layout and fonts.
+
+### Menu and the screen it opens
+
+| Menu | Screen | | |
+|:---:|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/menu_climate.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/climate_cool.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/climate_off.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/climate_fan.png" width="200"> |
+| Climate | cool / heat | off | fan only |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_lights.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/lights_card.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/lights_card_off.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/lights_list.png" width="200"> |
+| Lights | card | card, light off | list |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_covers.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/covers_open.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/covers_opening.png" width="200"> |  |
+| Covers | at rest | opening to its target | |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_automations.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/automations_card.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/automations_list.png" width="200"> |  |
+| Automations | card, two shortcut keys | list | |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_settings.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_contrast.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_sleep.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_system.png" width="200"> |
+| Settings | contrast | sleep timeout | system |
+
+### Quick actions and toasts
+
+| Quick action (up / down in the menu) | Action sent | Low battery |
+|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/quick_actions.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/toast_sent.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/toast_battery.png" width="200"> |
+
+### Settings
+
+| Contrast | Sleep timeout | Read-only value | System |
+|:---:|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/settings_contrast.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_sleep.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_link.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_system.png" width="200"> |
+
+Left / right (and the round keys) move between settings, up / down changes the value in the box. Read-only values have no box.
+
+### Room selection
+
+| Hold the menu key | The room in the badge | Nothing in that room |
+|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/room_picker.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/menu_room.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/room_empty.png" width="200"> |
+
+<details>
+<summary>Previous UI (before October 2026)</summary>
+
 | AC | Lights | Covers | Automations | Settings |
 |:---:|:---:|:---:|:---:|:---:|
-| <img src="devices/multi_function_remote/screenshots/menu_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_lights.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/manu_settings.png" width="160"> |
-| <img src="devices/multi_function_remote/screenshots/screen_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_light.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_settings.png" width="160"> |
+| <img src="devices/multi_function_remote/screenshots/legacy/menu_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/menu_lights.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/menu_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/menu_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/manu_settings.png" width="160"> |
+| <img src="devices/multi_function_remote/screenshots/legacy/screen_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_light.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_settings.png" width="160"> |
+| <img src="devices/multi_function_remote/screenshots/legacy/screen_ac_fan.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_light_normal.png" width="160"> |  | | |
+| <img src="devices/multi_function_remote/screenshots/legacy/screen_ac_dry.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_light_dim.png" width="160"> |  | | |
+
+</details>
 
 ---
 
@@ -213,13 +266,15 @@ make ota IP=<device-ip>
 
 ## Taking screenshots
 
-Both firmwares can dump the current OLED framebuffer as hex lines over the logger, which `tools/screenshot.py` converts to a monochromatic PNG.
+All firmwares can dump the current OLED framebuffer as hex lines over the logger, which `tools/screenshot.py` converts to a monochromatic PNG.
 
 ### Trigger
 
 **Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the Pause/Stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
 
 **Product firmware** (`remote.yaml`, generator-built): press the **Screenshot** button — it's a plain HA button entity (no `internal:` flag), so it shows up under the device in Home Assistant automatically and can be pressed there, called from an automation/script (`button.press`), or pressed on demand from the ESPHome dashboard. To capture the output over USB serial (rather than just watching HA's log viewer), turn on the generator's **"Enable debug logging (UART)"** toggle first — the raw hex lines only reach the serial port when `LOGGER_BAUD_RATE` is a real baud rate, not the power-optimized default of `0`.
+
+**ESP-NOW firmware** (`remote_espnow.yaml`): the remote has no Home Assistant connection, so the button lives on the hub — press **Remote Screenshot** on the hub device in HA. If the remote is awake it answers within about a second; if it is asleep (its radio doesn't acknowledge the request), the hub logs `Remote is asleep, screenshot will be taken on its next wake` and sends the request again when the remote next wakes or sends a command. The remote sends its framebuffer to the hub over ESP-NOW and the **hub** logs it, so capture the hub's log (USB serial or over WiFi, below), not the remote's. Flash the hub and the remote together after updating, since both need the new protocol packets.
 
 ### Capture and convert
 
@@ -229,6 +284,10 @@ pip install pyserial pillow
 
 # Live mode — stays connected, saves screenshot_<timestamp>.png on every capture
 python3 tools/screenshot.py /dev/tty.usbserial-XXXX
+
+# Live mode from any log stream on stdin — e.g. the ESP-NOW hub over WiFi
+# (PYTHONUNBUFFERED stops esphome from holding the log back when piped)
+PYTHONUNBUFFERED=1 esphome logs devices/espnow_hub/hub.yaml | python3 tools/screenshot.py -
 
 # Or parse a previously saved serial log (single capture, then exit)
 python3 tools/screenshot.py --file dump.log

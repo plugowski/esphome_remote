@@ -5,52 +5,99 @@
 #include <cstdio>
 #include <cmath>
 #include "light_entities.h"
+#include "room_entities.h"
+#include "room_filter.h"
 #include "display_utils.h"
 #include "remote_core.h"
+#include "context_strip.h"
 
 // ── LightsController ──────────────────────────────────────────────────────────
-// Lights mode: scrollable list with on/off toggle, dimmable indicator,
-// brightness control (5 % steps, snapped to a clean multiple of 5 in the
-// direction of travel), and real-time HA state sync.
+// Lights mode. Two views, chosen at build time by the LIGHTS_CARD_VIEW
+// substitution (global lights_card_view):
 //
-// Button mapping:
-//   MODE  (pin22)   -> prevLight   (labeled ▲ on screen)
-//   FAN   (pin33)   -> nextLight   (labeled ▼ on screen)
-//   LEFT  (pin14)   -> nextLight   (mirrors FAN — scrolls down the list)
-//   RIGHT (pin26)   -> toggleLight (on/off)
-//   T_UP  (pin23/17)-> brightnessUp
-//   T_DN  (pin19/18)-> brightnessDown
-//   MENU  (pin5)    -> opens mode menu
+//   list view (draw)     — scrollable 4-row list, on/off toggle, ±5 % steps
+//   card view (drawCard) — one light per screen: name row, big bulb icon,
+//                          ON/OFF + brightness bar, LOW/FULL presets
 //
-// Display layout (128x64, 4 visible rows of 13 px + bottom menu at y=53):
+// Button mapping, list view (original):
+//   circles L/R (pin22/33) -> prev / next light   (▲ / ▼ in the bar)
+//   ← →  (btn_left/right)  -> brightness − / +
+//   OK                      -> toggle on/off
+//   ↑ ↓                     -> prev / next light
+//   ⏸                       -> (nothing)
+//
+// Button mapping, card view:
+//   circles L/R (pin22/33) -> dimmable: LOW (25 %) / FULL (100 %)
+//                             non-dimmable: OFF / ON
+//   ← →  (btn_left/right)  -> prev / next light
+//   OK                      -> ON   (keeps last brightness)
+//   ⏸                       -> OFF
+//   ↑ ↓                     -> brightness + / −
+//   MENU (pin5)             -> opens mode menu  (both views)
+//
+// The routing itself lives in packages/mode_lights.yaml (lights_btn_*
+// dispatcher scripts), so buttons.yaml / layout_v2.yaml never need to know
+// which view is active.
+//
+// Both views start with the context strip (rows 0..8): "LIGHTS" chip, dots
+// per page (list view: one per 4 lights, card view: one per light), a badge
+// (list view: "ALL", there's no room filter yet; card view: the light's room,
+// none without one) and battery. See src/context_strip.h.
+//
+// List view layout (128x64, 4 visible rows of 10 px from y=11, bottom menu
+// at y=53; scrolls a whole page of 4 at a time so the dots match):
 //   x=4            name (font_small, CENTER_LEFT — vertically centred in row)
 //   x=after name   filled_circle r=2 (dimmable indicator) — placed 5 px after
 //                  text right edge via get_text_bounds
 //   x=110 right    brightness "75%" right-aligned (dimmable + ON, all rows)
-//   x=119 r=4      radio button — filled=ON, outline=OFF
-//   y=53..63       ▲ | ☰ | ▼  bottom bar (draw_bottom_menu)
+//   x=119 r=3      radio button — filled=ON, outline=OFF
+//   y=53..63       ▲ | ••• | ▼  bottom bar (draw_bottom_menu)
+//
+// Card view layout (everything below the strip centred on row 31):
+//   x=5..31        26 px bulb \ue0f0 centred at (18, 31): filled glyph
+//                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
+//   x=36..         name (font_base) beside the bulb, vertically centred, two
+//                  lines split at the first space when it doesn't fit
+//                  (print_name_beside), up to x=114 (dimmable) / 124
+//   x=117..125     dimmable: 9x39 slider (draw_vslider), rows 12..50, filled
+//                  from the bottom when ON; when OFF a tick marks the level it
+//                  comes back at. "75%" (font_small) right-aligned at x=114,
+//                  next to the slider's foot
+//   y=53..63       LOW | ••• | FULL  (dimmable)   or   OFF | ••• | ON
 //
 // YAML usage:
 //   LightsController::prevLight(id(selected_light_index)); id(updated_ui)=true;
 //   LightsController::nextLight(id(selected_light_index)); id(updated_ui)=true;
 //   LightsController::toggleLight(id(selected_light_index), id(updated_ui));
+//   LightsController::turnOn(id(selected_light_index), id(updated_ui));
+//   LightsController::turnOff(id(selected_light_index), id(updated_ui));
+//   LightsController::setPreset(id(selected_light_index), LightsController::PRESET_LOW, id(updated_ui));
 //   LightsController::brightnessUp(id(selected_light_index), id(updated_ui));
 //   LightsController::brightnessDown(id(selected_light_index), id(updated_ui));
 //   LightsController::syncLight(idx, ha_state, ha_brightness, id(updated_ui));
 //   LightsController::draw(id(oled_display), id(font_small),
-//                          id(selected_light_index), id(updated_ui));
+//                          id(selected_light_index), id(updated_ui), id(conn_status));
+//   LightsController::drawCard(id(oled_display), id(font_base), id(font_small),
+//                              id(lights_icon_on), id(lights_icon_off),
+//                              id(selected_light_index), id(updated_ui), id(conn_status));
 
 class LightsController {
 public:
 
+  static const int ROWS   = 4;   // list view: rows per page
+  static const int ROW_H  = 10;  // list view: row height below the context strip
+  static const int LIST_Y = ContextStrip::CONTENT_Y + 1;  // rows 11..50: centred between strip and bar
+  static const int CARD_CY = 31; // card view: row the bulb and name centre on
+
   // ── navigation ─────────────────────────────────────────────────────────────
 
+  // Both skip lights outside the room filter (see room_filter.h).
   static void prevLight(int& idx) {
-    idx = wrap_index(idx, LIGHTS_LIST_COUNT, -1);
+    idx = RoomFilter::step(idx, LIGHTS_LIST_COUNT, -1, lightRoom);
   }
 
   static void nextLight(int& idx) {
-    idx = wrap_index(idx, LIGHTS_LIST_COUNT, +1);
+    idx = RoomFilter::step(idx, LIGHTS_LIST_COUNT, +1, lightRoom);
   }
 
   // ── toggle ─────────────────────────────────────────────────────────────────
@@ -59,6 +106,49 @@ public:
     if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
     lightOn(idx) = !lightOn(idx);
     updated_ui   = true;
+  }
+
+  static void turnOn(int idx, bool& updated_ui) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+    lightOn(idx) = true;
+    updated_ui   = true;
+  }
+
+  static void turnOff(int idx, bool& updated_ui) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+    lightOn(idx) = false;
+    updated_ui   = true;
+  }
+
+  // ── presets (card view circles) ───────────────────────────────────────────
+  // Dimmable light: ON at the given percentage (0 % means OFF).
+  // Non-dimmable light: the circles degrade to plain OFF / ON.
+  static const int PRESET_LOW  = 25;
+  static const int PRESET_FULL = 100;
+
+  static void setPreset(int idx, int pct, bool& updated_ui) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    if (LIGHTS_LIST[idx].dimmable) {
+      lightBrightness(idx) = pct;
+      lightOn(idx)         = (pct > 0);
+      markBrightnessPending(idx);
+    } else {
+      // No dimmer: the circles are plain OFF (low preset) / ON (full preset).
+      lightOn(idx) = (pct >= PRESET_FULL);
+    }
+    updated_ui = true;
+  }
+
+  static bool isDimmable(int idx) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return false;
+    return LIGHTS_LIST[idx].dimmable;
+  }
+
+  static bool isOn(int idx) {
+    if (idx < 0 || idx >= LIGHTS_LIST_COUNT) return false;
+    return lightOn(idx);
   }
 
   // ── brightness (5 % steps, clamped 0-100, dimmable + ON only) ─────────────
@@ -77,6 +167,7 @@ public:
     int& b   = lightBrightness(idx);
     int next = (b / BRIGHTNESS_STEP + 1) * BRIGHTNESS_STEP;
     b        = (next <= 100) ? next : 100;
+    markBrightnessPending(idx);
     updated_ui = true;
   }
 
@@ -86,6 +177,7 @@ public:
     int& b   = lightBrightness(idx);
     int next = ((b - 1) / BRIGHTNESS_STEP) * BRIGHTNESS_STEP;
     b        = (next >= 0) ? next : 0;
+    markBrightnessPending(idx);
     updated_ui = true;
   }
 
@@ -101,7 +193,16 @@ public:
     if (lightOn(idx) != new_on) { lightOn(idx) = new_on; changed = true; }
     if (!std::isnan(ha_brightness) && ha_brightness >= 0) {
       int b = static_cast<int>(ha_brightness);
-      if (lightBrightness(idx) != b) { lightBrightness(idx) = b; changed = true; }
+      // While a local brightness change is pending, keep the local value until the incoming
+      // one is what was set last (±1 for HA's 0-255 rounding) or the wait runs out: an older
+      // in-between state must not make the slider jump back during a run of presses.
+      int& pend = pendingBrightness(idx);
+      if (pend >= 0 && (millis() - pendingSince(idx)) < BRIGHTNESS_PENDING_MS) {
+        if (b >= pend - 1 && b <= pend + 1) pend = -1;
+      } else {
+        pend = -1;
+        if (lightBrightness(idx) != b) { lightBrightness(idx) = b; changed = true; }
+      }
     }
     if (changed) updated_ui = true;
   }
@@ -110,48 +211,70 @@ public:
 
   // Renders the lights list.  No-ops when updated_ui is false.
   //
-  // 4 rows of 13 px visible at a time; scrolls to keep the selected row visible.
-  // Per row (height 13 px, font_small 10 px):
+  // 4 rows of 10 px below the context strip; shows the page of 4 that holds
+  // the selected light. Per row (height 10 px, font_small 10 px):
   //   selected row  → filled_rectangle background (inverted colours)
   //   name          → CENTER_LEFT at (4, y_center) — properly vertically centred
   //   level icon    → 3 growing bars, placed 4 px after right edge of name text
   //   brightness %  → right edge at x=110, all dimmable+ON rows
-  //   radio button  → filled_circle (ON) / circle (OFF) at x=119, r=4
+  //   radio button  → filled_circle (ON) / circle (OFF) at x=119, r=3
   template<class D, class F>
   static void draw(D* it, F* font_small, int selected_idx, bool& updated_ui, int conn_status) {
     if (!updated_ui) return;
     updated_ui = false;
 
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (LIGHTS_LIST_COUNT > 0 && !RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom)) {
+      drawEmptyRoom(it, font_small, font_small, "LIGHTS", "lights", conn_status);
+      return;
+    }
+
     it->clear();
 
-    // Adjust scroll viewport so the selected row is always visible
-    static int scroll_top = 0;
-    if (selected_idx < scroll_top)      scroll_top = selected_idx;
-    if (selected_idx >= scroll_top + 4) scroll_top = selected_idx - 3;
+    // Page of 4 (among the lights in the room filter) that holds the selection
+    const int shown      = RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom);
+    const int page       = RoomFilter::position(selected_idx, LIGHTS_LIST_COUNT, lightRoom) / ROWS;
+    const int page_count = (shown + ROWS - 1) / ROWS;
+    ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status,
+                       RoomFilter::active() ? RoomFilter::name() : "ALL");
 
-    for (int row = 0; row < 4; row++) {
-      int li = scroll_top + row;
-      if (li >= LIGHTS_LIST_COUNT) break;
+    for (int row = 0; row < ROWS; row++) {
+      const int li = RoomFilter::at(page * ROWS + row, LIGHTS_LIST_COUNT, lightRoom);
+      if (li < 0) break;
 
       const bool sel  = (li == selected_idx);
       const bool on   = lightOn(li);
       const int  bri  = lightBrightness(li);
       const bool dim  = LIGHTS_LIST[li].dimmable;
 
-      const int y_top    = row * 13;
-      const int y_center = y_top + 6;   // vertical centre of row
+      const int y_top    = LIST_Y + row * ROW_H;
+      const int y_center = y_top + 4;   // caps (7 px) on rows y_top+1..y_top+7
 
       Color fg = COLOR_ON;
       if (sel) {
-        it->filled_rectangle(0, y_top, 128, 13, COLOR_ON);
+        it->filled_rectangle(0, y_top, 128, ROW_H, COLOR_ON);
         fg = COLOR_OFF;
       }
 
-      // Name — CENTER_LEFT anchors vertical centre to y_center
+      // Name — CENTER_LEFT anchors vertical centre to y_center.
+      // Names may be up to 12 chars (generator limit); trim until the text
+      // (plus the dimmable dot, 7 px) clears the brightness column that
+      // starts at x=83 ("100%" right-aligned to 110) — 4 px gap.
       char buf[16];
       strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
       buf[sizeof(buf) - 1] = '\0';
       for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
+      {
+        const int name_max = (dim ? 83 - 7 : 83) - 4 - 4;
+        int tx, ty, tw, th;
+        it->get_text_bounds(4, y_center, buf, font_small,
+                            display::TextAlign::CENTER_LEFT, &tx, &ty, &tw, &th);
+        while (tw > name_max && strlen(buf) > 1) {
+          buf[strlen(buf) - 1] = '\0';
+          it->get_text_bounds(4, y_center, buf, font_small,
+                              display::TextAlign::CENTER_LEFT, &tx, &ty, &tw, &th);
+        }
+      }
       it->print(4, y_center, font_small, fg, display::TextAlign::CENTER_LEFT, buf);
 
       // Dimmable indicator — small filled circle (r=2) placed 5 px after name.
@@ -171,15 +294,77 @@ public:
 
       // Radio button: filled circle = ON, outline circle = OFF
       if (on) {
-        it->filled_circle(119, y_center, 4, fg);
+        it->filled_circle(119, y_center, 3, fg);
       } else {
-        it->circle(119, y_center, 4, fg);
+        it->circle(119, y_center, 3, fg);
       }
     }
 
-    draw_bottom_menu(it, font_small, "\u25b2", "", "\u25bc");
-    RemoteCore::drawConnBadge(it, conn_status);
-    it->display();
+    draw_bottom_menu(it, font_small, "\u25b2", nullptr, "\u25bc");
+    Toast::present(it);
+  }
+
+  // Renders the card view — one light per screen. No-ops when updated_ui is false.
+  // icon_on:  26 px filled bulb (lightbulb \ue0f0, FILL=1 font) when ON
+  // icon_off: 26 px outline bulb (lightbulb \ue0f0, regular font) when OFF
+  template<class D, class F>
+  static void drawCard(D* it, F* font_base, F* font_small, F* icon_on, F* icon_off,
+                       int selected_idx, bool& updated_ui, int conn_status) {
+    if (!updated_ui) return;
+    updated_ui = false;
+
+    it->clear();
+
+    if (LIGHTS_LIST_COUNT <= 0) {
+      ContextStrip::draw(it, "LIGHTS", 0, 0, conn_status, "ALL");
+      it->print(64, 31, font_base, COLOR_ON, display::TextAlign::CENTER, "NO LIGHTS");
+      draw_bottom_menu(it, font_small, "", nullptr, "");
+      Toast::present(it);
+      return;
+    }
+
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (!RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom)) {
+      drawEmptyRoom(it, font_base, font_small, "LIGHTS", "lights", conn_status);
+      return;
+    }
+
+    const int  li  = wrap_index(selected_idx, LIGHTS_LIST_COUNT);
+    const bool on  = lightOn(li);
+    const int  bri = lightBrightness(li);
+    const bool dim = LIGHTS_LIST[li].dimmable;
+
+    // ── context strip: one dot per light in the room filter; the badge shows
+    //    the light's room (the filter's room for a light with none) ──────────
+    const char* room = roomName(LIGHTS_LIST[li].room);
+    ContextStrip::draw(it, "LIGHTS",
+                       RoomFilter::position(li, LIGHTS_LIST_COUNT, lightRoom),
+                       RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom), conn_status,
+                       room ? room : RoomFilter::name());
+
+    // ── bulb (lit when ON) and the name beside it ────────────────────────────
+    it->print(18, CARD_CY, on ? icon_on : icon_off, COLOR_ON, display::TextAlign::CENTER, "\ue0f0");
+    char buf[16];
+    strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
+    // up to the slider when dimmable - its % sits below the name rows
+    print_name_beside(it, font_base, font_small, buf, 36, CARD_CY, dim ? VSLIDER_TEXT_R : 124);
+
+    if (dim) {
+      // slider on the right edge: the level while ON, a tick at the level it
+      // comes back at while OFF; % beside its foot
+      const int level = (bri < 0) ? 0 : (bri > 100) ? 100 : bri;
+      draw_vslider(it, on ? level : -1, on ? -1 : level);
+      char pbuf[6];
+      snprintf(pbuf, sizeof(pbuf), "%d%%", level);
+      it->print(VSLIDER_TEXT_R, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
+      draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
+    } else {
+      draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
+    }
+
+    Toast::present(it);
   }
 
   // Public accessor for brightness — used by YAML lambda in lights_do_brightness
@@ -200,6 +385,30 @@ private:
   static bool& lightOn(int idx) {
     static bool state[LIGHTS_LIST_CAPACITY] = {};
     return state[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
+  }
+
+  // Brightness pending guard (see syncLight): the value last set on this remote, or -1, and
+  // when it was set. Covers the hub's settle wait plus Home Assistant's reply.
+  static const uint32_t BRIGHTNESS_PENDING_MS = 3000;
+
+  static int& pendingBrightness(int idx) {
+    static int  v[LIGHTS_LIST_CAPACITY];
+    static bool init = false;
+    if (!init) {
+      init = true;
+      for (int i = 0; i < LIGHTS_LIST_CAPACITY; i++) v[i] = -1;
+    }
+    return v[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
+  }
+
+  static uint32_t& pendingSince(int idx) {
+    static uint32_t t[LIGHTS_LIST_CAPACITY] = {};
+    return t[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
+  }
+
+  static void markBrightnessPending(int idx) {
+    pendingBrightness(idx) = lightBrightness(idx);
+    pendingSince(idx)      = millis();
   }
 
   static int& lightBrightness(int idx) {

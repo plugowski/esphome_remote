@@ -18,6 +18,7 @@ struct ACEntity {
   int          modes_count;
   const char** fan_modes;          // Array of supported fan speeds (cycle order)
   int          fan_modes_count;
+  int          room;             // 1-based into ROOM_LIST (room_entities.h), 0 = no room
 };
 
 // ── per-unit mode / fan-speed arrays ─────────────────────────────────────────
@@ -34,17 +35,20 @@ static const ACEntity AC_LIST[] = {
   {
     "Living", "climate.living_room_ac",
     "living_room_ac_temp", "living_room_ac_mode", "living_room_fan_mode",
-    AC_MODES_0, 2, AC_FAN_0, 2
+    AC_MODES_0, 2, AC_FAN_0, 2,
+    2  // Living
   },
   {
     "Office", "climate.office_ac",
     "office_ac_temp", "office_ac_mode", "office_fan_mode",
-    AC_MODES_1, 3, AC_FAN_1, 4
+    AC_MODES_1, 3, AC_FAN_1, 4,
+    1  // Office
   },
   {
     "Bedroom", "climate.bedroom_ac",
     "bedroom_ac_temp", "bedroom_ac_mode", "bedroom_fan_mode",
-    AC_MODES_2, 3, AC_FAN_2, 4
+    AC_MODES_2, 3, AC_FAN_2, 4,
+    3  // Bedroom
   },
 };
 

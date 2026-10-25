@@ -9,3 +9,6 @@ devices/*/secrets.yaml
 # macOS
 .DS_Store
 .idea
+
+# Python bytecode (ESPHome external components)
+__pycache__/
