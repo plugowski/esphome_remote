@@ -208,15 +208,20 @@ public:
     if (!updated_ui) return;
     updated_ui = false;
 
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (LIGHTS_LIST_COUNT > 0 && !RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom)) {
+      drawEmptyRoom(it, font_small, font_small, "LIGHTS", "lights", conn_status);
+      return;
+    }
+
     it->clear();
 
     // Page of 4 (among the lights in the room filter) that holds the selection
     const int shown      = RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom);
     const int page       = RoomFilter::position(selected_idx, LIGHTS_LIST_COUNT, lightRoom) / ROWS;
     const int page_count = (shown + ROWS - 1) / ROWS;
-    const bool filtered  = RoomFilter::applies(LIGHTS_LIST_COUNT, lightRoom);
     ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status,
-                       filtered ? RoomFilter::name() : "ALL");
+                       RoomFilter::active() ? RoomFilter::name() : "ALL");
 
     for (int row = 0; row < ROWS; row++) {
       const int li = RoomFilter::at(page * ROWS + row, LIGHTS_LIST_COUNT, lightRoom);
@@ -303,17 +308,24 @@ public:
       return;
     }
 
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (!RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom)) {
+      drawEmptyRoom(it, font_base, font_small, "LIGHTS", "lights", conn_status);
+      return;
+    }
+
     const int  li  = wrap_index(selected_idx, LIGHTS_LIST_COUNT);
     const bool on  = lightOn(li);
     const int  bri = lightBrightness(li);
     const bool dim = LIGHTS_LIST[li].dimmable;
 
-    // ── context strip: one dot per light in the room filter, the light's room
-    //    in the badge ──────────────────────────────────────────────────────────
+    // ── context strip: one dot per light in the room filter; the badge shows
+    //    the light's room (the filter's room for a light with none) ──────────
+    const char* room = roomName(LIGHTS_LIST[li].room);
     ContextStrip::draw(it, "LIGHTS",
                        RoomFilter::position(li, LIGHTS_LIST_COUNT, lightRoom),
                        RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom), conn_status,
-                       roomName(LIGHTS_LIST[li].room));
+                       room ? room : RoomFilter::name());
 
     // ── name row ─────────────────────────────────────────────────────────────
     char buf[16];

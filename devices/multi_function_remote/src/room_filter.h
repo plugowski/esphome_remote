@@ -19,8 +19,11 @@
 // existing per-mode button branch simply doesn't match and the picker gets its
 // own branches next to them. See packages/menu.yaml.
 //
-// A list with nothing in the chosen room is shown unfiltered, so a screen is
-// never left empty with its keys acting on an entity you can't see.
+// An entity with no room (room 0) belongs everywhere: it shows under every
+// room filter. A screen with nothing in the chosen room shows an empty state
+// instead (drawEmptyRoom), and its keys are gated off with RoomFilter::any()
+// in buttons.yaml and the layouts, so they never act on an entity that isn't
+// on screen.
 //
 // YAML usage:
 //   RoomFilter::current() = id(room_filter);                    // on boot
@@ -46,19 +49,20 @@ public:
 
   static const char* name() { return active() ? ROOM_LIST[current() - 1].name : nullptr; }
 
-  // True when the filter narrows this list: a room is chosen and at least
-  // one entry is in it.
-  template<class F>
-  static bool applies(int count, F roomOf) {
-    if (!active()) return false;
-    for (int i = 0; i < count; i++)
-      if (roomOf(i) == current()) return true;
-    return false;
-  }
-
+  // Entities with no room (0) show under every filter.
   template<class F>
   static bool visible(int idx, int count, F roomOf) {
-    return !applies(count, roomOf) || roomOf(idx) == current();
+    if (idx < 0 || idx >= count) return false;
+    const int room = roomOf(idx);
+    return !active() || room == 0 || room == current();
+  }
+
+  // True when this list has anything to show under the current filter.
+  template<class F>
+  static bool any(int count, F roomOf) {
+    for (int i = 0; i < count; i++)
+      if (visible(i, count, roomOf)) return true;
+    return false;
   }
 
   // Next visible index from idx in direction dir (+1 / -1), wrapping; idx
@@ -72,7 +76,7 @@ public:
     return wrap_index(idx, count);
   }
 
-  // idx if it's visible, otherwise the next visible one.
+  // idx if it's visible, otherwise the next visible one (idx when none is).
   template<class F>
   static int first(int idx, int count, F roomOf) {
     if (count <= 0) return 0;
@@ -103,7 +107,8 @@ public:
     return -1;
   }
 
-  // Entities assigned to a room across every list (0 = all configured).
+  // Entities shown under a room across every list: those in it plus those
+  // with no room (0 = all configured).
   static int entitiesIn(int room) {
     int n = 0;
     n += countIn(AC_LIST_COUNT, acRoom, room);
@@ -118,14 +123,34 @@ private:
   static int countIn(int count, F roomOf, int room) {
     if (room == 0) return count;
     int n = 0;
-    for (int i = 0; i < count; i++) if (roomOf(i) == room) n++;
+    for (int i = 0; i < count; i++) if (roomOf(i) == room || roomOf(i) == 0) n++;
     return n;
   }
 };
 
+// ── Empty room ────────────────────────────────────────────────────────────────
+// What a filtered screen shows when nothing on it is in the chosen room: the
+// strip (screen chip + room badge), "NO <WHAT>" over "IN <ROOM>" and a bar with
+// only the menu key. Holding the menu key picks another room.
+template<class D, class F>
+inline void drawEmptyRoom(D* it, F* font_base, F* font_small, const char* chip,
+                          const char* what, int conn_status) {
+  it->clear();
+  ContextStrip::draw(it, chip, 0, 0, conn_status, RoomFilter::name());
+  char line[32];
+  snprintf(line, sizeof(line), "NO %s", what);
+  for (int k = 0; line[k]; k++) line[k] = toupper((unsigned char) line[k]);
+  it->print(64, 26, font_base, COLOR_ON, display::TextAlign::CENTER, line);
+  snprintf(line, sizeof(line), "IN %s", RoomFilter::name() ? RoomFilter::name() : "");
+  for (int k = 0; line[k]; k++) line[k] = toupper((unsigned char) line[k]);
+  it->print(64, 41, font_small, COLOR_ON, display::TextAlign::CENTER, line);
+  draw_bottom_menu(it, font_small, "", nullptr, "");
+  Toast::present(it);
+}
+
 // ── RoomPicker ────────────────────────────────────────────────────────────────
-// Entries: 0 = ALL ROOMS, 1..ROOM_LIST_COUNT = the rooms, each with its
-// entity count. Same 4-row, 10 px list as the lights list, a page at a time.
+// Entries: 0 = ALL ROOMS, 1..ROOM_LIST_COUNT = the rooms, each with the number
+// of entities it shows (its own plus those with no room). Same 4-row, 10 px list as the lights list, a page at a time.
 //
 //   rows 0..8    context strip: "ROOM" chip, one dot per page of 4
 //   rows 11..50  4 rows: name (font_small, x=4), count right-aligned at x=124;
