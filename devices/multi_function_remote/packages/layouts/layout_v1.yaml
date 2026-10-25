@@ -43,6 +43,8 @@ binary_sensor:
         # this press should wake it, same as every other button, instead of
         # re-blanking a screen that's already blank. Deep Sleep builds never
         # see is_light_sleeping true, so this is always the else branch there.
+        # No conn_status here, unlike every other key: Power Off still works
+        # on the NO HUB / NO WIFI / HA UNREACHABLE screen.
         - if:
             condition:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
@@ -61,7 +63,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
@@ -91,7 +93,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               # MENU (pin 5) already handles carousel confirm/back - this
               # only fills the one gap it doesn't: triggering a selected
@@ -130,7 +132,7 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
               then:
                 - if:
                     condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
@@ -143,7 +145,7 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
               then:
                 - if:
                     condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
@@ -171,7 +173,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
@@ -210,7 +212,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
@@ -249,7 +251,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
@@ -285,7 +287,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
@@ -321,7 +323,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
@@ -357,7 +359,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui), id(conn_status));'
             then:
               - if:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
