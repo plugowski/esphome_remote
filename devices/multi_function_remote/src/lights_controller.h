@@ -56,7 +56,7 @@
 // Card view layout (everything below the strip centred on row 31):
 //   x=5..31        26 px bulb \ue0f0 centred at (18, 31): filled glyph
 //                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
-//   x=38..         name (font_base) beside the bulb, vertically centred, two
+//   x=36..         name (font_base) beside the bulb, vertically centred, two
 //                  lines split at the first space when it doesn't fit
 //                  (print_name_beside), up to x=114 (dimmable) / 124
 //   x=117..125     dimmable: 9x39 slider (draw_vslider), rows 12..50, filled
@@ -349,7 +349,7 @@ public:
     buf[sizeof(buf) - 1] = '\0';
     for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
     // up to the slider when dimmable - its % sits below the name rows
-    print_name_beside(it, font_base, font_small, buf, 38, CARD_CY, dim ? VSLIDER_TEXT_R : 124);
+    print_name_beside(it, font_base, font_small, buf, 36, CARD_CY, dim ? VSLIDER_TEXT_R : 124);
 
     if (dim) {
       // slider on the right edge: the level while ON, a tick at the level it
