@@ -23,6 +23,9 @@ static const uint32_t PUSH_DEBOUNCE_MS = 150;
 static const uint32_t SETTLE_MS = 900;
 static const uint32_t STEP_MS = 700;         // pause between a mode change and the fan / temperature
 static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stands in for HA's state
+// Brightness presses are applied this long after the last one (shorter than SETTLE_MS: a
+// light has no mode / fan sequencing to wait for, and a dimmer should feel quick).
+static const uint32_t LIGHT_SETTLE_MS = 500;
 // Resend the screenshot request on the next packet if no image arrived by then.
 static const uint32_t SCREENSHOT_RETRY_MS = 5000;
 
@@ -59,6 +62,16 @@ void RemoteHub::loop() {
     if (g.exp_temp && older_than(g.exp_temp_at, EXPECT_TTL_MS)) { g.exp_temp = false; expired = true; }
     if (expired) this->mark_dirty_(DIRTY_AC);
   }
+  for (int i = 0; i < LIGHTS_LIST_COUNT; i++) {
+    LightGuard &g = this->light_guard_[i];
+    if (g.want && (int32_t) (millis() - g.due_at) >= 0) this->apply_light_brightness_(i);
+    if (g.exp && older_than(g.exp_at, EXPECT_TTL_MS)) {
+      ESP_LOGW(TAG, "Light %d: HA still reports brightness %u after commanding %u", i,
+               this->lights_[i].brightness, g.exp_v);
+      g.exp = false;
+      this->mark_dirty_(DIRTY_LIGHTS);
+    }
+  }
   if (this->dirty_ == 0) return;
   if (millis() - this->dirty_since_ < PUSH_DEBOUNCE_MS) return;
   uint8_t d = this->dirty_;
@@ -66,6 +79,19 @@ void RemoteHub::loop() {
   if (d & DIRTY_AC) this->send_ac_(rnp::BROADCAST_ADDR);
   if (d & DIRTY_LIGHTS) this->send_lights_(rnp::BROADCAST_ADDR);
   if (d & DIRTY_COVERS) this->send_covers_(rnp::BROADCAST_ADDR);
+}
+
+// Sends the held brightness for light i to Home Assistant; it stays the reported value until
+// HA confirms it or EXPECT_TTL_MS pass.
+void RemoteHub::apply_light_brightness_(int i) {
+  LightGuard &g = this->light_guard_[i];
+  g.want = false;
+  g.exp = true;
+  g.exp_v = g.want_v;
+  g.exp_at = millis();
+  ESP_LOGI(TAG, "Light %d: brightness %u%%", i, g.want_v);
+  this->call_homeassistant_service("light.turn_on", {{"entity_id", std::string(LIGHTS_LIST[i].entity_id)},
+                                                     {"brightness_pct", std::to_string((int) g.want_v)}});
 }
 
 void RemoteHub::dump_config() {
@@ -132,6 +158,9 @@ void RemoteHub::subscribe_all_() {
       api->subscribe_home_assistant_state(eid, optional<std::string>{"brightness"}, state_cb_t([this, i](const std::string &s) {
         uint8_t b = pct_from_ha_(s, 100.0f / 255.0f);
         if (this->lights_[i].brightness != b) { this->lights_[i].brightness = b; this->mark_dirty_(DIRTY_LIGHTS); }
+        // HA reached the commanded brightness (±1 for the 0-255 rounding): stop standing in for it
+        LightGuard &g = this->light_guard_[i];
+        if (g.exp && !g.want && b != rnp::VALUE_UNKNOWN && (b + 1 >= g.exp_v && b <= g.exp_v + 1)) g.exp = false;
       }));
     }
   }
@@ -283,7 +312,8 @@ void RemoteHub::send_lights_(const uint8_t *dest) {
       w.u8(0);
       count = 0;
     }
-    w.u8(i).u8(this->lights_[i].on).u8(this->lights_[i].brightness);
+    const LightGuard &g = this->light_guard_[i];
+    w.u8(i).u8(this->lights_[i].on).u8(g.exp ? g.exp_v : this->lights_[i].brightness);
     count++;
   }
   std::vector<uint8_t> out = w.take();
@@ -488,16 +518,24 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
     case rnp::DOM_LIGHTS: {
       if (idx >= LIGHTS_LIST_COUNT) return;
       std::string eid = LIGHTS_LIST[idx].entity_id;
+      LightGuard &g = this->light_guard_[idx];
       if (action == rnp::LIGHT_TOGGLE) {
+        g.want = false;  // a held brightness must not switch it back on afterwards
         this->call_homeassistant_service("light.toggle", {{"entity_id", eid}});
       } else if (action == rnp::LIGHT_SET_BRIGHTNESS) {
         if (value < 0) value = 0;
         if (value > 100) value = 100;
-        this->call_homeassistant_service("light.turn_on",
-                                         {{"entity_id", eid}, {"brightness_pct", std::to_string((int) value)}});
+        // Hold it: every press restarts the wait, the last value goes to HA (loop()).
+        g.want = true;
+        g.want_v = static_cast<uint8_t>(value);
+        g.due_at = millis() + LIGHT_SETTLE_MS;
+        g.exp = true;
+        g.exp_v = g.want_v;
+        g.exp_at = millis();
       } else if (action == rnp::LIGHT_ON) {
         this->call_homeassistant_service("light.turn_on", {{"entity_id", eid}});
       } else if (action == rnp::LIGHT_OFF) {
+        g.want = false;
         this->call_homeassistant_service("light.turn_off", {{"entity_id", eid}});
       }
       break;
