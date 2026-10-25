@@ -11,8 +11,8 @@
 
 // ── Room filter ───────────────────────────────────────────────────────────────
 // A long press on the menu key opens the room picker; the room chosen there
-// narrows the screens that browse entities (climate units, lights) to that
-// room. 0 = all rooms.
+// narrows the screens that browse entities (climate units, lights, covers) to
+// that room. 0 = all rooms.
 //
 // The picker runs as its own screen: app_mode is set to APP_ROOMS while it is
 // open (the mode it came from is kept in room_picker_return), so every

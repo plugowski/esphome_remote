@@ -226,7 +226,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                   then: [ script.execute: lights_btn_circle_l ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_close ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
@@ -266,7 +266,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                   then: [ script.execute: lights_btn_circle_r ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_open ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
