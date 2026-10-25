@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "generator-v2",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8788",
+        "--directory",
+        "/Users/plugowski/Sites/esphome_remote/devices/oled_remote_v2"
+      ],
+      "port": 8788
+    }
+  ]
+}
