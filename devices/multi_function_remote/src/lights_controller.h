@@ -42,7 +42,7 @@
 // Both views start with the context strip (rows 0..8): "LIGHTS" chip, dots
 // per page (list view: one per 4 lights, card view: one per light), a badge
 // (list view: "ALL", there's no room filter yet; card view: the light's room,
-// none without one), clock and battery. See src/context_strip.h.
+// none without one) and battery. See src/context_strip.h.
 //
 // List view layout (128x64, 4 visible rows of 10 px from y=11, bottom menu
 // at y=53; scrolls a whole page of 4 at a time so the dots match):
