@@ -213,13 +213,15 @@ make ota IP=<device-ip>
 
 ## Taking screenshots
 
-Both firmwares can dump the current OLED framebuffer as hex lines over the logger, which `tools/screenshot.py` converts to a monochromatic PNG.
+All firmwares can dump the current OLED framebuffer as hex lines over the logger, which `tools/screenshot.py` converts to a monochromatic PNG.
 
 ### Trigger
 
 **Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the Pause/Stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
 
 **Product firmware** (`remote.yaml`, generator-built): press the **Screenshot** button — it's a plain HA button entity (no `internal:` flag), so it shows up under the device in Home Assistant automatically and can be pressed there, called from an automation/script (`button.press`), or pressed on demand from the ESPHome dashboard. To capture the output over USB serial (rather than just watching HA's log viewer), turn on the generator's **"Enable debug logging (UART)"** toggle first — the raw hex lines only reach the serial port when `LOGGER_BAUD_RATE` is a real baud rate, not the power-optimized default of `0`.
+
+**ESP-NOW firmware** (`remote_espnow.yaml`): the remote has no Home Assistant connection, so the button lives on the hub — press **Remote Screenshot** on the hub device in HA. If the remote is awake it answers within about a second; if it is asleep (its radio doesn't acknowledge the request), the hub logs `Remote is asleep, screenshot will be taken on its next wake` and sends the request again when the remote next wakes or sends a command. The remote sends its framebuffer to the hub over ESP-NOW and the **hub** logs it, so capture the hub's log (USB serial or over WiFi, below), not the remote's. Flash the hub and the remote together after updating, since both need the new protocol packets.
 
 ### Capture and convert
 
@@ -229,6 +231,10 @@ pip install pyserial pillow
 
 # Live mode — stays connected, saves screenshot_<timestamp>.png on every capture
 python3 tools/screenshot.py /dev/tty.usbserial-XXXX
+
+# Live mode from any log stream on stdin — e.g. the ESP-NOW hub over WiFi
+# (PYTHONUNBUFFERED stops esphome from holding the log back when piped)
+PYTHONUNBUFFERED=1 esphome logs devices/espnow_hub/hub.yaml | python3 tools/screenshot.py -
 
 # Or parse a previously saved serial log (single capture, then exit)
 python3 tools/screenshot.py --file dump.log

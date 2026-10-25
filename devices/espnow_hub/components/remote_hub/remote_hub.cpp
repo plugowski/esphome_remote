@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 
 #include "esphome/core/hal.h"
@@ -17,6 +18,8 @@ namespace remote_hub {
 
 static const char *const TAG = "remote_hub";
 static const uint32_t PUSH_DEBOUNCE_MS = 150;
+// Resend the screenshot request on the next packet if no image arrived by then.
+static const uint32_t SCREENSHOT_RETRY_MS = 5000;
 using state_cb_t = std::function<void(const std::string &)>;
 
 // ── lifecycle ─────────────────────────────────────────────────────────────────
@@ -112,9 +115,9 @@ void RemoteHub::subscribe_all_() {
 
 // ── sending ───────────────────────────────────────────────────────────────────
 
-void RemoteHub::send_(const uint8_t *dest, const std::vector<uint8_t> &payload) {
+bool RemoteHub::send_(const uint8_t *dest, const std::vector<uint8_t> &payload) {
   auto *bus = espnow::global_esp_now;
-  if (bus == nullptr) return;
+  if (bus == nullptr) return false;
   // Always hand over a callback: ESPHome 2026.4's espnow component invokes the
   // send-complete callback unconditionally when the frame goes out, and an
   // empty std::function there aborts the firmware (bad_function_call) — the
@@ -122,9 +125,10 @@ void RemoteHub::send_(const uint8_t *dest, const std::vector<uint8_t> &payload) 
   esp_err_t err = bus->send(dest, payload, [](esp_err_t) {});
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "send to %s failed: %d", mac_str_(dest).c_str(), (int) err);
-  } else {
-    this->tx_count_++;
+    return false;
   }
+  this->tx_count_++;
+  return true;
 }
 
 // Each STATE packet carries as many records as fit; the record count byte is
@@ -206,6 +210,71 @@ void RemoteHub::send_snapshot_(const uint8_t *dest) {
 
 void RemoteHub::broadcast_all() { this->send_snapshot_(rnp::BROADCAST_ADDR); }
 
+// ── screenshot ────────────────────────────────────────────────────────────────
+
+void RemoteHub::request_screenshot() {
+  this->shot_pending_ = true;
+  this->shot_req_at_ = 0;
+  this->shot_mask_ = 0;
+  // An awake remote may stay silent for a long time (browsing screens sends nothing), so try
+  // now. Unicast is ACKed by the radio: if the remote is asleep the send fails and the request
+  // waits for its next HELLO. With no remote seen since boot, broadcast and keep it pending.
+  this->send_screenshot_req_(this->have_rx_src_ ? this->last_rx_src_ : rnp::BROADCAST_ADDR);
+}
+
+void RemoteHub::maybe_send_screenshot_req_(const uint8_t *src) {
+  if (!this->shot_pending_) return;
+  if (this->shot_req_at_ != 0 && millis() - this->shot_req_at_ < SCREENSHOT_RETRY_MS) return;
+  this->send_screenshot_req_(src);
+}
+
+void RemoteHub::send_screenshot_req_(const uint8_t *dest) {
+  ESP_LOGI(TAG, "Requesting screenshot from %s", mac_str_(dest).c_str());
+  this->shot_mask_ = 0;
+  // The espnow component reports the delivery result through the callback, from its own loop.
+  bool unicast = memcmp(dest, rnp::BROADCAST_ADDR, 6) != 0;
+  auto *bus = espnow::global_esp_now;
+  if (bus == nullptr) return;
+  this->shot_req_at_ = millis();
+  esp_err_t err = bus->send(dest, rnp::build_screenshot_req(this->key_), [this, unicast](esp_err_t result) {
+    if (result == ESP_OK || !unicast) return;
+    ESP_LOGI(TAG, "Remote is asleep, screenshot will be taken on its next wake");
+    this->shot_req_at_ = 0;  // let the next HELLO resend right away
+  });
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Screenshot request send failed: %d", (int) err);
+    this->shot_req_at_ = 0;
+  } else {
+    this->tx_count_++;
+  }
+}
+
+void RemoteHub::handle_screenshot_data_(const uint8_t *src, rnp::Reader &r) {
+  uint8_t chunk = 0;
+  if (!r.u8(chunk) || chunk >= rnp::SCREENSHOT_CHUNKS) return;
+  uint8_t *dst = this->shot_buf_ + chunk * rnp::SCREENSHOT_CHUNK_SIZE;
+  for (size_t i = 0; i < rnp::SCREENSHOT_CHUNK_SIZE; i++) {
+    if (!r.u8(dst[i])) {
+      ESP_LOGW(TAG, "Short screenshot chunk %u from %s", chunk, mac_str_(src).c_str());
+      return;
+    }
+  }
+  this->shot_mask_ |= 1 << chunk;
+  if (this->shot_mask_ != 0xFF) return;
+
+  // Same format as the WiFi remote's packages/screenshot.yaml, so tools/screenshot.py parses it.
+  char line[rnp::SCREENSHOT_CHUNK_SIZE * 2 + 1];
+  ESP_LOGI("screenshot", "SCREENSHOT_BEGIN");
+  for (size_t c = 0; c < rnp::SCREENSHOT_CHUNKS; c++) {
+    for (size_t i = 0; i < rnp::SCREENSHOT_CHUNK_SIZE; i++)
+      snprintf(line + i * 2, 3, "%02X", this->shot_buf_[c * rnp::SCREENSHOT_CHUNK_SIZE + i]);
+    ESP_LOGI("screenshot", "%s", line);
+  }
+  ESP_LOGI("screenshot", "SCREENSHOT_END");
+  this->shot_pending_ = false;
+  this->shot_mask_ = 0;
+}
+
 // ── receiving ─────────────────────────────────────────────────────────────────
 
 void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t size) {
@@ -215,6 +284,8 @@ void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t s
     return;
   }
   this->rx_count_++;
+  memcpy(this->last_rx_src_, src, 6);
+  this->have_rx_src_ = true;
   rnp::Reader r(data, size);
 
   switch (type) {
@@ -225,10 +296,15 @@ void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t s
       ESP_LOGI(TAG, "HELLO from %s (proto %u)", mac_str_(src).c_str(), ver);
       if (this->last_remote_sensor_ != nullptr) this->last_remote_sensor_->publish_state(mac_str_(src));
       if (flags & 1) this->send_snapshot_(src);
+      this->maybe_send_screenshot_req_(src);
       break;
     }
     case rnp::CMD:
       this->handle_cmd_(src, r);
+      this->maybe_send_screenshot_req_(src);
+      break;
+    case rnp::SCREENSHOT_DATA:
+      this->handle_screenshot_data_(src, r);
       break;
     case rnp::BATTERY:
       this->handle_battery_(src, r);

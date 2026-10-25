@@ -38,6 +38,7 @@ espnow:
             id(rx_type) = t;
             if (ac_changed) id(rx_ac_changed) = true;
             if (done) id(hub_synced) = true;
+            if (t == rnp::SCREENSHOT_REQ) id(screenshot_send)->execute();
         - script.execute: hub_apply_state
   on_broadcast:
     - then:
@@ -48,6 +49,7 @@ espnow:
             id(rx_type) = t;
             if (ac_changed) id(rx_ac_changed) = true;
             if (done) id(hub_synced) = true;
+            if (t == rnp::SCREENSHOT_REQ) id(screenshot_send)->execute();
         - script.execute: hub_apply_state
 
 globals:

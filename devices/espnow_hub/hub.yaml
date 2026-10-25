@@ -146,6 +146,16 @@ button:
     on_press:
       - lambda: 'id(hub).broadcast_all();'
 
+  # Asks the remote for its OLED framebuffer (now if awake, else on its next
+  # wake) and logs it as SCREENSHOT_BEGIN … END; tools/screenshot.py turns
+  # the hub's log into a PNG (see "Taking screenshots" in the root README).
+  - platform: template
+    name: "Remote Screenshot"
+    icon: mdi:monitor-screenshot
+    entity_category: diagnostic
+    on_press:
+      - lambda: 'id(hub).request_screenshot();'
+
   - platform: restart
     name: "Hub Restart"
     entity_category: config

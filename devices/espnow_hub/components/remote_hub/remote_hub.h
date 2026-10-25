@@ -39,6 +39,11 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   /// Broadcast the full state to every remote that is awake (also wired to a button).
   void broadcast_all();
 
+  /// Ask a remote for its OLED framebuffer (HA "Remote Screenshot" button). Sent right away to
+  /// the last remote heard from; if it is asleep (no radio ACK) it goes out on the next HELLO / CMD. The
+  /// image is logged as SCREENSHOT_BEGIN / 8 hex lines / SCREENSHOT_END for tools/screenshot.py.
+  void request_screenshot();
+
   uint32_t packets_rx() const { return this->rx_count_; }
   uint32_t packets_tx() const { return this->tx_count_; }
 
@@ -60,7 +65,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   void subscribe_all_();
   void mark_dirty_(uint8_t domain_bit);
 
-  void send_(const uint8_t *dest, const std::vector<uint8_t> &payload);
+  bool send_(const uint8_t *dest, const std::vector<uint8_t> &payload);
   void send_ac_(const uint8_t *dest);
   void send_lights_(const uint8_t *dest);
   void send_covers_(const uint8_t *dest);
@@ -68,10 +73,19 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
 
   void handle_cmd_(const uint8_t *src, rnp::Reader &r);
   void handle_battery_(const uint8_t *src, rnp::Reader &r);
+  void handle_screenshot_data_(const uint8_t *src, rnp::Reader &r);
+  void maybe_send_screenshot_req_(const uint8_t *src);
+  void send_screenshot_req_(const uint8_t *dest);
 
   static std::string mac_str_(const uint8_t *mac);
   static uint8_t pct_from_ha_(const std::string &v, float scale);
 
+  uint8_t last_rx_src_[6]{0, 0, 0, 0, 0, 0};  // remote that sent the latest packet of any kind
+  bool have_rx_src_{false};
+  bool shot_pending_{false};
+  uint32_t shot_req_at_{0};  // 0 = request not sent yet
+  uint8_t shot_mask_{0};     // bit n = chunk n received
+  uint8_t shot_buf_[rnp::SCREENSHOT_CHUNKS * rnp::SCREENSHOT_CHUNK_SIZE]{};
   uint32_t key_{0};
   sensor::Sensor *battery_sensor_{nullptr};
   sensor::Sensor *battery_voltage_sensor_{nullptr};

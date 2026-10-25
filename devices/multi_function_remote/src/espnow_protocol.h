@@ -15,6 +15,8 @@
 //   HELLO    : proto_version u8, flags u8 (bit0 = request full state)
 //   CMD      : domain u8, idx u8, action u8, value i16
 //   BATTERY  : pct u8, millivolts u16
+//   SCREENSHOT_DATA : chunk u8 (0-7), then 128 raw framebuffer bytes
+//                     (page `chunk` of the 128×64 OLED buffer)
 //
 // Packet types (hub → remote):
 //   STATE_AC     : count u8, then per unit:  idx u8, temp i8 (-1 unknown),
@@ -24,6 +26,7 @@
 //   STATE_COVERS : count u8, then per cover: idx u8, state str,
 //                                            position u8 (0-100, 255 unknown)
 //   STATE_DONE   : (no payload) — ends a full snapshot after HELLO
+//   SCREENSHOT_REQ : (no payload) — remote answers with 8 SCREENSHOT_DATA
 //
 // Strings are length-prefixed (u8 length, max 31 bytes, no terminator).
 // Max ESP-NOW payload is 250 bytes; the hub splits long state lists into
@@ -45,9 +48,14 @@ enum PacketType : uint8_t {
   STATE_LIGHTS = 0x03,
   STATE_COVERS = 0x04,
   STATE_DONE   = 0x05,
+  SCREENSHOT_REQ  = 0x06,
   CMD          = 0x10,
   BATTERY      = 0x20,
+  SCREENSHOT_DATA = 0x30,
 };
+
+static const size_t SCREENSHOT_CHUNKS     = 8;
+static const size_t SCREENSHOT_CHUNK_SIZE = 128;
 
 enum Domain : uint8_t {
   DOM_AC          = 0,
@@ -178,6 +186,19 @@ inline std::vector<uint8_t> build_battery(uint32_t key, int pct, int millivolts)
 
 inline std::vector<uint8_t> build_state_done(uint32_t key) {
   Writer w(key, STATE_DONE);
+  return w.take();
+}
+
+inline std::vector<uint8_t> build_screenshot_req(uint32_t key) {
+  Writer w(key, SCREENSHOT_REQ);
+  return w.take();
+}
+
+// `buf` is the whole 1024-byte framebuffer; only page `chunk` is sent.
+inline std::vector<uint8_t> build_screenshot_data(uint32_t key, uint8_t chunk, const uint8_t* buf) {
+  Writer w(key, SCREENSHOT_DATA);
+  w.u8(chunk);
+  for (size_t i = 0; i < SCREENSHOT_CHUNK_SIZE; i++) w.u8(buf[chunk * SCREENSHOT_CHUNK_SIZE + i]);
   return w.take();
 }
 

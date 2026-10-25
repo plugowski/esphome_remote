@@ -88,9 +88,9 @@ substitutions:
   BATTERY_INTERVAL_MIN: "60"
   # 0 (default): disables the UART logger entirely - saves power and boot
   # time. A real baud rate (e.g. 115200) is only needed for on-device
-  # debugging or tools/screenshot.py's serial capture. Remote logging over
-  # the Home Assistant API (and the HA-exposed Screenshot button) works
-  # either way - this only controls the raw USB-serial output.
+  # debugging. This variant has no Home Assistant API, so USB serial is its
+  # only log output; screenshots go through the hub instead (its "Remote
+  # Screenshot" button, see packages/espnow/screenshot.yaml).
   LOGGER_BAUD_RATE: "0"
 
 packages:
@@ -103,7 +103,7 @@ packages:
   settings:    !include packages/espnow/mode_settings.yaml
   buttons:     !include packages/buttons.yaml
   layout:      !include packages/layouts/layout_v2.yaml
-  screenshot:  !include packages/screenshot.yaml
+  screenshot:  !include packages/espnow/screenshot.yaml
 
 # ── fonts shared across all modes ────────────────────────────────────────────
 font:
