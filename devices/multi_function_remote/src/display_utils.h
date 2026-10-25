@@ -43,7 +43,8 @@ inline const uint8_t* grab_raw_buffer(T* display) {
 // Each label sits on an inverted badge with its corner pixels cut, rows
 // 53..63, content in black:
 //   left   x=2..41    (40 px)
-//   centre x=47..80   (34 px, narrower: its labels are a glyph or "OK")
+//   centre x=47..80   (34 px, narrower: its labels are a glyph or "OK";
+//                     frame only by default, see SOFT_BTN_CENTER_OUTLINE)
 //   right  x=86..125  (40 px)
 //
 // Labels, unchanged from the old frame-style bar:
@@ -54,14 +55,24 @@ inline const uint8_t* grab_raw_buffer(T* display) {
 //   right  == ">"                  →  ▶ right-pointing filled triangle
 //   any other string               →  rendered as text
 //
+// SOFT_BTN_CENTER_OUTLINE (below): 1 = the centre button is only a frame
+// with white content (sets the menu / OK key apart from the per-screen
+// actions on the sides), 0 = filled like the sides.
+//
 // center_box: true (default) draws the centre as a button like the sides.
 //             false prints the centre label as plain text with no button, for
 //             wider notes (the welcome firmware's "POWER = exit").
 // separator:  only with center_box=false: the old line at y=53 above it.
+#ifndef SOFT_BTN_CENTER_OUTLINE
+#define SOFT_BTN_CENTER_OUTLINE 1   // override with -DSOFT_BTN_CENTER_OUTLINE=0
+#endif
+
 static const int SOFT_BTN_Y = 53, SOFT_BTN_H = 11;
 
-inline void draw_soft_button(esphome::display::Display *it, int x, int w) {
-    it->filled_rectangle(x, SOFT_BTN_Y, w, SOFT_BTN_H, COLOR_ON);
+// One button; outline = frame only (content then goes in COLOR_ON).
+inline void draw_soft_button(esphome::display::Display *it, int x, int w, bool outline = false) {
+    if (outline) it->rectangle(x, SOFT_BTN_Y, w, SOFT_BTN_H, COLOR_ON);
+    else         it->filled_rectangle(x, SOFT_BTN_Y, w, SOFT_BTN_H, COLOR_ON);
     const int y2 = SOFT_BTN_Y + SOFT_BTN_H - 1;
     it->draw_pixel_at(x,         SOFT_BTN_Y, COLOR_OFF);
     it->draw_pixel_at(x + w - 1, SOFT_BTN_Y, COLOR_OFF);
@@ -98,15 +109,17 @@ inline void draw_bottom_menu(
     }
 
     if (center_box) {
+        const bool  outline = SOFT_BTN_CENTER_OUTLINE;
+        const Color ink     = outline ? COLOR_ON : COLOR_OFF;
         if (!center) {
             // nullptr → ☰ hamburger
-            draw_soft_button(it, 47, 34);
-            it->line(58, cy - 3, 70, cy - 3, COLOR_OFF);
-            it->line(58, cy,     70, cy,     COLOR_OFF);
-            it->line(58, cy + 3, 70, cy + 3, COLOR_OFF);
+            draw_soft_button(it, 47, 34, outline);
+            it->line(58, cy - 3, 70, cy - 3, ink);
+            it->line(58, cy,     70, cy,     ink);
+            it->line(58, cy + 3, 70, cy + 3, ink);
         } else if (center[0] != '\0') {
-            draw_soft_button(it, 47, 34);
-            it->print(64, cy, font, COLOR_OFF, TextAlign::CENTER, center);
+            draw_soft_button(it, 47, 34, outline);
+            it->print(64, cy, font, ink, TextAlign::CENTER, center);
         }
     } else {
         // plain centre text, no button (wide notes)
