@@ -21,8 +21,8 @@
 //
 // Layout: context strip on rows 0..8 ("MENU" chip with one dot per item /
 // "ACTIONS" chip; the room filter's room in the badge, if any). Carousel:
-// 32 px icon centred at y=24 (rows 12..37), name in font_base centred at
-// y=46 (caps 41..50), bottom bar from y=53. Quick actions: the icon on the
+// 32 px icon centred at y=23 (rows 11..36), name in font_base centred at
+// y=45 (caps 40..49), bottom bar from y=53. Quick actions: the icon on the
 // left and the name beside it (see ACTION_* below). The quick-action view, scrolled with up/down or left/right, shows its position
 // as vertical dots at the right edge instead (ContextStrip::drawVerticalDots)
 // and BACK / RUN badge buttons (draw_soft_buttons) with no centre slot: left
@@ -43,8 +43,8 @@
 class MenuController {
 public:
 
-  static const int ICON_Y = 24;  // centre of the 32 px icon, below the context strip
-  static const int NAME_Y = 46;  // centre of the font_base name, above the bottom bar
+  static const int ICON_Y = 23;  // centre of the 32 px icon: rows 11..36, 2 px under the strip
+  static const int NAME_Y = 45;  // centre of the font_base name: caps 40..49, 3 px over the buttons
 
   // Quick-action view: 32 px icon centred at (20, 31), name left-aligned at
   // x=40 and vertically centred on the icon, in the space up to the vertical
