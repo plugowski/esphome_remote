@@ -210,7 +210,7 @@ esphome:
                   if (battery_now >= 0 && battery_now < 10) {
                     char msg[16];
                     snprintf(msg, sizeof(msg), "BATTERY %d%%", battery_now);
-                    Toast::show(msg, "CHARGE SOON", 2000);
+                    Toast::show(msg, "CHARGE SOON", 10000, Toast::ICON_BATTERY);  // any key closes it sooner
                   }
               - script.execute: main_update
               - script.execute: boot_connect_watchdog

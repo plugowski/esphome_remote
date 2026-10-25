@@ -10,12 +10,13 @@
 // time ("BATTERY 9%", later things like "TRIGGERED"). Any key closes it early;
 // that press does nothing else (RemoteCore::onUserActivity consumes it).
 //
-//        ┌──────────────────────────────┐
-//        │ ┌──────────────────────────┐ │   x=8..119, centred on row 31
-//        │ │ [icon]  BATTERY 9%       │ │   title: font_base (font_small if
-//        │ │         CHARGE SOON      │ │          it doesn't fit)
-//        │ └──────────────────────────┘ │   body:  font_small, optional
-//        └──────────────────────────────┘   icon:  optional, 16 px on the left
+//        ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜
+//        ▌ ┌──────────────────────────┐ ▐   x=8..119, centred on row 31: a white
+//        ▌ │ [icon]  BATTERY 9%       │ ▐   box with a black inner frame, black
+//        ▌ │         CHARGE SOON      │ ▐   content, 2 px of black clearing round it
+//        ▌ └──────────────────────────┘ ▐   title: font_base (font_small if it
+//        ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟          doesn't fit); body: font_small,
+//                                                  optional; icon: optional, 16 px
 //
 // Every controller sends its frames through Toast::present(it) instead of
 // it->display(), which is what puts the toast on top of any screen.
@@ -98,10 +99,10 @@ private:
     const int  w = 112, h = has_body ? 30 : 22;
     const int  x0 = (128 - w) / 2, y0 = 31 - h / 2;
 
-    // clear margin, double frame
+    // clear margin, white box, black inner frame
     it->filled_rectangle(x0 - 2, y0 - 2, w + 4, h + 4, COLOR_OFF);
-    it->rectangle(x0, y0, w, h, COLOR_ON);
-    it->rectangle(x0 + 2, y0 + 2, w - 4, h - 4, COLOR_ON);
+    it->filled_rectangle(x0, y0, w, h, COLOR_ON);
+    it->rectangle(x0 + 2, y0 + 2, w - 4, h - 4, COLOR_OFF);
 
     int text_l = x0 + 4, text_r = x0 + w - 4;
     const int cy = y0 + h / 2;
@@ -117,23 +118,23 @@ private:
     it->get_text_bounds(cx, 0, s.title, tf, esphome::display::TextAlign::CENTER, &bx, &by, &bw, &bh);
     if (bw > avail) tf = s.body_font;
     const int title_y = has_body ? y0 + 10 : cy;
-    it->print(cx, title_y, tf, COLOR_ON, esphome::display::TextAlign::CENTER, s.title);
+    it->print(cx, title_y, tf, COLOR_OFF, esphome::display::TextAlign::CENTER, s.title);
     if (has_body)
-      it->print(cx, y0 + 21, s.body_font, COLOR_ON, esphome::display::TextAlign::CENTER, s.body);
+      it->print(cx, y0 + 21, s.body_font, COLOR_OFF, esphome::display::TextAlign::CENTER, s.body);
   }
 
-  // 16 px wide icons, vertically centred on cy.
+  // 16 px wide icons in black, vertically centred on cy.
   template<class D>
   static void drawIcon(D* it, Icon icon, int x, int cy) {
     if (icon == ICON_CHECK) {
       for (int t = 0; t < 2; t++) {
-        it->line(x + 1, cy + t,     x + 5,  cy + 4 + t, COLOR_ON);
-        it->line(x + 5, cy + 4 + t, x + 14, cy - 5 + t, COLOR_ON);
+        it->line(x + 1, cy + t,     x + 5,  cy + 4 + t, COLOR_OFF);
+        it->line(x + 5, cy + 4 + t, x + 14, cy - 5 + t, COLOR_OFF);
       }
     } else if (icon == ICON_BATTERY) {
-      it->rectangle(x, cy - 4, 14, 9, COLOR_ON);
-      it->filled_rectangle(x + 14, cy - 2, 2, 5, COLOR_ON);
-      it->filled_rectangle(x + 2, cy - 2, 2, 5, COLOR_ON);  // almost empty
+      it->rectangle(x, cy - 4, 14, 9, COLOR_OFF);
+      it->filled_rectangle(x + 14, cy - 2, 2, 5, COLOR_OFF);
+      it->filled_rectangle(x + 2, cy - 2, 2, 5, COLOR_OFF);  // almost empty
     }
   }
 };

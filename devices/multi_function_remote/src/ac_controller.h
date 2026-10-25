@@ -289,6 +289,12 @@ public:
     if (!updated_ui) return;
     updated_ui = false;
 
+    // Nothing in the chosen room: empty state (the keys are gated off too)
+    if (AC_LIST_COUNT > 0 && !RoomFilter::any(AC_LIST_COUNT, acRoom)) {
+      drawEmptyRoom(it, font_base, font_small, "CLIMATE", "climate", conn_status);
+      return;
+    }
+
     it->clear();
 
     // ── context strip: "CLIMATE" chip, one dot per unit in the room filter;

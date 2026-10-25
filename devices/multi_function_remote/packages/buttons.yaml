@@ -41,10 +41,10 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
           then: [ script.execute: room_picker_up ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
           then: [ script.execute: ac_btn_left ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_left ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
@@ -69,10 +69,10 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
           then: [ script.execute: room_picker_down ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
           then: [ script.execute: ac_btn_right ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_right ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
@@ -103,10 +103,10 @@ script:
                 condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
                 then: [ script.execute: room_picker_select ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                condition: { lambda: 'return id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
                 then: [ script.execute: ac_btn_power_on ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                condition: { lambda: 'return id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                 then: [ script.execute: lights_btn_ok ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
@@ -129,10 +129,10 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
           then: [ script.execute: room_picker_up ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
           then: [ script.execute: ac_btn_temp_up ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_up ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
@@ -157,10 +157,10 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
           then: [ script.execute: room_picker_down ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
           then: [ script.execute: ac_btn_temp_down ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
           then: [ script.execute: lights_btn_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS;' }
@@ -190,10 +190,10 @@ script:
                 condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
                 then: [ script.execute: room_picker_cancel ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_AC;' }
+                condition: { lambda: 'return id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
                 then: [ script.execute: ac_btn_power_off ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_LIGHTS;' }
+                condition: { lambda: 'return id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                 then: [ script.execute: lights_btn_stop ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_COVERS;' }
