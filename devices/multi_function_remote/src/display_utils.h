@@ -36,18 +36,39 @@ inline const uint8_t* grab_raw_buffer(T* display) {
   )->raw_buffer();
 }
 
-// Draws the bottom menu bar with labels for the three physical buttons:
+// ── Bottom bar ────────────────────────────────────────────────────────────────
+// Soft buttons over the three physical keys under the screen:
 //   left=pin22, center=pin5, right=pin33
 //
-// Special sentinel values (drawn as pixel icons, no font glyph needed):
-//   center == nullptr        →  ☰ hamburger (3 horizontal lines)
-//   center == ""             →  nothing drawn in centre
-//   left   == "<"            →  ◀ left-pointing filled triangle
-//   right  == ">"            →  ▶ right-pointing filled triangle
-//   any other string         →  rendered as text
+// Each label sits on an inverted badge with its corner pixels cut, rows
+// 53..63, content in black:
+//   left   x=2..41    (40 px)
+//   centre x=47..80   (34 px, narrower: its labels are a glyph or "OK")
+//   right  x=86..125  (40 px)
 //
-// center_box: when true (default) draws vertical dividers around the centre slot.
-// separator:  when true (default) draws the horizontal line at y=53.
+// Labels, unchanged from the old frame-style bar:
+//   left / right == nullptr or ""  →  no button on that side
+//   center == nullptr              →  ☰ hamburger (3 horizontal lines)
+//   center == ""                   →  no centre button
+//   left   == "<"                  →  ◀ left-pointing filled triangle
+//   right  == ">"                  →  ▶ right-pointing filled triangle
+//   any other string               →  rendered as text
+//
+// center_box: true (default) draws the centre as a button like the sides.
+//             false prints the centre label as plain text with no button, for
+//             wider notes (the welcome firmware's "POWER = exit").
+// separator:  only with center_box=false: the old line at y=53 above it.
+static const int SOFT_BTN_Y = 53, SOFT_BTN_H = 11;
+
+inline void draw_soft_button(esphome::display::Display *it, int x, int w) {
+    it->filled_rectangle(x, SOFT_BTN_Y, w, SOFT_BTN_H, COLOR_ON);
+    const int y2 = SOFT_BTN_Y + SOFT_BTN_H - 1;
+    it->draw_pixel_at(x,         SOFT_BTN_Y, COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, SOFT_BTN_Y, COLOR_OFF);
+    it->draw_pixel_at(x,         y2,         COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, y2,         COLOR_OFF);
+}
+
 inline void draw_bottom_menu(
     esphome::display::Display *it,
     esphome::font::Font *font,
@@ -57,72 +78,67 @@ inline void draw_bottom_menu(
     bool center_box = true,
     bool separator = true
 ) {
-    if (separator) {
-        it->rectangle(0, 53, 128, 1);
+    using esphome::display::TextAlign;
+    const int cy = SOFT_BTN_Y + 5;  // vertical centre of the buttons (row 58)
+
+    if (left && left[0] != '\0') {
+        draw_soft_button(it, 2, 40);
+        if (left[0] == '<' && left[1] == '\0') {
+            // ◀ 6x6, tip at left, centred on the button (x=19..24)
+            const int x = 19;
+            it->line(x,     cy,     x,     cy + 1, COLOR_OFF);
+            it->line(x + 1, cy,     x + 1, cy + 1, COLOR_OFF);
+            it->line(x + 2, cy - 1, x + 2, cy + 2, COLOR_OFF);
+            it->line(x + 3, cy - 1, x + 3, cy + 2, COLOR_OFF);
+            it->line(x + 4, cy - 2, x + 4, cy + 3, COLOR_OFF);
+            it->line(x + 5, cy - 2, x + 5, cy + 3, COLOR_OFF);
+        } else {
+            it->print(22, cy, font, COLOR_OFF, TextAlign::CENTER, left);
+        }
     }
+
     if (center_box) {
-        it->rectangle(46, 53, 36, 19);  // vertical dividers around centre slot
+        if (!center) {
+            // nullptr → ☰ hamburger
+            draw_soft_button(it, 47, 34);
+            it->line(58, cy - 3, 70, cy - 3, COLOR_OFF);
+            it->line(58, cy,     70, cy,     COLOR_OFF);
+            it->line(58, cy + 3, 70, cy + 3, COLOR_OFF);
+        } else if (center[0] != '\0') {
+            draw_soft_button(it, 47, 34);
+            it->print(64, cy, font, COLOR_OFF, TextAlign::CENTER, center);
+        }
+    } else {
+        // plain centre text, no button (wide notes)
+        if (separator) it->rectangle(0, 53, 128, 1);
+        if (center && center[0] != '\0')
+            it->print(64, 59, font, COLOR_ON, TextAlign::CENTER, center);
     }
 
-    if (left && left[0] == '<' && left[1] == '\0') {
-        // ◀ rotated down-arrow; tip at left, base at right; 6×6 px centred at (20, 59)
-        int cx = 20, cy = 59;
-        it->line(cx,     cy,     cx,     cy + 1);  // col 0 — tip, 2 px
-        it->line(cx + 1, cy,     cx + 1, cy + 1);  // col 1 — tip, 2 px
-        it->line(cx + 2, cy - 1, cx + 2, cy + 2);  // col 2 — 4 px
-        it->line(cx + 3, cy - 1, cx + 3, cy + 2);  // col 3 — 4 px
-        it->line(cx + 4, cy - 2, cx + 4, cy + 3);  // col 4 — 6 px
-        it->line(cx + 5, cy - 2, cx + 5, cy + 3);  // col 5 — base, 6 px
-    } else if (left && left[0] != '\0') {
-        it->print(23, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, left);
-    }
-
-    if (!center) {
-        // nullptr → ☰ hamburger
-        it->line(58, 56, 70, 56);
-        it->line(58, 59, 70, 59);
-        it->line(58, 62, 70, 62);
-    } else if (center[0] != '\0') {
-        // non-empty string → text
-        it->print(64, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, center);
-    }
-    // empty string "" → nothing drawn
-
-    if (right && right[0] == '>' && right[1] == '\0') {
-        // ▶ rotated down-arrow; base at left, tip at right; 6×6 px centred at (105, 59)
-        int cx = 102, cy = 59;
-        it->line(cx,     cy - 2, cx,     cy + 3);  // col 0 — base, 6 px
-        it->line(cx + 1, cy - 2, cx + 1, cy + 3);  // col 1 — base, 6 px
-        it->line(cx + 2, cy - 1, cx + 2, cy + 2);  // col 2 — 4 px
-        it->line(cx + 3, cy - 1, cx + 3, cy + 2);  // col 3 — 4 px
-        it->line(cx + 4, cy,     cx + 4, cy + 1);  // col 4 — 2 px
-        it->line(cx + 5, cy,     cx + 5, cy + 1);  // col 5 — tip, 2 px
-    } else if (right && right[0] != '\0') {
-        it->print(105, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, right);
+    if (right && right[0] != '\0') {
+        draw_soft_button(it, 86, 40);
+        if (right[0] == '>' && right[1] == '\0') {
+            // ▶ 6x6, tip at right, centred on the button (x=103..108)
+            const int x = 103;
+            it->line(x,     cy - 2, x,     cy + 3, COLOR_OFF);
+            it->line(x + 1, cy - 2, x + 1, cy + 3, COLOR_OFF);
+            it->line(x + 2, cy - 1, x + 2, cy + 2, COLOR_OFF);
+            it->line(x + 3, cy - 1, x + 3, cy + 2, COLOR_OFF);
+            it->line(x + 4, cy,     x + 4, cy + 1, COLOR_OFF);
+            it->line(x + 5, cy,     x + 5, cy + 1, COLOR_OFF);
+        } else {
+            it->print(106, cy, font, COLOR_OFF, TextAlign::CENTER, right);
+        }
     }
 }
 
-// Two same-size soft buttons over the left / right round keys, for screens
-// that set themselves apart from the usual bottom bar (no separator, no
-// centre slot). Each is an inverted 40x11 badge on rows 53..63 with its
-// corner pixels cut, label in black; nullptr / "" leaves that side empty.
+// Left / right soft buttons only (no centre), e.g. the quick-action view's
+// BACK / RUN.
 inline void draw_soft_buttons(
     esphome::display::Display *it,
     esphome::font::Font *font,
     const char *left,
     const char *right
 ) {
-    const int y = 53, w = 40, h = 11;
-    const int xs[2] = { 2, 128 - 2 - w };
-    const char *labels[2] = { left, right };
-    for (int i = 0; i < 2; i++) {
-        if (!labels[i] || !labels[i][0]) continue;
-        const int x = xs[i];
-        it->filled_rectangle(x, y, w, h, COLOR_ON);
-        it->draw_pixel_at(x,         y,         COLOR_OFF);
-        it->draw_pixel_at(x + w - 1, y,         COLOR_OFF);
-        it->draw_pixel_at(x,         y + h - 1, COLOR_OFF);
-        it->draw_pixel_at(x + w - 1, y + h - 1, COLOR_OFF);
-        it->print(x + w / 2, y + 5, font, COLOR_OFF, esphome::display::TextAlign::CENTER, labels[i]);
-    }
+    draw_bottom_menu(it, font, left, "", right);
 }
