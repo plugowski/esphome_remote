@@ -14,12 +14,13 @@ struct LightEntity {
   const char* state_sensor_id;
   const char* brightness_sensor_id;
   bool        dimmable;
+  int         room;      // 1-based into ROOM_LIST (room_entities.h), 0 = no room
 };
 
 static const LightEntity LIGHTS_LIST[] = {
-  { "Monitor",    "light.desk_monitor_light", "desk_monitor_light", nullptr,          false },
-  { "Office",     "light.office_main",        "office_main_light",  nullptr,          false },
-  { "Skadis",     "light.skadis_strip_light", "skadis_strip_light", "skadis_strip_brightness", true },
+  { "Monitor",    "light.desk_monitor_light", "desk_monitor_light", nullptr,          false, 1 },
+  { "Office",     "light.office_main",        "office_main_light",  nullptr,          false, 1 },
+  { "Skadis",     "light.skadis_strip_light", "skadis_strip_light", "skadis_strip_brightness", true,  1 },
 };
 
 // Physical array length (always >= 1). Static per-entity arrays in the

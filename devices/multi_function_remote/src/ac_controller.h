@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cmath>
 #include "ac_entities.h"
+#include "room_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
 #include "context_strip.h"
@@ -213,8 +214,8 @@ public:
     return "\ueb3b";                            // ac_unit (cool, and fallback)
   }
 
-  // Layout below the context strip (rows 0..8: "CLIMATE" chip, one dot per unit,
-  // unit name in the right-hand badge). The free area is rows 10..52; everything in the hero row
+  // Layout below the context strip (rows 0..8: "CLIMATE" chip, one dot per
+  // unit, the unit's room - or its name, without a room - in the badge). The free area is rows 10..52; everything in the hero row
   // is centred on HERO_CY = 29:
   //   x=5          24 px mode icon, top-left (5, 14) → rows 19..38
   //   x=64         40 px temperature centred at (64, 30) → digits rows 15..43
@@ -288,8 +289,11 @@ public:
 
     it->clear();
 
-    // ── context strip: "CLIMATE" chip, one dot per unit, unit name in the badge
-    ContextStrip::draw(it, "CLIMATE", ac_idx, AC_LIST_COUNT, conn_status, AC_LIST[ac_idx].name);
+    // ── context strip: "CLIMATE" chip, one dot per unit; the badge names the
+    //    unit's room, or the unit itself when it has no room ──────────────────
+    const char* room = roomName(AC_LIST[ac_idx].room);
+    ContextStrip::draw(it, "CLIMATE", ac_idx, AC_LIST_COUNT, conn_status,
+                       room ? room : AC_LIST[ac_idx].name);
 
     // ── mode-specific hero row ────────────────────────────────────────────────
     if (mode == "off") {

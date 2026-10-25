@@ -14,11 +14,12 @@ struct AutomationEntity {
   const char* entity_id;   // Home Assistant entity_id
   const char* service;     // HA service to call
   const char* menu_slot;   // "L", "R", or nullptr
+  int         room;        // 1-based into ROOM_LIST (room_entities.h), 0 = no room
 };
 
 static const AutomationEntity AUTOMATION_LIST[] = {
-  { "Empty Office", "EMPTY", "automation.empty_office",     "automation.trigger",           nullptr },
-  { "Sofa Half",    "HALF",  "script.toggle_sofa_half_mode","script.turn_on",               nullptr },
+  { "Empty Office", "EMPTY", "automation.empty_office",     "automation.trigger",           nullptr, 1 },
+  { "Sofa Half",    "HALF",  "script.toggle_sofa_half_mode","script.turn_on",               nullptr, 2 },
 };
 
 // Physical array length (always >= 1). Static per-entity arrays in the

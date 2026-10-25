@@ -127,6 +127,7 @@ esphome:
     - src/wake_utils.h
     - src/display_utils.h
     - src/context_strip.h
+    - src/room_entities.h
     - src/menu_controller.h
     - src/ac_entities.h
     - src/ac_controller.h

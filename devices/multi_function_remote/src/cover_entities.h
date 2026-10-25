@@ -14,12 +14,13 @@ struct CoverEntity {
   const char* entity_id;          // HA cover entity_id
   const char* state_sensor_id;    // ESPHome text_sensor id for cover state
   const char* position_sensor_id; // ESPHome sensor id for cover position
+  int         room;               // 1-based into ROOM_LIST (room_entities.h), 0 = no room
 };
 
 static const CoverEntity COVER_LIST[] = {
-  { "Living",  "cover.living_room_curtain", "living_curtain_state",  "living_curtain_pos"  },
-  { "Bedroom", "cover.bedroom_curtain",     "bedroom_curtain_state", "bedroom_curtain_pos" },
-  { "Office",  "cover.office",        "office_state",    "office_pos"    },
+  { "Living",  "cover.living_room_curtain", "living_curtain_state",  "living_curtain_pos",  2 },
+  { "Bedroom", "cover.bedroom_curtain",     "bedroom_curtain_state", "bedroom_curtain_pos", 3 },
+  { "Office",  "cover.office",        "office_state",    "office_pos",    1 },
 };
 
 // Physical array length (always >= 1). Static per-entity arrays in the
