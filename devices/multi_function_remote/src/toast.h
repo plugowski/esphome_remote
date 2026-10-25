@@ -31,7 +31,9 @@
 
 class Toast {
 public:
-  enum Icon { ICON_NONE, ICON_CHECK, ICON_BATTERY };
+  // ICON_CHECK_INLINE: a small check right before the title, the two centred
+  // together (confirmations like SENT); the others sit in a column on the left.
+  enum Icon { ICON_NONE, ICON_CHECK, ICON_BATTERY, ICON_CHECK_INLINE };
 
   static void setFonts(esphome::font::Font* title, esphome::font::Font* body) {
     st().title_font = title;
@@ -111,7 +113,8 @@ private:
 
     int text_l = x0 + 4, text_r = x0 + w - 4;
     const int cy = y0 + h / 2;
-    if (s.icon != ICON_NONE) {
+    const bool inline_check = s.icon == ICON_CHECK_INLINE;
+    if (s.icon != ICON_NONE && !inline_check) {
       drawIcon(it, s.icon, x0 + 7, cy);
       text_l = x0 + 7 + 16 + 3;
     }
@@ -123,7 +126,17 @@ private:
     it->get_text_bounds(cx, 0, s.title, tf, esphome::display::TextAlign::CENTER, &bx, &by, &bw, &bh);
     if (bw > avail) tf = s.body_font;
     const int title_y = has_body ? y0 + 10 : cy;
-    it->print(cx, title_y, tf, COLOR_OFF, esphome::display::TextAlign::CENTER, s.title);
+    if (inline_check) {
+      // 10x8 check, 4 px gap, title: centred as one group
+      const int gx = cx - (10 + 4 + bw) / 2;
+      for (int t = 0; t < 2; t++) {
+        it->line(gx,     title_y + t,     gx + 3, title_y + 3 + t, COLOR_OFF);
+        it->line(gx + 3, title_y + 3 + t, gx + 9, title_y - 4 + t, COLOR_OFF);
+      }
+      it->print(gx + 14, title_y, tf, COLOR_OFF, esphome::display::TextAlign::CENTER_LEFT, s.title);
+    } else {
+      it->print(cx, title_y, tf, COLOR_OFF, esphome::display::TextAlign::CENTER, s.title);
+    }
     if (has_body)
       it->print(cx, y0 + 21, s.body_font, COLOR_OFF, esphome::display::TextAlign::CENTER, s.body);
   }
