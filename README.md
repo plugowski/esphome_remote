@@ -12,12 +12,63 @@ Two firmware flavours share the same code: the original **WiFi remote** (`remote
 
 ## Screenshots
 
+The UI was redesigned in October 2026: same calm screens, but every screen now says where you are and works the same way. The write-up with the reasoning behind each decision is at [tech.lugowski.dev/projects/smart-oled-remote-ui](https://tech.lugowski.dev/projects/smart-oled-remote-ui/).
+
+- **Context strip** on every screen: screen name, position dots (or `3/12` when they don't fit), the room, battery.
+- **One navigation rule:** left / right moves between items, up / down changes the value. Quick actions are one press away from anywhere in the menu (up / down).
+- **Soft buttons** over the round keys, like an ATM: a filled chip is a round key and says what it does on this screen; the outlined chip with three dots is the menu key.
+- **Cards** for lights, covers and automations (lists still available), with a vertical slider for brightness and cover position.
+- **Room filter:** hold the menu key to pick a room; entities without a room show everywhere.
+- **Toasts** for a low battery and for a sent action; **Settings** one per page, editable values in a box with up / down arrows.
+
+The images are rendered with the firmware's own layout and fonts.
+
+### Menu and the screen it opens
+
+| Menu | Screen | | |
+|:---:|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/menu_climate.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/climate_cool.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/climate_off.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/climate_fan.png" width="200"> |
+| Climate | cool / heat | off | fan only |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_lights.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/lights_card.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/lights_card_off.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/lights_list.png" width="200"> |
+| Lights | card | card, light off | list |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_covers.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/covers_open.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/covers_opening.png" width="200"> |  |
+| Covers | at rest | opening to its target | |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_automations.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/automations_card.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/automations_list.png" width="200"> |  |
+| Automations | card, two shortcut keys | list | |
+| <img src="devices/multi_function_remote/screenshots/ui/menu_settings.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_contrast.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_sleep.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_system.png" width="200"> |
+| Settings | contrast | sleep timeout | system |
+
+### Quick actions and toasts
+
+| Quick action (up / down in the menu) | Action sent | Low battery |
+|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/quick_actions.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/toast_sent.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/toast_battery.png" width="200"> |
+
+### Settings
+
+| Contrast | Sleep timeout | Read-only value | System |
+|:---:|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/settings_contrast.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_sleep.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_link.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/settings_system.png" width="200"> |
+
+Left / right (and the round keys) move between settings, up / down changes the value in the box. Read-only values have no box.
+
+### Room selection
+
+| Hold the menu key | The room in the badge | Nothing in that room |
+|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/room_picker.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/menu_room.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/room_empty.png" width="200"> |
+
+<details>
+<summary>Previous UI (before October 2026)</summary>
+
 | AC | Lights | Covers | Automations | Settings |
 |:---:|:---:|:---:|:---:|:---:|
-| <img src="devices/multi_function_remote/screenshots/menu_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_lights.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/menu_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/manu_settings.png" width="160"> |
-| <img src="devices/multi_function_remote/screenshots/screen_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_light.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_settings.png" width="160"> |
-| <img src="devices/multi_function_remote/screenshots/screen_ac_fan.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_light_normal.png" width="160"> |  | | |
-| <img src="devices/multi_function_remote/screenshots/screen_ac_dry.png" width="160"> | <img src="devices/multi_function_remote/screenshots/screen_light_dim.png" width="160"> |  | | |
+| <img src="devices/multi_function_remote/screenshots/legacy/menu_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/menu_lights.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/menu_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/menu_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/manu_settings.png" width="160"> |
+| <img src="devices/multi_function_remote/screenshots/legacy/screen_ac.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_light.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_covers.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_automations.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_settings.png" width="160"> |
+| <img src="devices/multi_function_remote/screenshots/legacy/screen_ac_fan.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_light_normal.png" width="160"> |  | | |
+| <img src="devices/multi_function_remote/screenshots/legacy/screen_ac_dry.png" width="160"> | <img src="devices/multi_function_remote/screenshots/legacy/screen_light_dim.png" width="160"> |  | | |
+
+</details>
 
 ---
 
