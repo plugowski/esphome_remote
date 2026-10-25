@@ -6,16 +6,17 @@
 // ── ContextStrip ─────────────────────────────────────────────────────────────
 // Status line across the top of a screen, telling the user where they are:
 //
-//   ┌──┐                            ┌───────┐
-//   │AC│ ▪█▪                   20:25 │BEDROOM│ [▮▮▮ ]
-//   └──┘                            └───────┘
+//   ╭───────╮                       ╭───────╮
+//   │CLIMATE│ ▪█▪            20:25 │BEDROOM│ [▮▮▮ ]
+//   ╰───────╯                       ╰───────╯
 //   rows 0..8 — screen content starts at ContextStrip::CONTENT_Y (10)
 //
-//   x=0..        inverted chip naming the screen ("MENU", "LIGHTS", "AC", ...)
+//   x=0..        inverted chip naming the screen ("MENU", "LIGHTS", "CLIMATE", ...)
 //   after chip   position dots: one per page, the current one a 5x5 block. When they
 //                don't fit before the clock, falls back to "3/12" text.
-//   ..x=114      optional outlined context badge: which room / unit the screen
+//   ..x=114      optional inverted context badge: which room / unit the screen
 //                is showing ("BEDROOM", or "ALL" while there's no room filter)
+//                Both chips have their corner pixels cut, for a rounded look.
 //   left of it   clock (HH:MM); replaced by NO WIFI / NO HA / NO HUB while
 //                conn_status != 0. Hidden until time is valid (always hidden
 //                on the ESP-NOW build, which has no clock).
@@ -78,20 +79,14 @@ public:
                    const char* context = nullptr) {
     // label chip
     int x = 0;
-    if (label && label[0]) {
-      const int w = textWidth(label) + 4;
-      it->filled_rectangle(0, 0, w, HEIGHT, COLOR_ON);
-      text(it, 2, 2, label, COLOR_OFF);
-      x = w + 4;
-    }
+    if (label && label[0]) x = chip(it, 0, label) + 4;
 
     // right side, from the edge inwards: battery, context badge, status or clock
     drawBattery(it, 117, 1);
     int right_edge = 114;
     if (context && context[0]) {
       const int w = textWidth(context) + 4;
-      it->rectangle(right_edge - w, 0, w, HEIGHT, COLOR_ON);
-      text(it, right_edge - w + 2, 2, context, COLOR_ON);
+      chip(it, right_edge - w, context);
       right_edge -= w + 3;
     }
 
@@ -128,6 +123,19 @@ private:
 
   static int& clockValue()   { static int v = -1; return v; }
   static int& batteryValue() { static int v = -1; return v; }
+
+  // Inverted label with its four corner pixels cut. Returns its width.
+  template<class D>
+  static int chip(D* it, int x, const char* s) {
+    const int w = textWidth(s) + 4;
+    it->filled_rectangle(x, 0, w, HEIGHT, COLOR_ON);
+    it->draw_pixel_at(x,         0,          COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, 0,          COLOR_OFF);
+    it->draw_pixel_at(x,         HEIGHT - 1, COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, HEIGHT - 1, COLOR_OFF);
+    text(it, x + 2, 2, s, COLOR_OFF);
+    return w;
+  }
 
   template<class D>
   static void drawBattery(D* it, int x, int y) {
