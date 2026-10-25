@@ -16,9 +16,11 @@
 //   OK            — carousel view: confirm mode | action view: trigger action
 //   Stop          — carousel view: cancel menu  | action view: back to carousel
 //
-// Layout (both views): context strip on rows 0..8 ("MENU" / "ACTIONS" chip,
-// one dot per item), 32 px icon centred at y=24 (rows 12..37), name in
-// font_base centred at y=46 (caps 41..50), bottom bar from y=53.
+// Layout (both views): context strip on rows 0..8 ("MENU" chip with one dot
+// per item / "ACTIONS" chip), 32 px icon centred at y=24 (rows 12..37), name
+// in font_base centred at y=46 (caps 41..50), bottom bar from y=53. The
+// quick-action view, scrolled with up/down, shows its position as vertical
+// dots at the right edge instead (ContextStrip::drawVerticalDots).
 //
 // YAML usage:
 //   MenuController::open(id(menu_index), id(app_mode), id(menu_active));
@@ -82,7 +84,8 @@ public:
   static void drawTriggered(D* it, F* action_icon, F* font_base, F* font_small_f, int quick_idx) {
     it->clear();
     const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
-    ContextStrip::draw(it, "ACTIONS", quick_idx, QUICK_ACTION_COUNT, 0);
+    ContextStrip::draw(it, "ACTIONS", 0, 0, 0);
+    ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
     it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
     it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
     draw_bottom_menu(it, font_small_f, "", "", "");
@@ -111,7 +114,8 @@ public:
     } else {
       // ── quick-action view (big icon + name, no side icons) ────────────────
       const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
-      ContextStrip::draw(it, "ACTIONS", quick_idx, QUICK_ACTION_COUNT, conn_status);
+      ContextStrip::draw(it, "ACTIONS", 0, 0, conn_status);
+      ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
       it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
       it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
       draw_bottom_menu(it, font_small_f, "", "", "");

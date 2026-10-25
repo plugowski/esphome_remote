@@ -53,9 +53,15 @@ font:
     id: menu_action_icon
     size: 32
     glyphs:
-      - "\ue7fb"  # person_off  (Empty Office)
-      - "\ue02e"  # weekend     (Sofa Half)
       - "\ue8f9"  # work        (Start Work)
+      - "\ue510"  # person_off  (Empty Office)
+      - "\ue16b"  # weekend     (Sofa Half)
+      - "\ue430"  # wb_sunny    (Good Morning)
+      - "\ue541"  # local_cafe  (Coffee)
+      - "\ue02c"  # movie       (Movie Time)
+      - "\uef44"  # bedtime     (Good Night)
+      - "\ue9ba"  # logout      (Leave Home)
+      - "\ue9b8"  # light_off   (Lights Off)
 
 globals:
   - id: menu_quick_index
