@@ -38,8 +38,9 @@
 // which view is active.
 //
 // Both views start with the context strip (rows 0..8): "LIGHTS" chip, dots
-// per page (list view: one per 4 lights, card view: one per light), clock
-// and battery. See src/context_strip.h.
+// per page (list view: one per 4 lights, card view: one per light), an "ALL"
+// badge (lights have no room filter yet), clock and battery. See
+// src/context_strip.h.
 //
 // List view layout (128x64, 4 visible rows of 10 px from y=10, bottom menu
 // at y=53; scrolls a whole page of 4 at a time so the dots match):
@@ -209,7 +210,7 @@ public:
     const int page       = (selected_idx < 0) ? 0 : selected_idx / ROWS;
     const int page_count = (LIGHTS_LIST_COUNT + ROWS - 1) / ROWS;
     const int scroll_top = page * ROWS;
-    ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status);
+    ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status, "ALL");
 
     for (int row = 0; row < ROWS; row++) {
       int li = scroll_top + row;
@@ -289,7 +290,7 @@ public:
     it->clear();
 
     if (LIGHTS_LIST_COUNT <= 0) {
-      ContextStrip::draw(it, "LIGHTS", 0, 0, conn_status);
+      ContextStrip::draw(it, "LIGHTS", 0, 0, conn_status, "ALL");
       it->print(64, 31, font_base, COLOR_ON, display::TextAlign::CENTER, "NO LIGHTS");
       draw_bottom_menu(it, font_small, "", nullptr, "");
       it->display();
@@ -302,7 +303,7 @@ public:
     const bool dim = LIGHTS_LIST[li].dimmable;
 
     // ── context strip: one dot per light ─────────────────────────────────────
-    ContextStrip::draw(it, "LIGHTS", li, LIGHTS_LIST_COUNT, conn_status);
+    ContextStrip::draw(it, "LIGHTS", li, LIGHTS_LIST_COUNT, conn_status, "ALL");
 
     // ── name row ─────────────────────────────────────────────────────────────
     char buf[16];

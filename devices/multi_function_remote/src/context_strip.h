@@ -6,17 +6,19 @@
 // ── ContextStrip ─────────────────────────────────────────────────────────────
 // Status line across the top of a screen, telling the user where they are:
 //
-//   ┌──────┐
-//   │LIGHTS│ ▪▪▬▪▪                         20:25 [▮▮▮ ]
-//   └──────┘
+//   ┌──┐                            ┌───────┐
+//   │AC│ ▪█▪                   20:25 │BEDROOM│ [▮▮▮ ]
+//   └──┘                            └───────┘
 //   rows 0..8 — screen content starts at ContextStrip::CONTENT_Y (10)
 //
-//   x=0..        inverted chip with the location label ("MENU", "LIGHTS", ...)
+//   x=0..        inverted chip naming the screen ("MENU", "LIGHTS", "AC", ...)
 //   after chip   position dots: one per page, the current one a 5x5 block. When they
 //                don't fit before the clock, falls back to "3/12" text.
-//   x=..114      clock (HH:MM) right-aligned; replaced by NO WIFI / NO HA /
-//                NO HUB while conn_status != 0. Hidden until time is valid
-//                (always hidden on the ESP-NOW build, which has no clock).
+//   ..x=114      optional outlined context badge: which room / unit the screen
+//                is showing ("BEDROOM", or "ALL" while there's no room filter)
+//   left of it   clock (HH:MM); replaced by NO WIFI / NO HA / NO HUB while
+//                conn_status != 0. Hidden until time is valid (always hidden
+//                on the ESP-NOW build, which has no clock).
 //   x=117..127   battery outline with a 5-step level; outline only while the
 //                level is unknown (battery_pct == -1).
 //
@@ -30,7 +32,7 @@
 //     id(updated_ui) = true;                                // minute rolled over
 //
 // Drawing (from a controller's draw(), after it->clear()):
-//   ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status);
+//   ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status, "ALL");
 
 class ContextStrip {
 public:
@@ -72,7 +74,8 @@ public:
   // ── strip ─────────────────────────────────────────────────────────────────
 
   template<class D>
-  static void draw(D* it, const char* label, int pos, int count, int conn_status) {
+  static void draw(D* it, const char* label, int pos, int count, int conn_status,
+                   const char* context = nullptr) {
     // label chip
     int x = 0;
     if (label && label[0]) {
@@ -82,21 +85,29 @@ public:
       x = w + 4;
     }
 
-    // right side: status or clock, then battery
+    // right side, from the edge inwards: battery, context badge, status or clock
+    drawBattery(it, 117, 1);
+    int right_edge = 114;
+    if (context && context[0]) {
+      const int w = textWidth(context) + 4;
+      it->rectangle(right_edge - w, 0, w, HEIGHT, COLOR_ON);
+      text(it, right_edge - w + 2, 2, context, COLOR_ON);
+      right_edge -= w + 3;
+    }
+
     char right[10] = "";
     if      (conn_status == 1) snprintf(right, sizeof(right), "NO WIFI");
     else if (conn_status == 2) snprintf(right, sizeof(right), "NO HA");
     else if (conn_status == 3) snprintf(right, sizeof(right), "NO HUB");
     else if (clockValue() >= 0)
       snprintf(right, sizeof(right), "%d:%02d", clockValue() / 60, clockValue() % 60);
-    const int right_x = 114 - textWidth(right);
+    const int right_x = right_edge - textWidth(right);
     if (right[0]) text(it, right_x, 2, right, COLOR_ON);
-    drawBattery(it, 117, 1);
 
     // position: dots when they fit, "n/N" otherwise
     if (count <= 1) return;
     const int cur   = wrap_index(pos, count);
-    const int limit = (right[0] ? right_x : 116) - 4;
+    const int limit = (right[0] ? right_x : right_edge) - 4;
     const int dots_w = (count - 1) * 4 + 5;  // 2 px dots + 2 px gaps, current 5 px
     if (x + dots_w <= limit) {
       for (int i = 0; i < count; i++) {
