@@ -6,6 +6,7 @@
 #include <cmath>
 #include "light_entities.h"
 #include "room_entities.h"
+#include "room_filter.h"
 #include "display_utils.h"
 #include "remote_core.h"
 #include "context_strip.h"
@@ -86,12 +87,13 @@ public:
 
   // ── navigation ─────────────────────────────────────────────────────────────
 
+  // Both skip lights outside the room filter (see room_filter.h).
   static void prevLight(int& idx) {
-    idx = wrap_index(idx, LIGHTS_LIST_COUNT, -1);
+    idx = RoomFilter::step(idx, LIGHTS_LIST_COUNT, -1, lightRoom);
   }
 
   static void nextLight(int& idx) {
-    idx = wrap_index(idx, LIGHTS_LIST_COUNT, +1);
+    idx = RoomFilter::step(idx, LIGHTS_LIST_COUNT, +1, lightRoom);
   }
 
   // ── toggle ─────────────────────────────────────────────────────────────────
@@ -207,15 +209,17 @@ public:
 
     it->clear();
 
-    // Page of 4 that holds the selected light
-    const int page       = (selected_idx < 0) ? 0 : selected_idx / ROWS;
-    const int page_count = (LIGHTS_LIST_COUNT + ROWS - 1) / ROWS;
-    const int scroll_top = page * ROWS;
-    ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status, "ALL");
+    // Page of 4 (among the lights in the room filter) that holds the selection
+    const int shown      = RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom);
+    const int page       = RoomFilter::position(selected_idx, LIGHTS_LIST_COUNT, lightRoom) / ROWS;
+    const int page_count = (shown + ROWS - 1) / ROWS;
+    const bool filtered  = RoomFilter::applies(LIGHTS_LIST_COUNT, lightRoom);
+    ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status,
+                       filtered ? RoomFilter::name() : "ALL");
 
     for (int row = 0; row < ROWS; row++) {
-      int li = scroll_top + row;
-      if (li >= LIGHTS_LIST_COUNT) break;
+      const int li = RoomFilter::at(page * ROWS + row, LIGHTS_LIST_COUNT, lightRoom);
+      if (li < 0) break;
 
       const bool sel  = (li == selected_idx);
       const bool on   = lightOn(li);
@@ -303,8 +307,11 @@ public:
     const int  bri = lightBrightness(li);
     const bool dim = LIGHTS_LIST[li].dimmable;
 
-    // ── context strip: one dot per light, the light's room in the badge ──────
-    ContextStrip::draw(it, "LIGHTS", li, LIGHTS_LIST_COUNT, conn_status,
+    // ── context strip: one dot per light in the room filter, the light's room
+    //    in the badge ──────────────────────────────────────────────────────────
+    ContextStrip::draw(it, "LIGHTS",
+                       RoomFilter::position(li, LIGHTS_LIST_COUNT, lightRoom),
+                       RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom), conn_status,
                        roomName(LIGHTS_LIST[li].room));
 
     // ── name row ─────────────────────────────────────────────────────────────

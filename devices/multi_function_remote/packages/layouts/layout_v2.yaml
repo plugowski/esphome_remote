@@ -13,7 +13,7 @@
 #    0  power off  (shared with deep-sleep wake pin — allow_other_uses: true)
 #
 # Always-present hardware buttons (shared with v1):
-#    5  ☰  menu           open / confirm menu
+#    5  ☰  menu           short: open / confirm menu | long (0.8 s): room picker
 #   22  MODE / <<         menu prev | AC: HVAC mode | Lights: prev or LOW | Covers: close | Autos: L slot
 #   33  FAN  / >>         menu next | AC: fan speed | Lights: next or FULL | Covers: open | Autos: R slot
 #
@@ -159,20 +159,40 @@ binary_sensor:
     name: "Button Menu"
     internal: true
     filters: [ invert:, delayed_on: 30ms ]
-    on_press:
-      then:
-        - if:
-            condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-            then:
-              - if:
-                  condition: { lambda: 'return !id(menu_active);' }
-                  then: [ script.execute: menu_open ]
-                  else:
-                    - if:
-                        condition: { lambda: 'return id(menu_quick_index) >= 0;' }
-                        then: [ script.execute: menu_back_to_carousel ]
-                        else: [ script.execute: menu_confirm ]
+    on_multi_click:
+      # long press (0.8 s) → open / close the room picker (src/room_filter.h)
+      - timing:
+          - ON for at least 800ms
+        then:
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              then:
+                - if:
+                    condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                    then: [ script.execute: room_picker_cancel ]
+                    else: [ script.execute: room_picker_open ]
+      # short press → menu as before; OK while the room picker is open
+      - timing:
+          - ON for at most 700ms
+          - OFF for at least 10ms
+        then:
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              then:
+                - if:
+                    condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                    then: [ script.execute: room_picker_select ]
+                    else:
+                      - if:
+                          condition: { lambda: 'return !id(menu_active);' }
+                          then: [ script.execute: menu_open ]
+                          else:
+                            - if:
+                                condition: { lambda: 'return id(menu_quick_index) >= 0;' }
+                                then: [ script.execute: menu_back_to_carousel ]
+                                else: [ script.execute: menu_confirm ]
 
   # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: circle L ─────
   # Covers: close | Autos: L slot
@@ -192,6 +212,9 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return id(menu_active);' }
                   then: [ script.execute: menu_prev ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_up ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_mode ]
@@ -226,6 +249,9 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return id(menu_active);' }
                   then: [ script.execute: menu_next ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_down ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_fan ]

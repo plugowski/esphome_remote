@@ -5,6 +5,7 @@
 esphome:
   includes:
     - src/context_strip.h
+    - src/room_filter.h
     - src/menu_controller.h
     - src/quick_action_entities.h
 
@@ -69,11 +70,29 @@ globals:
     initial_value: '-1'
     restore_value: false
 
+  # ── room filter (long press on the menu key) ──────────────────────────────
+  # 0 = all rooms, 1..ROOM_LIST_COUNT = that room. Restored like app_mode, so
+  # the remote wakes up still filtered to the room it was left in; mirrored
+  # into RoomFilter::current() on boot.
+  - id: room_filter
+    type: int
+    initial_value: '0'
+    restore_value: true
+  - id: room_picker_index   # cursor in the picker (0 = ALL ROOMS)
+    type: int
+    initial_value: '0'
+    restore_value: false
+  - id: room_picker_return  # app_mode to go back to when the picker closes
+    type: int
+    initial_value: '0'
+    restore_value: true
+
 script:
 
   - id: menu_open
     then:
       - lambda: |-
+          if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
           MenuController::open(id(menu_index), id(app_mode), id(menu_active));
           id(menu_quick_index) = -1;
       - script.execute: menu_draw
@@ -137,3 +156,53 @@ script:
             id(menu_icon_big), id(menu_icon_small), id(menu_action_icon),
             id(font_base), id(font_small), id(menu_index), id(menu_quick_index),
             id(conn_status));
+
+  # ── room picker ───────────────────────────────────────────────────────────
+  # Opened by a long press on the menu key; runs as app_mode APP_ROOMS (see
+  # src/room_filter.h) so the per-mode button branches ignore it.
+  - id: room_picker_open
+    then:
+      - if:
+          condition: { lambda: 'return ROOM_LIST_COUNT > 0 && id(app_mode) != APP_ROOMS;' }
+          then:
+            - lambda: |-
+                id(menu_active)        = false;
+                id(room_picker_return) = id(app_mode);
+                id(app_mode)           = APP_ROOMS;
+                id(room_picker_index)  = id(room_filter);
+            - script.execute: room_picker_draw
+
+  - id: room_picker_up
+    then:
+      - lambda: 'RoomPicker::up(id(room_picker_index));'
+      - script.execute: room_picker_draw
+
+  - id: room_picker_down
+    then:
+      - lambda: 'RoomPicker::down(id(room_picker_index));'
+      - script.execute: room_picker_draw
+
+  # Applies the highlighted room, moves each filtered screen onto an entity
+  # in that room, and goes back to the screen the picker was opened from.
+  - id: room_picker_select
+    then:
+      - lambda: |-
+          id(room_filter)        = id(room_picker_index);
+          RoomFilter::current()  = id(room_filter);
+          id(selected_light_index) = RoomFilter::first(id(selected_light_index), LIGHTS_LIST_COUNT, lightRoom);
+      - if:
+          condition: { lambda: 'return RoomFilter::first(id(selected_ac_index), AC_LIST_COUNT, acRoom) != id(selected_ac_index);' }
+          then:
+            - lambda: 'id(selected_ac_index) = RoomFilter::first(id(selected_ac_index), AC_LIST_COUNT, acRoom);'
+            - script.execute: ac_select_unit
+      - script.execute: room_picker_cancel
+
+  - id: room_picker_cancel
+    then:
+      - lambda: |-
+          if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
+          id(updated_ui) = true;
+
+  - id: room_picker_draw
+    then:
+      - lambda: 'RoomPicker::draw(id(oled_display), id(font_small), id(room_picker_index), id(conn_status));'

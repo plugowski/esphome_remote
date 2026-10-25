@@ -128,6 +128,7 @@ esphome:
     - src/display_utils.h
     - src/context_strip.h
     - src/room_entities.h
+    - src/room_filter.h
     - src/menu_controller.h
     - src/ac_entities.h
     - src/ac_controller.h
@@ -153,7 +154,9 @@ esphome:
             condition: { lambda: 'return !id(is_timer_wake);' }
             then:
               - lambda: |-
+                  if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
                   if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
+                  RoomFilter::current() = id(room_filter);
                   RemoteCore::resetIdleTimer(id(last_active));
                   id(is_booting) = true;
                   // The display's own `contrast:` config below is a fixed
@@ -442,6 +445,9 @@ script:
                               - if:
                                   condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
                                   then: [ script.execute: settings_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                                  then: [ script.execute: room_picker_draw ]
 
 # ── main loop ─────────────────────────────────────────────────────────────────
 interval:

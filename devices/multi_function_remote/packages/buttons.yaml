@@ -20,6 +20,11 @@
 #   btn_down   │  —    │ temp –         │ list: next  / card: bri – │ position –10 %  │ scroll down ▼
 #   btn_stop   │ cancl │ cycle fan      │ list: —     / card: OFF   │ stop            │  —
 #   btn_menu_open │ — │  —             │  —             │  —              │  —  (opens menu)
+#
+# While the room picker is open (app_mode == APP_ROOMS, long press on the
+# menu key): left / up → previous room, right / down → next room, OK →
+# apply, stop → close. Each picker branch sits next to the AC branch it
+# mirrors.
 
 script:
 
@@ -32,6 +37,9 @@ script:
       - if:
           condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
           then: [ script.execute: menu_prev ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+          then: [ script.execute: room_picker_up ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
           then: [ script.execute: ac_btn_left ]
@@ -57,6 +65,9 @@ script:
       - if:
           condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
           then: [ script.execute: menu_next ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+          then: [ script.execute: room_picker_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
           then: [ script.execute: ac_btn_right ]
@@ -89,6 +100,9 @@ script:
                 else: [ script.execute: menu_confirm ]
           else:
             - if:
+                condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                then: [ script.execute: room_picker_select ]
+            - if:
                 condition: { lambda: 'return id(app_mode) == APP_AC;' }
                 then: [ script.execute: ac_btn_power_on ]
             - if:
@@ -111,6 +125,9 @@ script:
           condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
           then: [ script.execute: menu_quick_up ]
 
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+          then: [ script.execute: room_picker_up ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
           then: [ script.execute: ac_btn_temp_up ]
@@ -136,6 +153,9 @@ script:
       - if:
           condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
           then: [ script.execute: menu_quick_down ]
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+          then: [ script.execute: room_picker_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
           then: [ script.execute: ac_btn_temp_down ]
@@ -166,6 +186,9 @@ script:
                 then: [ script.execute: menu_back_to_carousel ]
                 else: [ script.execute: menu_cancel ]
           else:
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                then: [ script.execute: room_picker_cancel ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_AC;' }
                 then: [ script.execute: ac_btn_power_off ]
