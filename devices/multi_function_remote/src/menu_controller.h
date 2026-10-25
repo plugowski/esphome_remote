@@ -95,31 +95,6 @@ public:
       quick_idx = wrap_index(quick_idx, QUICK_ACTION_COUNT, +1);
   }
 
-  // Name beside the action icon: one line in font_base when it fits, else two
-  // lines split at the first space (rows 24 / 39), else one line in font_small.
-  template<class D, class F>
-  static void drawActionName(D* it, F* font_base, F* font_small_f, const char* name) {
-    const int avail = ACTION_NAME_R - ACTION_NAME_X;
-    int x, y, w, h;
-    it->get_text_bounds(ACTION_NAME_X, ACTION_CY, name, font_base, display::TextAlign::CENTER_LEFT, &x, &y, &w, &h);
-    if (w <= avail) {
-      it->print(ACTION_NAME_X, ACTION_CY, font_base, COLOR_ON, display::TextAlign::CENTER_LEFT, name);
-      return;
-    }
-    const char* space = strchr(name, ' ');
-    if (space) {
-      char first[24];
-      const size_t n = static_cast<size_t>(space - name) < sizeof(first) - 1
-                       ? static_cast<size_t>(space - name) : sizeof(first) - 1;
-      memcpy(first, name, n);
-      first[n] = '\0';
-      it->print(ACTION_NAME_X, ACTION_CY - 7, font_base, COLOR_ON, display::TextAlign::CENTER_LEFT, first);
-      it->print(ACTION_NAME_X, ACTION_CY + 8, font_base, COLOR_ON, display::TextAlign::CENTER_LEFT, space + 1);
-      return;
-    }
-    it->print(ACTION_NAME_X, ACTION_CY, font_small_f, COLOR_ON, display::TextAlign::CENTER_LEFT, name);
-  }
-
   template<class D, class F>
   static void drawTriggered(D* it, F* action_icon, F* font_base, F* font_small_f, int quick_idx) {
     it->clear();
@@ -157,7 +132,7 @@ public:
       ContextStrip::draw(it, "ACTIONS", 0, 0, conn_status, RoomFilter::name());
       ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
       it->print(ACTION_ICON_X, ACTION_CY, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
-      drawActionName(it, font_base, font_small_f, qa.name);
+      print_name_beside(it, font_base, font_small_f, qa.name, ACTION_NAME_X, ACTION_CY, ACTION_NAME_R);
       // BACK / RUN as badge buttons over the round keys, no bar or centre
       // slot: set apart from the carousel and the mode screens, whose middle
       // key is always the menu

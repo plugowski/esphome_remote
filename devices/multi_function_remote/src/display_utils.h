@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #include "esphome/components/display/display_buffer.h"
 #include "esphome/components/font/font.h"
 #include "toast.h"
@@ -154,4 +155,32 @@ inline void draw_soft_buttons(
     const char *right
 ) {
     draw_bottom_menu(it, font, left, "", right);
+}
+
+// A name printed beside an icon (quick-action card, lights card): left-aligned
+// at x and vertically centred on cy, in the space up to `right`. One line in
+// font_big when it fits, else two lines split at the first space (centred on
+// cy-7 / cy+8), else one line in font_small.
+template<class D, class F>
+inline void print_name_beside(D* it, F* font_big, F* font_small, const char* name,
+                              int x, int cy, int right) {
+    using esphome::display::TextAlign;
+    int bx, by, bw, bh;
+    it->get_text_bounds(x, cy, name, font_big, TextAlign::CENTER_LEFT, &bx, &by, &bw, &bh);
+    if (bw <= right - x) {
+        it->print(x, cy, font_big, COLOR_ON, TextAlign::CENTER_LEFT, name);
+        return;
+    }
+    const char* space = strchr(name, ' ');
+    if (space) {
+        char first[24];
+        const size_t len = static_cast<size_t>(space - name);
+        const size_t n = len < sizeof(first) - 1 ? len : sizeof(first) - 1;
+        memcpy(first, name, n);
+        first[n] = '\0';
+        it->print(x, cy - 7, font_big, COLOR_ON, TextAlign::CENTER_LEFT, first);
+        it->print(x, cy + 8, font_big, COLOR_ON, TextAlign::CENTER_LEFT, space + 1);
+        return;
+    }
+    it->print(x, cy, font_small, COLOR_ON, TextAlign::CENTER_LEFT, name);
 }
