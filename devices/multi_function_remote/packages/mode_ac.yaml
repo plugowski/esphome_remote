@@ -193,13 +193,19 @@ script:
           then: [ script.execute: ac_btn_power_on ]
           else: [ script.execute: ac_btn_power_off ]
 
+  # Right-hand key: cycles the fan speed, or turns the unit on (labelled ON)
+  # while it is off.
   - id: ac_btn_fan
     then:
-      - lambda: >-
-          ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
-                                 id(selected_fan_mode), id(updated_ui));
-      - script.execute: ac_draw
-      - script.execute: ac_await
+      - if:
+          condition: { lambda: 'return id(selected_ac_mode) == "off";' }
+          then: [ script.execute: ac_btn_power_on ]
+          else:
+            - lambda: >-
+                ACController::cycleFan(id(selected_ac_index), id(selected_fan_index),
+                                       id(selected_fan_mode), id(updated_ui));
+            - script.execute: ac_draw
+            - script.execute: ac_await
 
   - id: ac_btn_mode
     then:
