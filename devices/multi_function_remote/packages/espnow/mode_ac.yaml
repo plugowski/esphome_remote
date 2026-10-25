@@ -366,7 +366,7 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(app_mode) == APP_AC && !id(menu_active) && !id(is_booting);'
+            lambda: 'return id(app_mode) == APP_AC && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
           then:
             - lambda: >-
                 ACController::draw(id(oled_display),

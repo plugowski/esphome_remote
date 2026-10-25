@@ -74,9 +74,11 @@ public:
     return true;
   }
 
-  // Draws the toast on top (while it's active) and sends the frame.
+  // Draws the toast on top (while it's active) and sends the frame. Sends
+  // nothing once stop() was called.
   template<class D>
   static void present(D* it) {
+    if (st().stopped) return;
     if (active()) draw(it);
     it->display();
     frames()++;
@@ -85,6 +87,12 @@ public:
   // Frames sent so far, by any screen - lets a screen tell whether another
   // one was shown since its own last frame (Settings ABOUT replays its intro).
   static uint32_t& frames() { static uint32_t n = 0; return n; }
+
+  // Deep-sleep shutdown (RemoteCore::halt): no screen may send another frame,
+  // so a leftover refresh (Settings SYSTEM / ABOUT tick, a late state update)
+  // can't draw over the power-off screen.
+  static void stop() { st().stopped = true; }
+  static bool stopped() { return st().stopped; }
 
 private:
   struct State {
@@ -95,6 +103,7 @@ private:
     int      height;  // 0 = fit the text
     uint32_t until;   // millis() deadline, 0 = no toast
     bool     shown;   // set until expired() has reported the end
+    bool     stopped; // stop(): present() sends nothing any more
     esphome::font::Font* title_font;
     esphome::font::Font* body_font;
   };

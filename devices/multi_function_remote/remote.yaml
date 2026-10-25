@@ -381,7 +381,13 @@ script:
                 id(is_light_sleeping) = true;
                 id(oled_display)->turn_off();
           else:
-            - lambda: 'id(is_shutting_down) = true; RemoteCore::drawPowerOff(id(oled_display), id(font_base));'
+            # halt: from here on no refresh loop (Settings SYSTEM / ABOUT tick,
+            # state updates, the display's own poll) can draw or send a frame,
+            # and every key press is swallowed until deep sleep.
+            - lambda: |-
+                id(is_shutting_down) = true;
+                RemoteCore::halt(id(oled_display));
+                RemoteCore::drawPowerOff(id(oled_display), id(font_base));
             - delay: 1s
             - lambda: |-
                 id(oled_display)->clear();
@@ -399,7 +405,7 @@ script:
   - id: deep_sleep_fallback
     mode: single
     then:
-      - lambda: 'id(is_shutting_down) = true;'
+      - lambda: 'id(is_shutting_down) = true; RemoteCore::halt(id(oled_display));'
       - output.turn_off: oled_power
       - delay: 5ms
       - deep_sleep.enter:

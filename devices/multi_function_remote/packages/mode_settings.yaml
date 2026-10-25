@@ -227,7 +227,7 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting);'
+            lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
           then:
             - lambda: >-
                 SettingsController::draw(id(oled_display), id(font_base), id(font_small),
@@ -242,7 +242,8 @@ script:
 
 # ── Settings SYSTEM / ABOUT tick ──────────────────────────────────────────────
 # Redraws every 50 ms while the ABOUT intro plays or a SYSTEM sample is due
-# (SettingsController::needsTick); otherwise does nothing.
+# (SettingsController::needsTick); otherwise does nothing. Stops for good once
+# shutdown begins, and while a Light Sleep build has the screen blanked.
 interval:
   - interval: 50ms
     then:
@@ -250,7 +251,8 @@ interval:
           condition:
             lambda: >-
               return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting)
-                && !id(is_timer_wake) && id(conn_status) == 0
+                && !id(is_timer_wake) && !id(is_shutting_down) && !id(is_light_sleeping)
+                && id(conn_status) == 0
                 && SettingsController::needsTick(id(selected_setting_index));
           then:
             - lambda: 'SystemStats::setLink(wifi::global_wifi_component->wifi_rssi());'
