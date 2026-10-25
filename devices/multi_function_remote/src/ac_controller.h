@@ -213,8 +213,8 @@ public:
     return "\ueb3b";                            // ac_unit (cool, and fallback)
   }
 
-  // Layout below the context strip (rows 0..8, unit name in the chip, one
-  // dot per unit). The free area is rows 10..52; everything in the hero row
+  // Layout below the context strip (rows 0..8: "AC" chip, one dot per unit,
+  // unit name in the right-hand badge). The free area is rows 10..52; everything in the hero row
   // is centred on HERO_CY = 29:
   //   x=5          24 px mode icon, top-left (5, 14) → rows 19..38
   //   x=64         40 px temperature centred at (64, 30) → digits rows 15..43
@@ -288,8 +288,8 @@ public:
 
     it->clear();
 
-    // ── context strip: unit name in the chip, one dot per unit ───────────────
-    ContextStrip::draw(it, AC_LIST[ac_idx].name, ac_idx, AC_LIST_COUNT, conn_status);
+    // ── context strip: "AC" chip, one dot per unit, unit name in the badge ───
+    ContextStrip::draw(it, "AC", ac_idx, AC_LIST_COUNT, conn_status, AC_LIST[ac_idx].name);
 
     // ── mode-specific hero row ────────────────────────────────────────────────
     if (mode == "off") {
