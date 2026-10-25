@@ -51,7 +51,7 @@
 //                  text right edge via get_text_bounds
 //   x=110 right    brightness "75%" right-aligned (dimmable + ON, all rows)
 //   x=119 r=3      radio button — filled=ON, outline=OFF
-//   y=53..63       ▲ | ☰ | ▼  bottom bar (draw_bottom_menu)
+//   y=53..63       ▲ | ••• | ▼  bottom bar (draw_bottom_menu)
 //
 // Card view layout:
 //   y=9            name (font_base, TOP_LEFT at x=2, caps on rows 12..21)
@@ -60,7 +60,7 @@
 //   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=30) over a
 //                  86x9 outline bar at y=38 (filled when ON, tick when OFF)
 //                  non-dimmable: "ON"/"OFF" in font_base centred at (80, 36)
-//   y=53..63       LOW | ☰ | FULL  (dimmable)   or   OFF | ☰ | ON
+//   y=53..63       LOW | ••• | FULL  (dimmable)   or   OFF | ••• | ON
 //
 // YAML usage:
 //   LightsController::prevLight(id(selected_light_index)); id(updated_ui)=true;

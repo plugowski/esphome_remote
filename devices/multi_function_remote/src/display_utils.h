@@ -49,7 +49,8 @@ inline const uint8_t* grab_raw_buffer(T* display) {
 //
 // Labels, unchanged from the old frame-style bar:
 //   left / right == nullptr or ""  →  no button on that side
-//   center == nullptr              →  ☰ hamburger (3 horizontal lines)
+//   center == nullptr              →  ••• menu key (three 3x3 dots: the menu
+//                                      is a carousel you step through)
 //   center == ""                   →  no centre button
 //   left   == "<"                  →  ◀ left-pointing filled triangle
 //   right  == ">"                  →  ▶ right-pointing filled triangle
@@ -112,11 +113,10 @@ inline void draw_bottom_menu(
         const bool  outline = SOFT_BTN_CENTER_OUTLINE;
         const Color ink     = outline ? COLOR_ON : COLOR_OFF;
         if (!center) {
-            // nullptr → ☰ hamburger
+            // nullptr → ••• menu key, three 3x3 dots 2 px apart (x=58..70)
             draw_soft_button(it, 47, 34, outline);
-            it->line(58, cy - 3, 70, cy - 3, ink);
-            it->line(58, cy,     70, cy,     ink);
-            it->line(58, cy + 3, 70, cy + 3, ink);
+            for (int k = 0; k < 3; k++)
+                it->filled_rectangle(58 + k * 5, cy - 1, 3, 3, ink);
         } else if (center[0] != '\0') {
             draw_soft_button(it, 47, 34, outline);
             it->print(64, cy, font, ink, TextAlign::CENTER, center);
