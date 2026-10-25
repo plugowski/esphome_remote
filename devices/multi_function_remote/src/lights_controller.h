@@ -58,10 +58,10 @@
 //                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
 //   x=38..         name (font_base) beside the bulb, vertically centred, two
 //                  lines split at the first space when it doesn't fit
-//                  (print_name_beside), up to x=108 (dimmable) / 124
-//   x=119..125     dimmable: slim 7x39 slider, rows 12..50, filled from the
-//                  bottom when ON; when OFF a 9x2 tick marks the level it
-//                  comes back at. "75%" (font_small) right-aligned at x=116,
+//                  (print_name_beside), up to x=106 (dimmable) / 124
+//   x=117..125     dimmable: 9x39 slider (draw_vslider), rows 12..50, filled
+//                  from the bottom when ON; when OFF a tick marks the level it
+//                  comes back at. "75%" (font_small) right-aligned at x=114,
 //                  next to the slider's foot
 //   y=53..63       LOW | ••• | FULL  (dimmable)   or   OFF | ••• | ON
 //
@@ -348,23 +348,16 @@ public:
     strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
     for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
-    print_name_beside(it, font_base, font_small, buf, 38, CARD_CY, dim ? 108 : 124);
+    print_name_beside(it, font_base, font_small, buf, 38, CARD_CY, dim ? VSLIDER_TEXT_R - 8 : 124);
 
     if (dim) {
-      // slim slider on the right edge, % beside its foot
-      const int top = 12, bottom = 50, h = bottom - top + 1;   // 39 rows
+      // slider on the right edge: the level while ON, a tick at the level it
+      // comes back at while OFF; % beside its foot
       const int level = (bri < 0) ? 0 : (bri > 100) ? 100 : bri;
-      const int fill  = (h - 4) * level / 100;                 // inner span 35 rows
-      it->rectangle(119, top, 7, h);
-      if (on) {
-        if (fill > 0) it->filled_rectangle(121, bottom - 1 - fill, 3, fill);
-      } else {
-        // OFF: the level it comes back at, as a tick across the slider
-        it->filled_rectangle(118, bottom - 2 - fill, 9, 2);
-      }
+      draw_vslider(it, on ? level : -1, on ? -1 : level);
       char pbuf[6];
       snprintf(pbuf, sizeof(pbuf), "%d%%", level);
-      it->print(116, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
+      it->print(VSLIDER_TEXT_R, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
       draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
     } else {
       draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
