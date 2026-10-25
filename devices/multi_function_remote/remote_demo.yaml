@@ -17,6 +17,7 @@ esphome:
     build_flags:
       - -DDEMO_MODE
   includes:
+    - src/toast.h
     - src/display_utils.h
     - src/context_strip.h
     - src/room_entities.h

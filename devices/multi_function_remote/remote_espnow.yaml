@@ -142,6 +142,7 @@ esphome:
     - src/quick_action_entities.h
     - src/remote_core.h
     - src/wake_utils.h
+    - src/toast.h
     - src/display_utils.h
     - src/context_strip.h
     - src/room_entities.h
@@ -176,6 +177,7 @@ esphome:
                   if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
                   if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
                   RoomFilter::current() = id(room_filter);
+                  Toast::setFonts(id(font_base), id(font_small));
                   RemoteCore::resetIdleTimer(id(last_active));
                   id(is_booting) = true;
                   // The display's own `contrast:` config below is a fixed
@@ -207,6 +209,15 @@ esphome:
               - lambda: |-
                   id(is_booting) = false;
                   id(updated_ui) = true;
+                  // Low-battery notice. MOCK: the reading is pinned to 9 % so the
+                  // toast shows on every boot; swap in id(battery_pct) once the
+                  // real reading is trusted here.
+                  const int battery_now = 9;
+                  if (battery_now >= 0 && battery_now < 10) {
+                    char msg[16];
+                    snprintf(msg, sizeof(msg), "BATTERY %d%%", battery_now);
+                    Toast::show(msg, "CHARGE SOON", 2000);
+                  }
 
 esp32:
   board: ${BOARD}
@@ -356,6 +367,8 @@ script:
   # dispatches to the active mode's update/draw on every interval tick
   - id: main_update
     then:
+      # Toast ran out or was dismissed: redraw the screen underneath
+      - lambda: 'if (Toast::expired()) id(updated_ui) = true;'
       - if:
           condition: { lambda: 'return !id(is_shutting_down);' }
           then:

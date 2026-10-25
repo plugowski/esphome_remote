@@ -1,6 +1,7 @@
 #pragma once
 #include "esphome/components/display/display_buffer.h"
 #include "esphome/components/font/font.h"
+#include "toast.h"
 
 // ── Safe index wrapping ───────────────────────────────────────────────────────
 // Every list in this project (modes, entities, quick actions) is generated from

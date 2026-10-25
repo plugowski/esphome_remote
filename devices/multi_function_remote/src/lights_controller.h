@@ -44,7 +44,7 @@
 // (list view: "ALL", there's no room filter yet; card view: the light's room,
 // none without one), clock and battery. See src/context_strip.h.
 //
-// List view layout (128x64, 4 visible rows of 10 px from y=10, bottom menu
+// List view layout (128x64, 4 visible rows of 10 px from y=11, bottom menu
 // at y=53; scrolls a whole page of 4 at a time so the dots match):
 //   x=4            name (font_small, CENTER_LEFT — vertically centred in row)
 //   x=after name   filled_circle r=2 (dimmable indicator) — placed 5 px after
@@ -83,6 +83,7 @@ public:
 
   static const int ROWS   = 4;   // list view: rows per page
   static const int ROW_H  = 10;  // list view: row height below the context strip
+  static const int LIST_Y = ContextStrip::CONTENT_Y + 1;  // rows 11..50: centred between strip and bar
   static const int NAME_Y = 9;   // card view: top of the name, under the strip
 
   // ── navigation ─────────────────────────────────────────────────────────────
@@ -226,7 +227,7 @@ public:
       const int  bri  = lightBrightness(li);
       const bool dim  = LIGHTS_LIST[li].dimmable;
 
-      const int y_top    = ContextStrip::CONTENT_Y + row * ROW_H;
+      const int y_top    = LIST_Y + row * ROW_H;
       const int y_center = y_top + 4;   // caps (7 px) on rows y_top+1..y_top+7
 
       Color fg = COLOR_ON;
@@ -280,7 +281,7 @@ public:
     }
 
     draw_bottom_menu(it, font_small, "\u25b2", nullptr, "\u25bc");
-    it->display();
+    Toast::present(it);
   }
 
   // Renders the card view — one light per screen. No-ops when updated_ui is false.
@@ -298,7 +299,7 @@ public:
       ContextStrip::draw(it, "LIGHTS", 0, 0, conn_status, "ALL");
       it->print(64, 31, font_base, COLOR_ON, display::TextAlign::CENTER, "NO LIGHTS");
       draw_bottom_menu(it, font_small, "", nullptr, "");
-      it->display();
+      Toast::present(it);
       return;
     }
 
@@ -356,7 +357,7 @@ public:
       draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
     }
 
-    it->display();
+    Toast::present(it);
   }
 
   // Public accessor for brightness — used by YAML lambda in lights_do_brightness
