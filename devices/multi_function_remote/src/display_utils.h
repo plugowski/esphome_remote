@@ -101,3 +101,28 @@ inline void draw_bottom_menu(
         it->print(105, 59, font, COLOR_ON, esphome::display::TextAlign::CENTER, right);
     }
 }
+
+// Two same-size soft buttons over the left / right round keys, for screens
+// that set themselves apart from the usual bottom bar (no separator, no
+// centre slot). Each is an inverted 40x11 badge on rows 53..63 with its
+// corner pixels cut, label in black; nullptr / "" leaves that side empty.
+inline void draw_soft_buttons(
+    esphome::display::Display *it,
+    esphome::font::Font *font,
+    const char *left,
+    const char *right
+) {
+    const int y = 53, w = 40, h = 11;
+    const int xs[2] = { 2, 128 - 2 - w };
+    const char *labels[2] = { left, right };
+    for (int i = 0; i < 2; i++) {
+        if (!labels[i] || !labels[i][0]) continue;
+        const int x = xs[i];
+        it->filled_rectangle(x, y, w, h, COLOR_ON);
+        it->draw_pixel_at(x,         y,         COLOR_OFF);
+        it->draw_pixel_at(x + w - 1, y,         COLOR_OFF);
+        it->draw_pixel_at(x,         y + h - 1, COLOR_OFF);
+        it->draw_pixel_at(x + w - 1, y + h - 1, COLOR_OFF);
+        it->print(x + w / 2, y + 5, font, COLOR_OFF, esphome::display::TextAlign::CENTER, labels[i]);
+    }
+}

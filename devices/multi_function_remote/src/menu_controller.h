@@ -24,8 +24,9 @@
 // y=46 (caps 41..50), bottom bar from y=53. The
 // quick-action view, scrolled with up/down or left/right, shows its position
 // as vertical dots at the right edge instead (ContextStrip::drawVerticalDots)
-// and a BACK | RUN bar with no centre slot: left round key / stop = back to
-// the carousel, right round key / OK = run, the middle key does nothing.
+// and BACK / RUN badge buttons (draw_soft_buttons) with no centre slot: left
+// round key / stop = back to the carousel, right round key / OK = run, the
+// middle key does nothing.
 //
 // YAML usage:
 //   MenuController::open(id(menu_index), id(app_mode), id(menu_active));
@@ -123,9 +124,10 @@ public:
       ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
       it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
       it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
-      // BACK / RUN on the round keys, no centre slot: set apart from the
-      // carousel and the mode screens, whose middle key is always the menu
-      draw_bottom_menu(it, font_small_f, "BACK", "", "RUN", false);
+      // BACK / RUN as badge buttons over the round keys, no bar or centre
+      // slot: set apart from the carousel and the mode screens, whose middle
+      // key is always the menu
+      draw_soft_buttons(it, font_small_f, "BACK", "RUN");
     }
 
     Toast::present(it);
