@@ -72,6 +72,33 @@ public:
     return x;
   }
 
+  // ── vertical paginator ────────────────────────────────────────────────────
+  // For lists navigated with up/down: the same dots as the strip's, stacked at
+  // the right edge and centred on the content area (rows 10..52). Current item
+  // is a 5x5 block (x=123..127), others 3x2 (x=124..126), 2 px apart. When
+  // they don't fit, a 1 px track with a 5 px wide thumb at x=125 instead.
+  template<class D>
+  static void drawVerticalDots(D* it, int pos, int count) {
+    if (count <= 1) return;
+    const int cur   = wrap_index(pos, count);
+    const int top   = CONTENT_Y, bottom = 52;
+    const int total = (count - 1) * 4 + 5;
+    if (total <= bottom - top + 1) {
+      int y = (top + bottom + 1) / 2 - total / 2;
+      for (int i = 0; i < count; i++) {
+        if (i == cur) it->filled_rectangle(123, y, 5, 5, COLOR_ON);
+        else          it->filled_rectangle(124, y, 3, 2, COLOR_ON);
+        y += ((i == cur) ? 5 : 2) + 2;
+      }
+    } else {
+      const int span  = bottom - top + 1;
+      const int thumb = (span / count < 3) ? 3 : span / count;
+      const int y     = top + (span - thumb) * cur / (count - 1);
+      it->filled_rectangle(125, top, 1, span, COLOR_ON);
+      it->filled_rectangle(123, y, 5, thumb, COLOR_ON);
+    }
+  }
+
   // ── strip ─────────────────────────────────────────────────────────────────
 
   template<class D>
