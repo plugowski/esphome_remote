@@ -12,7 +12,7 @@
 //   rows 0..8 — screen content starts at ContextStrip::CONTENT_Y (10)
 //
 //   x=0..        inverted chip with the location label ("MENU", "LIGHTS", ...)
-//   after chip   position dots: one per page, the current one wider. When they
+//   after chip   position dots: one per page, the current one a 5x5 block. When they
 //                don't fit before the clock, falls back to "3/12" text.
 //   x=..114      clock (HH:MM) right-aligned; replaced by NO WIFI / NO HA /
 //                NO HUB while conn_status != 0. Hidden until time is valid
@@ -100,9 +100,10 @@ public:
     const int dots_w = (count - 1) * 4 + 5;  // 2 px dots + 2 px gaps, current 5 px
     if (x + dots_w <= limit) {
       for (int i = 0; i < count; i++) {
-        const int w = (i == cur) ? 5 : 2;
-        it->filled_rectangle(x, 3, w, 3, COLOR_ON);
-        x += w + 2;
+        // current page: 5x5 (rows 2..6, the text height); others 2x3 (rows 3..5)
+        if (i == cur) it->filled_rectangle(x, 2, 5, 5, COLOR_ON);
+        else          it->filled_rectangle(x, 3, 2, 3, COLOR_ON);
+        x += ((i == cur) ? 5 : 2) + 2;
       }
     } else {
       char buf[8];
