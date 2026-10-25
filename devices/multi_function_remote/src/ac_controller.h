@@ -223,7 +223,7 @@ public:
   //   x=64         40 px temperature centred at (64, 30) → digits rows 15..43
   //   x=85         "C" in font_base, top-left (85, 12) → caps start on row 15
   //   x=108..127   fan indicator (below)
-  //   y=53..63     MODE | ☰ | FAN
+  //   y=53..63     MODE | ••• | FAN
   static constexpr int HERO_CY = 29;
 
   // Fan speed on the right of the hero row. Ordered speeds are stacked bars;

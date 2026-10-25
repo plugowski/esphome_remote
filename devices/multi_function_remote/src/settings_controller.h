@@ -29,7 +29,7 @@ static const int SETTING_MAX           = 8;   // total rows that exist; not all 
 //   y=13-25  │ visible slot 0                   │  selectable
 //   y=26-38  │ visible slot 1                   │  selectable
 //   y=39-51  │ visible slot 2                   │  selectable
-//   y=53-63  │ ▲    │    ☰    │    ▼            │  bottom bar
+//   y=53-63  │ ▲    │   •••   │    ▼            │  bottom bar
 //
 // Up to 8 settings rows scroll through 3 visible slots; which rows actually
 // appear depends on battery_enabled / light_sleep / quiet_hours_on_device
