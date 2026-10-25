@@ -24,7 +24,7 @@
 // YAML usage:
 //   Toast::setFonts(id(font_base), id(font_small));          // on boot
 //   Toast::show("BATTERY 9%", "CHARGE SOON", 2000);          // then:
-//   Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK, 76);  // narrower box
+//   Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK_INLINE, 112, 30);
 //   id(updated_ui) = true;                                   // draw it now
 //   if (Toast::expired()) id(updated_ui) = true;             // each tick: redraw
 //                                                            // once it's gone
@@ -40,15 +40,18 @@ public:
     st().body_font  = body;
   }
 
-  // width: box width in px (centred); the default fits two lines of text,
-  // a short one-line confirmation like SENT reads better narrower (~76).
+  // width / height: box size in px (centred). height 0 = fit the text (30 with
+  // a second line, 22 without); 30 gives a one-line toast the same box as a
+  // two-line one.
   static void show(const char* title, const char* body = nullptr,
-                   uint32_t duration_ms = 2000, Icon icon = ICON_NONE, int width = 112) {
+                   uint32_t duration_ms = 2000, Icon icon = ICON_NONE, int width = 112,
+                   int height = 0) {
     State& s = st();
     copy(s.title, title);
     copy(s.body, body);
     s.icon  = icon;
-    s.width = (width < 48) ? 48 : (width > 120) ? 120 : width;
+    s.width  = (width < 48) ? 48 : (width > 120) ? 120 : width;
+    s.height = (height < 0) ? 0 : (height > 40) ? 40 : height;
     s.until = esphome::millis() + duration_ms;
     if (s.until == 0) s.until = 1;  // 0 means "none"
     s.shown = true;
@@ -76,7 +79,12 @@ public:
   static void present(D* it) {
     if (active()) draw(it);
     it->display();
+    frames()++;
   }
+
+  // Frames sent so far, by any screen - lets a screen tell whether another
+  // one was shown since its own last frame (Settings ABOUT replays its intro).
+  static uint32_t& frames() { static uint32_t n = 0; return n; }
 
 private:
   struct State {
@@ -84,6 +92,7 @@ private:
     char     body[24];
     Icon     icon;
     int      width;
+    int      height;  // 0 = fit the text
     uint32_t until;   // millis() deadline, 0 = no toast
     bool     shown;   // set until expired() has reported the end
     esphome::font::Font* title_font;
@@ -103,7 +112,8 @@ private:
     State& s = st();
     if (!s.title_font || !s.body_font) return;
     const bool has_body = s.body[0] != '\0';
-    const int  w = s.width ? s.width : 112, h = has_body ? 30 : 22;
+    const int  w = s.width ? s.width : 112;
+    const int  h = s.height ? s.height : (has_body ? 30 : 22);
     const int  x0 = (128 - w) / 2, y0 = 31 - h / 2;
 
     // clear margin, white box, black inner frame

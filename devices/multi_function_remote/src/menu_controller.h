@@ -46,12 +46,12 @@ public:
   static const int ICON_Y = 23;  // centre of the 32 px icon: rows 11..36, 2 px under the strip
   static const int NAME_Y = 45;  // centre of the font_base name: caps 40..49, 3 px over the buttons
 
-  // Quick-action view: 32 px icon centred at (20, 31), name left-aligned at
-  // x=40 and vertically centred on the icon, in the space up to the vertical
-  // dots (x=120).
-  static const int ACTION_ICON_X = 20;
+  // Quick-action view: 26 px icon centred at (18, 31) and the name left-aligned
+  // at x=36, vertically centred on it - the lights / covers / automations card
+  // layout - in the space up to the vertical dots (x=120).
+  static const int ACTION_ICON_X = 18;
   static const int ACTION_CY     = 31;
-  static const int ACTION_NAME_X = 40;
+  static const int ACTION_NAME_X = 36;
   static const int ACTION_NAME_R = 120;
 
   static void open(int& menu_index, int app_mode, bool& menu_active) {

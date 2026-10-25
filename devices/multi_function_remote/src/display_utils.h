@@ -160,15 +160,19 @@ inline void draw_soft_buttons(
 // A name printed beside an icon (quick-action card, lights card): left-aligned
 // at x and vertically centred on cy, in the space up to `right`. One line in
 // font_big when it fits, else two lines split at the first space (centred on
-// cy-7 / cy+8), else one line in font_small.
+// cy-7 / cy+8), else one line in font_small. centered=true centres each line
+// horizontally between x and right instead (automation card).
 template<class D, class F>
 inline void print_name_beside(D* it, F* font_big, F* font_small, const char* name,
-                              int x, int cy, int right) {
+                              int x, int cy, int right, bool centered = false) {
     using esphome::display::TextAlign;
+    const int avail = right - x;
+    const TextAlign align = centered ? TextAlign::CENTER : TextAlign::CENTER_LEFT;
+    const int px = centered ? (x + right) / 2 : x;   // where each line is anchored
     int bx, by, bw, bh;
-    it->get_text_bounds(x, cy, name, font_big, TextAlign::CENTER_LEFT, &bx, &by, &bw, &bh);
-    if (bw <= right - x) {
-        it->print(x, cy, font_big, COLOR_ON, TextAlign::CENTER_LEFT, name);
+    it->get_text_bounds(px, cy, name, font_big, align, &bx, &by, &bw, &bh);
+    if (bw <= avail) {
+        it->print(px, cy, font_big, COLOR_ON, align, name);
         return;
     }
     const char* space = strchr(name, ' ');
@@ -178,11 +182,11 @@ inline void print_name_beside(D* it, F* font_big, F* font_small, const char* nam
         const size_t n = len < sizeof(first) - 1 ? len : sizeof(first) - 1;
         memcpy(first, name, n);
         first[n] = '\0';
-        it->print(x, cy - 7, font_big, COLOR_ON, TextAlign::CENTER_LEFT, first);
-        it->print(x, cy + 8, font_big, COLOR_ON, TextAlign::CENTER_LEFT, space + 1);
+        it->print(px, cy - 7, font_big, COLOR_ON, align, first);
+        it->print(px, cy + 8, font_big, COLOR_ON, align, space + 1);
         return;
     }
-    it->print(x, cy, font_small, COLOR_ON, TextAlign::CENTER_LEFT, name);
+    it->print(px, cy, font_small, COLOR_ON, align, name);
 }
 
 // Slim vertical slider on the right edge of the lights and covers cards:
