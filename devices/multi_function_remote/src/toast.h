@@ -24,6 +24,7 @@
 // YAML usage:
 //   Toast::setFonts(id(font_base), id(font_small));          // on boot
 //   Toast::show("BATTERY 9%", "CHARGE SOON", 2000);          // then:
+//   Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK, 76);  // narrower box
 //   id(updated_ui) = true;                                   // draw it now
 //   if (Toast::expired()) id(updated_ui) = true;             // each tick: redraw
 //                                                            // once it's gone
@@ -37,12 +38,15 @@ public:
     st().body_font  = body;
   }
 
+  // width: box width in px (centred); the default fits two lines of text,
+  // a short one-line confirmation like SENT reads better narrower (~76).
   static void show(const char* title, const char* body = nullptr,
-                   uint32_t duration_ms = 2000, Icon icon = ICON_NONE) {
+                   uint32_t duration_ms = 2000, Icon icon = ICON_NONE, int width = 112) {
     State& s = st();
     copy(s.title, title);
     copy(s.body, body);
     s.icon  = icon;
+    s.width = (width < 48) ? 48 : (width > 120) ? 120 : width;
     s.until = esphome::millis() + duration_ms;
     if (s.until == 0) s.until = 1;  // 0 means "none"
     s.shown = true;
@@ -77,6 +81,7 @@ private:
     char     title[24];
     char     body[24];
     Icon     icon;
+    int      width;
     uint32_t until;   // millis() deadline, 0 = no toast
     bool     shown;   // set until expired() has reported the end
     esphome::font::Font* title_font;
@@ -96,7 +101,7 @@ private:
     State& s = st();
     if (!s.title_font || !s.body_font) return;
     const bool has_body = s.body[0] != '\0';
-    const int  w = 112, h = has_body ? 30 : 22;
+    const int  w = s.width ? s.width : 112, h = has_body ? 30 : 22;
     const int  x0 = (128 - w) / 2, y0 = 31 - h / 2;
 
     // clear margin, white box, black inner frame
