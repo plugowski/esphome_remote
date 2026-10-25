@@ -5,7 +5,8 @@
 #    0  power off  (shared with deep-sleep wake pin)
 #
 # Circle pad - menu/navigation, mostly unchanged mode-to-mode:
-#    5  MENU        menu: open / confirm            (also wakes a blanked screen)
+#    5  MENU        short: menu open / confirm      (also wakes a blanked screen)
+#                   long (0.8 s): room picker (src/room_filter.h)
 #   14  SELECT      AC: cycle entity | Lights: next | Covers: next | Autos: next
 #   26  TOGGLE      AC: power on/off | Lights: toggle | Covers: open<->close | Autos: trigger
 #   22  MODE / <<   menu: prev | AC: cycle HVAC mode | Lights: prev | Covers: close
@@ -63,6 +64,9 @@ binary_sensor:
               lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
             then:
               - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_down ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_right ]
               - if:
@@ -96,6 +100,9 @@ binary_sensor:
                   condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
                   then: [ script.execute: menu_quick_trigger ]
               - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_select ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_power_toggle ]
               - if:
@@ -116,26 +123,46 @@ binary_sensor:
     name: "Button Menu"
     internal: true
     filters: [ invert:, delayed_on: 30ms ]
-    on_press:
-      then:
-        - if:
-            condition:
-              lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
-            then:
-              - if:
-                  condition: { lambda: 'return !id(menu_active);' }
-                  then: [ script.execute: menu_open ]
-                  else:
-                    - if:
-                        # Quick-action view showing: just drop back to the
-                        # carousel (same screen the menu was opened on)
-                        # instead of confirming whatever mode the carousel
-                        # happens to be scrolled to - v1 has no separate
-                        # back button here like v2's OK, so this one button
-                        # has to tell the two states apart itself.
-                        condition: { lambda: 'return id(menu_quick_index) >= 0;' }
-                        then: [ script.execute: menu_back_to_carousel ]
-                        else: [ script.execute: menu_confirm ]
+    on_multi_click:
+      # long press (0.8 s) → open / close the room picker (src/room_filter.h)
+      - timing:
+          - ON for at least 800ms
+        then:
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              then:
+                - if:
+                    condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                    then: [ script.execute: room_picker_cancel ]
+                    else: [ script.execute: room_picker_open ]
+      # short press → menu as before; OK while the room picker is open
+      - timing:
+          - ON for at most 700ms
+          - OFF for at least 10ms
+        then:
+          - if:
+              condition:
+                lambda: 'return !RemoteCore::onUserActivity(id(oled_display), id(last_active), id(is_light_sleeping), id(updated_ui));'
+              then:
+                - if:
+                    condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
+                    then: [ script.execute: room_picker_select ]
+                    else:
+                      - if:
+                          condition: { lambda: 'return !id(menu_active);' }
+                          then: [ script.execute: menu_open ]
+                          else:
+                            - if:
+                                # Quick-action view showing: just drop back to the
+                                # carousel (same screen the menu was opened on)
+                                # instead of confirming whatever mode the carousel
+                                # happens to be scrolled to - v1 has no separate
+                                # back button here like v2's OK, so this one button
+                                # has to tell the two states apart itself.
+                                condition: { lambda: 'return id(menu_quick_index) >= 0;' }
+                                then: [ script.execute: menu_back_to_carousel ]
+                                else: [ script.execute: menu_confirm ]
 
   # ── FAN / >> — menu next / AC fan / Covers open / Autos R ────────────────
   - platform: gpio
@@ -154,6 +181,9 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return id(menu_active);' }
                   then: [ script.execute: menu_next ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_down ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_fan ]
@@ -188,6 +218,9 @@ binary_sensor:
                   condition: { lambda: 'return id(menu_active);' }
                   then: [ script.execute: menu_prev ]
               - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_up ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_mode ]
               - if:
@@ -220,6 +253,9 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
                   then: [ script.execute: menu_quick_up ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_up ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_up ]
@@ -254,6 +290,9 @@ binary_sensor:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
                   then: [ script.execute: menu_quick_up ]
               - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_up ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_up ]
               - if:
@@ -287,6 +326,9 @@ binary_sensor:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
                   then: [ script.execute: menu_quick_down ]
               - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_down ]
+              - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_down ]
               - if:
@@ -319,6 +361,9 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return id(menu_active) && QUICK_ACTION_COUNT > 0;' }
                   then: [ script.execute: menu_quick_down ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
+                  then: [ script.execute: room_picker_down ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AC;' }
                   then: [ script.execute: ac_btn_temp_down ]

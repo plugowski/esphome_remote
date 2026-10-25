@@ -4,6 +4,7 @@
 #include <cmath>
 #include "ac_entities.h"
 #include "room_entities.h"
+#include "room_filter.h"
 #include "display_utils.h"
 #include "remote_core.h"
 #include "context_strip.h"
@@ -42,12 +43,13 @@ public:
 
   // ── button actions ─────────────────────────────────────────────────────────
 
+  // Both skip units outside the room filter (see room_filter.h).
   static void prevUnit(int& idx) {
-    idx = wrap_index(idx, AC_LIST_COUNT, -1);
+    idx = RoomFilter::step(idx, AC_LIST_COUNT, -1, acRoom);
   }
 
   static void nextUnit(int& idx) {
-    idx = wrap_index(idx, AC_LIST_COUNT, +1);
+    idx = RoomFilter::step(idx, AC_LIST_COUNT, +1, acRoom);
   }
 
   // Reverse-lookup: find the index for a given entity_id string (fallback 0)
@@ -289,10 +291,12 @@ public:
 
     it->clear();
 
-    // ── context strip: "CLIMATE" chip, one dot per unit; the badge names the
-    //    unit's room, or the unit itself when it has no room ──────────────────
+    // ── context strip: "CLIMATE" chip, one dot per unit in the room filter;
+    //    the badge names the unit's room, or the unit itself without one ─────
     const char* room = roomName(AC_LIST[ac_idx].room);
-    ContextStrip::draw(it, "CLIMATE", ac_idx, AC_LIST_COUNT, conn_status,
+    ContextStrip::draw(it, "CLIMATE",
+                       RoomFilter::position(ac_idx, AC_LIST_COUNT, acRoom),
+                       RoomFilter::visibleCount(AC_LIST_COUNT, acRoom), conn_status,
                        room ? room : AC_LIST[ac_idx].name);
 
     // ── mode-specific hero row ────────────────────────────────────────────────
