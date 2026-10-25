@@ -30,6 +30,7 @@ espnow:
             bool done = false, ac_changed = false;
             uint8_t t = EspNowRemote::handle(data, size, ${NETWORK_KEY}UL, id(updated_ui), done, ac_changed);
             if (t == 0) return;
+            SystemStats::setLink(info.rx_ctrl->rssi);   // Settings > SYSTEM link bar
             if (!id(hub_known)) {
               memcpy(id(hub_mac).data(), info.src_addr, 6);
               id(hub_known) = true;

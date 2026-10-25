@@ -74,14 +74,15 @@ public:
 
   // ── vertical paginator ────────────────────────────────────────────────────
   // For lists navigated with up/down: the same dots as the strip's, stacked at
-  // the right edge and centred on the content area (rows 10..52). Current item
-  // is a 5x5 block (x=123..127), others 3x2 (x=124..126), 2 px apart. When
-  // they don't fit, a 1 px track with a 5 px wide thumb at x=125 instead.
+  // the right edge and centred on rows 10..50 - 2 px clear of the soft buttons
+  // (row 53), level with the bottom of draw_vslider. Current item is a 5x5
+  // block (x=123..127), others 3x2 (x=124..126), 2 px apart. When they don't
+  // fit (more than 10), a 1 px track with a 5 px wide thumb at x=125 instead.
   template<class D>
   static void drawVerticalDots(D* it, int pos, int count) {
     if (count <= 1) return;
     const int cur   = wrap_index(pos, count);
-    const int top   = CONTENT_Y, bottom = 52;
+    const int top   = CONTENT_Y, bottom = 50;  // 2 px clear of the buttons (row 53)
     const int total = (count - 1) * 4 + 5;
     if (total <= bottom - top + 1) {
       int y = (top + bottom + 1) / 2 - total / 2;
@@ -117,14 +118,22 @@ public:
 
   template<class D>
   static void draw(D* it, const char* label, int pos, int count, int conn_status,
-                   const char* context = nullptr) {
+                   const char* context = nullptr, bool battery_pct = false) {
     // label chip
     int x = 0;
     if (label && label[0]) x = chip(it, 0, label) + 4;
 
-    // right side, from the edge inwards: battery, context badge, status or clock
+    // right side, from the edge inwards: battery, context badge, link status
     drawBattery(it, 117, 1);
     int right_edge = 114;
+    // battery_pct: the level as "87%" left of the icon (once it's known)
+    if (battery_pct && batteryValue() >= 0) {
+      char pct[6];
+      snprintf(pct, sizeof(pct), "%d%%", batteryValue());
+      const int w = textWidth(pct);
+      text(it, right_edge - w, 2, pct, COLOR_ON);
+      right_edge -= w + 3;
+    }
     if (context && context[0]) {
       const int w = textWidth(context) + 4;
       chip(it, right_edge - w, context);

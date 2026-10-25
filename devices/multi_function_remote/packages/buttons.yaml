@@ -13,13 +13,16 @@
 #
 #   btn_*      │ menu  │ AC             │ Lights         │ Covers          │ Automations
 #   ───────────┼───────┼────────────────┼────────────────┼─────────────────┼─────────────────
-#   btn_left   │ prev  │ prev unit      │ list: bri – / card: prev  │ prev cover      │ L slot
-#   btn_right  │ next  │ next unit      │ list: bri + / card: next  │ next cover      │ R slot
+#   btn_left   │ prev  │ prev unit      │ list: bri – / card: prev  │ prev cover      │ prev
+#   btn_right  │ next  │ next unit      │ list: bri + / card: next  │ next cover      │ next
 #   btn_ok     │ confm │ cycle HVAC     │ list: toggle / card: ON   │ open ↔ close    │ trigger selected
 #   btn_up     │  —    │ temp +         │ list: prev  / card: bri + │ position +10 %  │ scroll up ▲
 #   btn_down   │  —    │ temp –         │ list: next  / card: bri – │ position –10 %  │ scroll down ▼
 #   btn_stop   │ cancl │ cycle fan      │ list: —     / card: OFF   │ stop            │  —
 #   btn_menu_open │ — │  —             │  —             │  —              │  —  (opens menu)
+#
+# Settings (one setting per screen, like the cards): left / right → previous /
+# next setting (as the round keys), up / down → change the value.
 #
 # While the room picker is open (app_mode == APP_ROOMS, long press on the
 # menu key): left / up → previous room, right / down → next room, OK →
@@ -53,11 +56,11 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_left ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
-          then: [ script.execute: automations_btn_menu_l ]
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
+          then: [ script.execute: automations_btn_prev ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
-          then: [ script.execute: settings_btn_left ]
+          then: [ script.execute: settings_btn_up ]      # previous setting
 
   # ── btn_right ─────────────────────────────────────────────────────────────
   # Menu: next  |  AC: next unit  |  Lights: brightness ↑
@@ -84,11 +87,11 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_right ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
-          then: [ script.execute: automations_btn_menu_r ]
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
+          then: [ script.execute: automations_btn_next ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
-          then: [ script.execute: settings_btn_right ]
+          then: [ script.execute: settings_btn_down ]    # next setting
 
   # ── btn_ok ────────────────────────────────────────────────────────────────
   # Menu / action view: back to carousel  |  Menu / carousel: confirm mode
@@ -118,7 +121,7 @@ script:
                 condition: { lambda: 'return id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                 then: [ script.execute: covers_btn_ok ]
             - if:
-                condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS;' }
+                condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                 then: [ script.execute: automations_btn_trigger ]
 
   # ── btn_up ────────────────────────────────────────────────────────────────
@@ -144,11 +147,11 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_pos_up ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
           then: [ script.execute: automations_btn_prev ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
-          then: [ script.execute: settings_btn_up ]
+          then: [ script.execute: settings_btn_right ]   # value +
 
   # ── btn_down ──────────────────────────────────────────────────────────────
   # Menu: scroll quick actions ▼  |  AC: temp –  |  Lights: scroll down ▼
@@ -172,11 +175,11 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
           then: [ script.execute: covers_btn_pos_down ]
       - if:
-          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
           then: [ script.execute: automations_btn_next ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
-          then: [ script.execute: settings_btn_down ]
+          then: [ script.execute: settings_btn_left ]    # value -
 
   # ── btn_stop ──────────────────────────────────────────────────────────────
   # Menu / action view: back to carousel  |  Menu / carousel: cancel
