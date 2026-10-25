@@ -329,9 +329,11 @@ public:
 
     }
 
-    // ── button bar — FAN only where the fan speed means something ────────────
+    // ── button bar — FAN only where the fan speed means something; ON while
+    //    the unit is off (the right key turns it on, see ac_btn_fan) ─────────
     bool show_fan = isSetpointMode(mode) || mode == "fan_only";
-    draw_bottom_menu(it, font_small, "MODE", nullptr, show_fan ? "FAN" : "");
+    draw_bottom_menu(it, font_small, "MODE", nullptr,
+                     mode == "off" ? "ON" : show_fan ? "FAN" : "");
 
     it->display();
   }
