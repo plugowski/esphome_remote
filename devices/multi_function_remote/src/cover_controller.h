@@ -17,14 +17,18 @@
 // that switching covers immediately shows the last received values instead of
 // reverting to Unknown while waiting for HA to re-push data.
 //
-// Layout (same frame as the climate screen):
+// Layout (everything below the strip centred on row CY = 31):
 //   rows 0..8    context strip: "COVERS" chip, one dot per cover in the room
 //                filter, the cover's room (its name without one) in the badge
-//   hero row     centred on HERO_CY = 29: 24 px curtain icon top-left at
-//                (5, 14); position in font_big centred at (64, 30) with "%"
-//                in font_base after it; 18 px state icon centred at (116, 29)
-//                (open / closed / opening / closing / stopped)
-//   y=53..63     CLOSE | ••• | OPEN
+//   x=5..28      24 px curtain icon, vertically centred
+//   x≈30..116    position in font_bigger with a small raised "%" (font_base),
+//                and the state word under it (OPEN / CLOSED / OPENING /
+//                CLOSING / STOPPED), centred together on x=73; "UNKNOWN"
+//                when there's no data yet
+//   x=119..125   slim 7x39 slider, rows 12..50, filled from the bottom with
+//                the position; while moving, an 11x2 tick marks the target
+//   y=53..63     CLOSE | ••• | OPEN; while moving, the key in that
+//                direction reads STOP (covers_btn_open / _close stop it)
 // Prev / next skip covers outside the room filter; a room with no cover in
 // it shows the empty-room screen (room_filter.h).
 //
@@ -41,14 +45,15 @@
 //   CoverController::isClosed(id(selected_cover_index))      → bool
 //   CoverController::draw(id(oled_display),
 //                         id(ac_symbols), id(menu_icon_small),
-//                         id(font_big), id(font_base), id(font_small),
+//                         id(font_bigger), id(font_base), id(font_small),
 //                         id(selected_cover_index), id(selected_cover_name),
 //                         id(updated_ui));
 
 class CoverController {
 public:
 
-  static const int HERO_CY = 29;  // centre row of the hero, below the context strip
+  static const int CY      = 31;  // centre row of everything below the strip
+  static const int VALUE_X = 73;  // centre between the icon and the slider
 
   // ── navigation ─────────────────────────────────────────────────────────────
 
@@ -68,6 +73,7 @@ public:
     std::string& s = st(sensor_idx);
     if (s == ha_state) return;
     s = ha_state;
+    if (s != "opening" && s != "closing") tgt(sensor_idx) = -1;
     if (ha_state == "unavailable" || ha_state == "unknown") pos(sensor_idx) = -1;
     updated_ui = true;
   }
@@ -90,6 +96,7 @@ public:
     if (newp > 100) newp = 100;
     p          = newp;
     st(idx)    = (p == 0) ? "closed" : "open";
+    tgt(idx)   = p;
     updated_ui = true;
   }
 
@@ -99,8 +106,17 @@ public:
     if (newp < 0) newp = 0;
     p          = newp;
     st(idx)    = (p == 0) ? "closed" : "open";
+    tgt(idx)   = p;
     updated_ui = true;
   }
+
+  // ── movement target (for the slider tick while it moves) ──────────────────
+  // Set when this remote commands a cover (open 100, close 0, a position);
+  // cleared once the cover reports a state that isn't moving.
+  static void setTarget(int idx, int target) { tgt(idx) = target; }
+
+  static bool isOpening(int idx) { return st(idx) == "opening"; }
+  static bool isClosing(int idx) { return st(idx) == "closing"; }
 
   // ── helpers for YAML lambdas ───────────────────────────────────────────────
 
@@ -116,12 +132,13 @@ public:
 
   template<class D, class F>
   static void draw(D* it, F* symbols, F* state_icons,
-                   F* font_big, F* font_base, F* font_small,
+                   F* font_bigger, F* font_base, F* font_small,
                    int selected_idx,
                    bool& updated_ui, int conn_status)
   {
     if (!updated_ui) return;
     updated_ui = false;
+    (void) state_icons;  // the state is a word now; kept so the YAML call is unchanged
 
     // Nothing in the chosen room: empty state (the keys are gated off too)
     if (COVER_LIST_COUNT > 0 && !RoomFilter::any(COVER_LIST_COUNT, coverRoom)) {
@@ -143,22 +160,38 @@ public:
                        RoomFilter::visibleCount(COVER_LIST_COUNT, coverRoom), conn_status,
                        room ? room : COVER_LIST[ci].name);
 
-    // ── hero row ──────────────────────────────────────────────────────────────
-    it->print(5, HERO_CY - 15, symbols, "\uec12");   // curtain
+    // ── curtain icon, vertically centred (glyph rows 5..24 of the 24 px font)
+    it->print(5, CY - 15, symbols, "\uec12");
 
-    if (position < 0 || state == "unknown" || state == "unavailable" || state.empty()) {
-      it->print(72, HERO_CY, font_base, COLOR_ON, display::TextAlign::CENTER, "UNKNOWN");
+    const bool known = !(position < 0 || state == "unknown" || state == "unavailable" || state.empty());
+    if (!known) {
+      it->print(VALUE_X, CY, font_base, COLOR_ON, display::TextAlign::CENTER, "UNKNOWN");
     } else {
-      char pos_buf[5];
-      snprintf(pos_buf, sizeof(pos_buf), "%d", position);
-      int bx, by, bw, bh;
-      it->get_text_bounds(64, HERO_CY + 1, pos_buf, font_big, display::TextAlign::CENTER, &bx, &by, &bw, &bh);
-      it->print(64, HERO_CY + 1, font_big, COLOR_ON, display::TextAlign::CENTER, pos_buf);
-      it->print(bx + bw + 1, HERO_CY - 17, font_base, COLOR_ON, "%");
-      it->print(116, HERO_CY, state_icons, COLOR_ON, display::TextAlign::CENTER, stateIcon(state));
+      // position + small raised %, centred together; state word under it
+      char num[5];
+      snprintf(num, sizeof(num), "%d", position);
+      int nx, ny, nw, nh, px, py, pw, ph;
+      it->get_text_bounds(0, 0, num, font_bigger, display::TextAlign::TOP_LEFT, &nx, &ny, &nw, &nh);
+      it->get_text_bounds(0, 0, "%", font_base, display::TextAlign::TOP_LEFT, &px, &py, &pw, &ph);
+      const int x0 = VALUE_X - (nw + 1 + pw) / 2;
+      it->print(x0, CY - 5, font_bigger, COLOR_ON, display::TextAlign::CENTER_LEFT, num);
+      it->print(x0 + nw + 1, CY - 18, font_base, COLOR_ON, "%");
+      it->print(VALUE_X, CY + 12, font_small, COLOR_ON, display::TextAlign::CENTER, stateWord(state));
+
+      // slim slider: position, plus the target tick while moving
+      const int top = 12, bottom = 50, h = bottom - top + 1;
+      const int fill = (h - 4) * position / 100;
+      it->rectangle(119, top, 7, h);
+      if (fill > 0) it->filled_rectangle(121, bottom - 1 - fill, 3, fill);
+      if (state == "opening" || state == "closing") {
+        int t = tgt(ci);
+        if (t < 0) t = (state == "opening") ? 100 : 0;
+        it->filled_rectangle(117, bottom - 2 - (h - 4) * t / 100, 11, 2);
+      }
     }
 
-    draw_bottom_menu(it, font_small, "CLOSE", nullptr, "OPEN");
+    draw_bottom_menu(it, font_small, state == "closing" ? "STOP" : "CLOSE", nullptr,
+                     state == "opening" ? "STOP" : "OPEN");
 
     Toast::present(it);
   }
@@ -185,11 +218,22 @@ private:
     return positions[wrap_index(idx, COVER_LIST_CAPACITY)];
   }
 
-  static const char* stateIcon(const std::string& state) {
-    if (state == "open")    return "";  // \uef4a (opened)
-    if (state == "closed")  return "";  // \ue5cd (closed)
-    if (state == "opening") return "";  // \uf8ac (opening)
-    if (state == "closing") return "";  // \uf8ab (closing)
-    return                         "";  // \ue034 pause (stopped / fallback)
+  static const char* stateWord(const std::string& state) {
+    if (state == "open")    return "OPEN";
+    if (state == "closed")  return "CLOSED";
+    if (state == "opening") return "OPENING";
+    if (state == "closing") return "CLOSING";
+    return                         "STOPPED";
+  }
+
+  // Target of the current movement as set by this remote, or -1.
+  static int& tgt(int idx) {
+    static bool init = false;
+    static int targets[COVER_LIST_CAPACITY];
+    if (!init) {
+      for (int i = 0; i < COVER_LIST_CAPACITY; i++) targets[i] = -1;
+      init = true;
+    }
+    return targets[wrap_index(idx, COVER_LIST_CAPACITY)];
   }
 };

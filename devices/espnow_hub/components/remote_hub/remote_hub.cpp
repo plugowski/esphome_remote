@@ -26,6 +26,7 @@ static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stand
 // Brightness presses are applied this long after the last one (shorter than SETTLE_MS: a
 // light has no mode / fan sequencing to wait for, and a dimmer should feel quick).
 static const uint32_t LIGHT_SETTLE_MS = 500;
+static const uint32_t EMU_STEP_MS = 250;  // cover emulator: one 5 % step this often
 // Resend the screenshot request on the next packet if no image arrived by then.
 static const uint32_t SCREENSHOT_RETRY_MS = 5000;
 
@@ -35,6 +36,16 @@ using state_cb_t = std::function<void(const std::string &)>;
 // ── lifecycle ─────────────────────────────────────────────────────────────────
 
 void RemoteHub::setup() {
+  if (this->cover_emu_) {
+    // start the emulated covers at different positions so every state is easy to reach
+    static const uint8_t START[3] = {50, 0, 100};
+    for (int i = 0; i < COVER_LIST_COUNT; i++) {
+      this->covers_[i].position = START[i % 3];
+      this->covers_[i].state = this->covers_[i].position == 0 ? "closed" : "open";
+    }
+    ESP_LOGW(TAG, "Cover emulator ON: %d covers simulated on the hub, not taken from Home Assistant",
+             COVER_LIST_COUNT);
+  }
   this->subscribe_all_();
   ESP_LOGI(TAG, "Subscribed to %d AC, %d lights, %d covers; %d automations, %d quick actions",
            AC_LIST_COUNT, LIGHTS_LIST_COUNT, COVER_LIST_COUNT, AUTOMATION_LIST_COUNT, QUICK_ACTION_COUNT);
@@ -62,6 +73,7 @@ void RemoteHub::loop() {
     if (g.exp_temp && older_than(g.exp_temp_at, EXPECT_TTL_MS)) { g.exp_temp = false; expired = true; }
     if (expired) this->mark_dirty_(DIRTY_AC);
   }
+  if (this->cover_emu_) this->step_emulated_covers_();
   for (int i = 0; i < LIGHTS_LIST_COUNT; i++) {
     LightGuard &g = this->light_guard_[i];
     if (g.want && (int32_t) (millis() - g.due_at) >= 0) this->apply_light_brightness_(i);
@@ -92,6 +104,46 @@ void RemoteHub::apply_light_brightness_(int i) {
   ESP_LOGI(TAG, "Light %d: brightness %u%%", i, g.want_v);
   this->call_homeassistant_service("light.turn_on", {{"entity_id", std::string(LIGHTS_LIST[i].entity_id)},
                                                      {"brightness_pct", std::to_string((int) g.want_v)}});
+}
+
+// ── cover emulator (testing aid) ─────────────────────────────────────────────
+
+void RemoteHub::emulate_cover_(int i, uint8_t action, int value) {
+  CoverState &c = this->covers_[i];
+  EmuCover &e = this->emu_[i];
+  const uint8_t cur = c.position == rnp::VALUE_UNKNOWN ? 0 : c.position;
+  if (action == rnp::COVER_STOP) {
+    e.moving = false;
+    c.state = cur == 0 ? "closed" : "open";
+  } else {
+    int t = action == rnp::COVER_OPEN ? 100 : action == rnp::COVER_CLOSE ? 0 : value;
+    if (t < 0) t = 0;
+    if (t > 100) t = 100;
+    e.target = static_cast<uint8_t>(t);
+    e.moving = e.target != cur;
+    e.last_step = millis();
+    if (e.moving) c.state = e.target > cur ? "opening" : "closing";
+  }
+  ESP_LOGI(TAG, "Emulated cover %d: %s at %u%% -> %u%%", i, c.state.c_str(), cur, e.target);
+  this->mark_dirty_(DIRTY_COVERS);
+}
+
+void RemoteHub::step_emulated_covers_() {
+  for (int i = 0; i < COVER_LIST_COUNT; i++) {
+    EmuCover &e = this->emu_[i];
+    if (!e.moving || !older_than(e.last_step, EMU_STEP_MS)) continue;
+    e.last_step = millis();
+    CoverState &c = this->covers_[i];
+    int p = c.position == rnp::VALUE_UNKNOWN ? 0 : c.position;
+    p += (e.target > p) ? 5 : -5;
+    if ((e.target > c.position && p >= e.target) || (e.target < c.position && p <= e.target)) p = e.target;
+    c.position = static_cast<uint8_t>(p);
+    if (c.position == e.target) {
+      e.moving = false;
+      c.state = c.position == 0 ? "closed" : "open";
+    }
+    this->mark_dirty_(DIRTY_COVERS);
+  }
 }
 
 void RemoteHub::dump_config() {
@@ -165,7 +217,7 @@ void RemoteHub::subscribe_all_() {
     }
   }
 
-  for (int i = 0; i < COVER_LIST_COUNT; i++) {
+  for (int i = 0; i < COVER_LIST_COUNT && !this->cover_emu_; i++) {
     std::string eid = COVER_LIST[i].entity_id;
     api->subscribe_home_assistant_state(eid, optional<std::string>{}, state_cb_t([this, i](const std::string &s) {
       if (this->covers_[i].state != s) { this->covers_[i].state = s; this->mark_dirty_(DIRTY_COVERS); }
@@ -543,6 +595,10 @@ void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {
 
     case rnp::DOM_COVERS: {
       if (idx >= COVER_LIST_COUNT) return;
+      if (this->cover_emu_) {
+        this->emulate_cover_(idx, action, value);
+        break;
+      }
       std::string eid = COVER_LIST[idx].entity_id;
       if (action == rnp::COVER_OPEN) {
         this->call_homeassistant_service("cover.open_cover", {{"entity_id", eid}});

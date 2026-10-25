@@ -29,6 +29,8 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   float get_setup_priority() const override { return setup_priority::AFTER_CONNECTION; }
 
   void set_network_key(uint32_t key) { this->key_ = key; }
+  /// Testing aid: simulate the covers locally instead of using Home Assistant (see emulate_cover_).
+  void set_cover_emulator(bool on) { this->cover_emu_ = on; }
   void set_battery_sensor(sensor::Sensor *s) { this->battery_sensor_ = s; }
   void set_battery_voltage_sensor(sensor::Sensor *s) { this->battery_voltage_sensor_ = s; }
   void set_last_remote_sensor(text_sensor::TextSensor *s) { this->last_remote_sensor_ = s; }
@@ -97,6 +99,8 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
 
   void apply_ac_(int i);
   void apply_light_brightness_(int i);
+  void emulate_cover_(int i, uint8_t action, int value);
+  void step_emulated_covers_();
   void confirm_ac_expected_(int i);
   std::string eff_ac_mode_(int i) const;
   std::string eff_ac_fan_(int i) const;
@@ -126,6 +130,16 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   uint8_t shot_mask_{0};     // bit n = chunk n received
   uint8_t shot_buf_[rnp::SCREENSHOT_CHUNKS * rnp::SCREENSHOT_CHUNK_SIZE]{};
   uint32_t key_{0};
+
+  // Cover emulator (cover_emulator: true): each cover moves 5 % every EMU_STEP_MS towards its
+  // target, reporting opening / closing on the way and open / closed when it gets there.
+  struct EmuCover {
+    uint8_t target{0};
+    bool moving{false};
+    uint32_t last_step{0};
+  };
+  bool cover_emu_{false};
+  EmuCover emu_[COVER_LIST_COUNT > 0 ? COVER_LIST_COUNT : 1];
   sensor::Sensor *battery_sensor_{nullptr};
   sensor::Sensor *battery_voltage_sensor_{nullptr};
   text_sensor::TextSensor *last_remote_sensor_{nullptr};
