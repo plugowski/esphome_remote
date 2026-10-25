@@ -12,16 +12,20 @@
 //   menu_quick_index >= 0   →  quick-action view (big icon + name, no side icons)
 //
 // Navigation:
-//   Left / Right  — carousel; resets quick_index to -1 (returns to carousel view)
+//   Left / Right  — carousel: prev / next mode | action view: prev / next action
 //   Up / Down     — enters / scrolls quick-action view
 //   OK            — carousel view: confirm mode | action view: trigger action
 //   Stop          — carousel view: cancel menu  | action view: back to carousel
+//   Round keys    — carousel view: prev / next  | action view: BACK / RUN
 //
 // Layout (both views): context strip on rows 0..8 ("MENU" chip with one dot
-// per item / "ACTIONS" chip; the room filter's room in the badge, if any), 32 px icon centred at y=24 (rows 12..37), name
-// in font_base centred at y=46 (caps 41..50), bottom bar from y=53. The
-// quick-action view, scrolled with up/down, shows its position as vertical
-// dots at the right edge instead (ContextStrip::drawVerticalDots).
+// per item / "ACTIONS" chip; the room filter's room in the badge, if any),
+// 32 px icon centred at y=24 (rows 12..37), name in font_base centred at
+// y=46 (caps 41..50), bottom bar from y=53. The
+// quick-action view, scrolled with up/down or left/right, shows its position
+// as vertical dots at the right edge instead (ContextStrip::drawVerticalDots)
+// and a BACK | RUN bar with no centre slot: left round key / stop = back to
+// the carousel, right round key / OK = run, the middle key does nothing.
 //
 // YAML usage:
 //   MenuController::open(id(menu_index), id(app_mode), id(menu_active));
@@ -89,7 +93,7 @@ public:
     ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
     it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
     it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
-    draw_bottom_menu(it, font_small_f, "", "", "");
+    draw_bottom_menu(it, font_small_f, "", "", "", false);
     Toast::present(it);
   }
 
@@ -119,7 +123,9 @@ public:
       ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
       it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
       it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
-      draw_bottom_menu(it, font_small_f, "", "", "");
+      // BACK / RUN on the round keys, no centre slot: set apart from the
+      // carousel and the mode screens, whose middle key is always the menu
+      draw_bottom_menu(it, font_small_f, "BACK", "", "RUN", false);
     }
 
     Toast::present(it);

@@ -38,6 +38,9 @@ script:
           condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
           then: [ script.execute: menu_prev ]
       - if:
+          condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
+          then: [ script.execute: menu_quick_up ]
+      - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
           then: [ script.execute: room_picker_up ]
       - if:
@@ -65,6 +68,9 @@ script:
       - if:
           condition: { lambda: 'return id(menu_active) && id(menu_quick_index) < 0;' }
           then: [ script.execute: menu_next ]
+      - if:
+          condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
+          then: [ script.execute: menu_quick_down ]
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
           then: [ script.execute: room_picker_down ]
