@@ -99,6 +99,20 @@ public:
     }
   }
 
+  // Inverted label in the 3x5 font with its four corner pixels cut, 9 rows
+  // tall from row y (the strip's chips use y=0). Returns its width.
+  template<class D>
+  static int chip(D* it, int x, const char* s, int y = 0) {
+    const int w = textWidth(s) + 4;
+    it->filled_rectangle(x, y, w, HEIGHT, COLOR_ON);
+    it->draw_pixel_at(x,         y,              COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, y,              COLOR_OFF);
+    it->draw_pixel_at(x,         y + HEIGHT - 1, COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, y + HEIGHT - 1, COLOR_OFF);
+    text(it, x + 2, y + 2, s, COLOR_OFF);
+    return w;
+  }
+
   // ── strip ─────────────────────────────────────────────────────────────────
 
   template<class D>
@@ -150,19 +164,6 @@ private:
 
   static int& clockValue()   { static int v = -1; return v; }
   static int& batteryValue() { static int v = -1; return v; }
-
-  // Inverted label with its four corner pixels cut. Returns its width.
-  template<class D>
-  static int chip(D* it, int x, const char* s) {
-    const int w = textWidth(s) + 4;
-    it->filled_rectangle(x, 0, w, HEIGHT, COLOR_ON);
-    it->draw_pixel_at(x,         0,          COLOR_OFF);
-    it->draw_pixel_at(x + w - 1, 0,          COLOR_OFF);
-    it->draw_pixel_at(x,         HEIGHT - 1, COLOR_OFF);
-    it->draw_pixel_at(x + w - 1, HEIGHT - 1, COLOR_OFF);
-    text(it, x + 2, 2, s, COLOR_OFF);
-    return w;
-  }
 
   template<class D>
   static void drawBattery(D* it, int x, int y) {

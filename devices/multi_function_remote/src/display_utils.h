@@ -184,3 +184,26 @@ inline void print_name_beside(D* it, F* font_big, F* font_small, const char* nam
     }
     it->print(x, cy, font_small, COLOR_ON, TextAlign::CENTER_LEFT, name);
 }
+
+// Slim vertical slider on the right edge of the lights and covers cards:
+// a 9x39 frame at x=117..125, rows 12..50, filled from the bottom (5 px wide)
+// up to `level` (0..100, or -1 for no fill). `tick` (0..100, or -1) draws a
+// 13x2 mark across it: a light's comeback level while off, a cover's target
+// while it moves. Values printed beside it go right-aligned at VSLIDER_TEXT_R.
+static const int VSLIDER_X = 117, VSLIDER_W = 9, VSLIDER_TOP = 12, VSLIDER_BOTTOM = 50;
+static const int VSLIDER_TEXT_R = VSLIDER_X - 3;
+
+inline void draw_vslider(esphome::display::Display *it, int level, int tick) {
+    const int h    = VSLIDER_BOTTOM - VSLIDER_TOP + 1;  // 39 rows
+    const int span = h - 4;                              // inner fill height
+    it->rectangle(VSLIDER_X, VSLIDER_TOP, VSLIDER_W, h, COLOR_ON);
+    if (level > 100) level = 100;
+    if (level > 0) {
+        const int fill = span * level / 100;
+        if (fill > 0) it->filled_rectangle(VSLIDER_X + 2, VSLIDER_BOTTOM - 1 - fill, VSLIDER_W - 4, fill, COLOR_ON);
+    }
+    if (tick >= 0) {
+        if (tick > 100) tick = 100;
+        it->filled_rectangle(VSLIDER_X - 2, VSLIDER_BOTTOM - 2 - span * tick / 100, VSLIDER_W + 4, 2, COLOR_ON);
+    }
+}

@@ -20,13 +20,15 @@
 // Layout (everything below the strip centred on row CY = 31):
 //   rows 0..8    context strip: "COVERS" chip, one dot per cover in the room
 //                filter, the cover's room (its name without one) in the badge
-//   x=5..28      24 px curtain icon, vertically centred
-//   x≈30..116    position in font_bigger with a small raised "%" (font_base),
-//                and the state word under it (OPEN / CLOSED / OPENING /
-//                CLOSING / STOPPED), centred together on x=73; "UNKNOWN"
-//                when there's no data yet
-//   x=119..125   slim 7x39 slider, rows 12..50, filled from the bottom with
-//                the position; while moving, an 11x2 tick marks the target
+//   x=5..28      24 px curtain icon, vertically centred; under it the state
+//                in the 3x5 font, centred on x=17, rows 44..48 (OPEN /
+//                CLOSED / OPENING / CLOSING / STOPPED, UNKNOWN before data)
+//   x=34..106    name (font_base) beside the icon, vertically centred, two
+//                lines split at the first space when it doesn't fit
+//                (print_name_beside) - the same card as a dimmable light
+//   x=117..125   9x39 slider (draw_vslider), rows 12..50, filled from the
+//                bottom with the position; while moving, a tick marks the
+//                target; "35%" (font_small) right-aligned at x=114 by its foot
 //   y=53..63     CLOSE | ••• | OPEN; while moving, the key in that
 //                direction reads STOP (covers_btn_open / _close stop it)
 // Prev / next skip covers outside the room filter; a room with no cover in
@@ -52,8 +54,7 @@
 class CoverController {
 public:
 
-  static const int CY      = 31;  // centre row of everything below the strip
-  static const int VALUE_X = 73;  // centre between the icon and the slider
+  static const int CY = 31;  // centre row of everything below the strip
 
   // ── navigation ─────────────────────────────────────────────────────────────
 
@@ -138,7 +139,8 @@ public:
   {
     if (!updated_ui) return;
     updated_ui = false;
-    (void) state_icons;  // the state is a word now; kept so the YAML call is unchanged
+    (void) state_icons;  // the state is a chip now; both kept so the YAML call is unchanged
+    (void) font_bigger;
 
     // Nothing in the chosen room: empty state (the keys are gated off too)
     if (COVER_LIST_COUNT > 0 && !RoomFilter::any(COVER_LIST_COUNT, coverRoom)) {
@@ -160,34 +162,33 @@ public:
                        RoomFilter::visibleCount(COVER_LIST_COUNT, coverRoom), conn_status,
                        room ? room : COVER_LIST[ci].name);
 
-    // ── curtain icon, vertically centred (glyph rows 5..24 of the 24 px font)
+    // ── curtain icon, vertically centred (glyph rows 5..24 of the 24 px font),
+    //    the state under it in the 3x5 font (font_small is too wide there for
+    //    CLOSING / UNKNOWN)
     it->print(5, CY - 15, symbols, "\uec12");
-
     const bool known = !(position < 0 || state == "unknown" || state == "unavailable" || state.empty());
-    if (!known) {
-      it->print(VALUE_X, CY, font_base, COLOR_ON, display::TextAlign::CENTER, "UNKNOWN");
-    } else {
-      // position + small raised %, centred together; state word under it
-      char num[5];
-      snprintf(num, sizeof(num), "%d", position);
-      int nx, ny, nw, nh, px, py, pw, ph;
-      it->get_text_bounds(0, 0, num, font_bigger, display::TextAlign::TOP_LEFT, &nx, &ny, &nw, &nh);
-      it->get_text_bounds(0, 0, "%", font_base, display::TextAlign::TOP_LEFT, &px, &py, &pw, &ph);
-      const int x0 = VALUE_X - (nw + 1 + pw) / 2;
-      it->print(x0, CY - 5, font_bigger, COLOR_ON, display::TextAlign::CENTER_LEFT, num);
-      it->print(x0 + nw + 1, CY - 18, font_base, COLOR_ON, "%");
-      it->print(VALUE_X, CY + 12, font_small, COLOR_ON, display::TextAlign::CENTER, stateWord(state));
+    const char* word = known ? stateWord(state) : "UNKNOWN";
+    const int   sx   = 17 - ContextStrip::textWidth(word) / 2;
+    ContextStrip::text(it, sx < 1 ? 1 : sx, 44, word, COLOR_ON);
 
-      // slim slider: position, plus the target tick while moving
-      const int top = 12, bottom = 50, h = bottom - top + 1;
-      const int fill = (h - 4) * position / 100;
-      it->rectangle(119, top, 7, h);
-      if (fill > 0) it->filled_rectangle(121, bottom - 1 - fill, 3, fill);
-      if (state == "opening" || state == "closing") {
-        int t = tgt(ci);
-        if (t < 0) t = (state == "opening") ? 100 : 0;
-        it->filled_rectangle(117, bottom - 2 - (h - 4) * t / 100, 11, 2);
-      }
+    // ── name beside the icon ───────────────────────────────────────────────────
+    char name[16];
+    strncpy(name, COVER_LIST[ci].name, sizeof(name) - 1);
+    name[sizeof(name) - 1] = '\0';
+    for (int k = 0; name[k]; k++) name[k] = toupper((unsigned char) name[k]);
+    print_name_beside(it, font_base, font_small, name, 34, CY, VSLIDER_TEXT_R - 8);
+
+    // ── slider on the right: position, plus the target tick while moving ──────
+    int tick = -1;
+    if (known && (state == "opening" || state == "closing")) {
+      tick = tgt(ci);
+      if (tick < 0) tick = (state == "opening") ? 100 : 0;
+    }
+    draw_vslider(it, known ? position : -1, tick);
+    if (known) {
+      char pct[6];
+      snprintf(pct, sizeof(pct), "%d%%", position);
+      it->print(VSLIDER_TEXT_R, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pct);
     }
 
     draw_bottom_menu(it, font_small, state == "closing" ? "STOP" : "CLOSE", nullptr,
