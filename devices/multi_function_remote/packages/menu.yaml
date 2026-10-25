@@ -148,10 +148,10 @@ script:
           id(auto_entity)  = qa.entity_id;
           id(auto_service) = qa.service;
       - script.execute: auto_call_ha
+      # Confirmation over the card you stay on: SENT for 2 s, any key closes it.
       - lambda: |-
-          MenuController::drawTriggered(id(oled_display), id(menu_action_icon),
-            id(font_base), id(font_small), id(menu_quick_index));
-      - delay: 800ms
+          Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK, 76);
+          id(updated_ui) = true;
       - script.execute: menu_draw
 
   - id: menu_draw

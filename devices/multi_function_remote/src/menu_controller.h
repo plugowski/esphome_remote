@@ -95,17 +95,6 @@ public:
       quick_idx = wrap_index(quick_idx, QUICK_ACTION_COUNT, +1);
   }
 
-  template<class D, class F>
-  static void drawTriggered(D* it, F* action_icon, F* font_base, F* font_small_f, int quick_idx) {
-    it->clear();
-    const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
-    ContextStrip::draw(it, "ACTIONS", 0, 0, 0, RoomFilter::name());
-    ContextStrip::drawVerticalDots(it, quick_idx, QUICK_ACTION_COUNT);
-    it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
-    it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
-    draw_bottom_menu(it, font_small_f, "", "", "", false);
-    Toast::present(it);
-  }
 
   template<class D, class F>
   static void draw(D* it, F* icon_big, F* icon_small, F* action_icon,
