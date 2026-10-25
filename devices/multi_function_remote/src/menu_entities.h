@@ -28,7 +28,7 @@ struct MenuEntry {
 // The APP_* IDs above must stay in sync with the binary_sensor conditions in
 // the YAML (app_mode == APP_AC, etc.) — those never need touching.
 static const MenuEntry MENU_LIST[] = {
-  { APP_AC,          "\ueb3b", "AC"          },
+  { APP_AC,          "\ueb3b", "CLIMATE"     },
   { APP_COVERS,      "\uec12", "COVERS"       },
   { APP_LIGHTS,      "\ue0f0", "LIGHTS"       },
   { APP_AUTOMATIONS, "\uea0b", "AUTOMATIONS"  },
