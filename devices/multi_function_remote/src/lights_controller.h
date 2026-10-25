@@ -53,13 +53,16 @@
 //   x=119 r=3      radio button — filled=ON, outline=OFF
 //   y=53..63       ▲ | ••• | ▼  bottom bar (draw_bottom_menu)
 //
-// Card view layout:
-//   y=9            name (font_base, TOP_LEFT at x=2, caps on rows 12..21)
-//   x=2..34        26 px bulb \ue0f0 centred at (18, 36): filled glyph
+// Card view layout (everything below the strip centred on row 31):
+//   x=5..31        26 px bulb \ue0f0 centred at (18, 31): filled glyph
 //                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
-//   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=30) over a
-//                  86x9 outline bar at y=38 (filled when ON, tick when OFF)
-//                  non-dimmable: "ON"/"OFF" in font_base centred at (80, 36)
+//   x=38..         name (font_base) beside the bulb, vertically centred, two
+//                  lines split at the first space when it doesn't fit
+//                  (print_name_beside), up to x=108 (dimmable) / 124
+//   x=119..125     dimmable: slim 7x39 slider, rows 12..50, filled from the
+//                  bottom when ON; when OFF a 9x2 tick marks the level it
+//                  comes back at. "75%" (font_small) right-aligned at x=116,
+//                  next to the slider's foot
 //   y=53..63       LOW | ••• | FULL  (dimmable)   or   OFF | ••• | ON
 //
 // YAML usage:
@@ -84,7 +87,7 @@ public:
   static const int ROWS   = 4;   // list view: rows per page
   static const int ROW_H  = 10;  // list view: row height below the context strip
   static const int LIST_Y = ContextStrip::CONTENT_Y + 1;  // rows 11..50: centred between strip and bar
-  static const int NAME_Y = 9;   // card view: top of the name, under the strip
+  static const int CARD_CY = 31; // card view: row the bulb and name centre on
 
   // ── navigation ─────────────────────────────────────────────────────────────
 
@@ -327,45 +330,31 @@ public:
                        RoomFilter::visibleCount(LIGHTS_LIST_COUNT, lightRoom), conn_status,
                        room ? room : RoomFilter::name());
 
-    // ── name row ─────────────────────────────────────────────────────────────
+    // ── bulb (lit when ON) and the name beside it ────────────────────────────
+    it->print(18, CARD_CY, on ? icon_on : icon_off, COLOR_ON, display::TextAlign::CENTER, "\ue0f0");
     char buf[16];
     strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
     for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
-    // Trim the name until it fits the screen width.
-    const int name_max = 126 - 2;
-    int tx, ty, tw, th;
-    it->get_text_bounds(2, NAME_Y, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
-    while (tw > name_max && strlen(buf) > 1) {
-      buf[strlen(buf) - 1] = '\0';
-      it->get_text_bounds(2, NAME_Y, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
-    }
-    it->print(2, NAME_Y, font_base, COLOR_ON, display::TextAlign::TOP_LEFT, buf);
-
-    // ── icon: lit bulb when ON, plain bulb when OFF ──────────────────────────
-    it->print(18, 36, on ? icon_on : icon_off, COLOR_ON, display::TextAlign::CENTER, "\ue0f0");
+    print_name_beside(it, font_base, font_small, buf, 38, CARD_CY, dim ? 108 : 124);
 
     if (dim) {
-      // state + percentage on one line, brightness bar below
-      it->print(40, 30, font_small, COLOR_ON, display::TextAlign::CENTER_LEFT, on ? "ON" : "OFF");
-      char pbuf[6];
-      snprintf(pbuf, sizeof(pbuf), "%d%%", bri);
-      it->print(126, 30, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
-
-      it->rectangle(40, 38, 86, 9);                 // outline, inner span x=42..123 (82 px)
-      const int w = (82 * ((bri < 0) ? 0 : (bri > 100) ? 100 : bri)) / 100;
+      // slim slider on the right edge, % beside its foot
+      const int top = 12, bottom = 50, h = bottom - top + 1;   // 39 rows
+      const int level = (bri < 0) ? 0 : (bri > 100) ? 100 : bri;
+      const int fill  = (h - 4) * level / 100;                 // inner span 35 rows
+      it->rectangle(119, top, 7, h);
       if (on) {
-        if (w > 0) it->filled_rectangle(42, 40, w, 5);
+        if (fill > 0) it->filled_rectangle(121, bottom - 1 - fill, 3, fill);
       } else {
-        // OFF: remembered level as a 2 px tick inside the empty bar
-        int x = 42 + w;
-        if (x > 123) x = 123;
-        it->filled_rectangle(x, 38, 2, 9);
+        // OFF: the level it comes back at, as a tick across the slider
+        it->filled_rectangle(118, bottom - 2 - fill, 9, 2);
       }
+      char pbuf[6];
+      snprintf(pbuf, sizeof(pbuf), "%d%%", level);
+      it->print(116, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
       draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
     } else {
-      // non-dimmable: big state word centred in the free area right of the icon
-      it->print(80, 36, font_base, COLOR_ON, display::TextAlign::CENTER, on ? "ON" : "OFF");
       draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
     }
 
