@@ -133,6 +133,7 @@ public:
     if (LIGHTS_LIST[idx].dimmable) {
       lightBrightness(idx) = pct;
       lightOn(idx)         = (pct > 0);
+      markBrightnessPending(idx);
     } else {
       // No dimmer: the circles are plain OFF (low preset) / ON (full preset).
       lightOn(idx) = (pct >= PRESET_FULL);
@@ -166,6 +167,7 @@ public:
     int& b   = lightBrightness(idx);
     int next = (b / BRIGHTNESS_STEP + 1) * BRIGHTNESS_STEP;
     b        = (next <= 100) ? next : 100;
+    markBrightnessPending(idx);
     updated_ui = true;
   }
 
@@ -175,6 +177,7 @@ public:
     int& b   = lightBrightness(idx);
     int next = ((b - 1) / BRIGHTNESS_STEP) * BRIGHTNESS_STEP;
     b        = (next >= 0) ? next : 0;
+    markBrightnessPending(idx);
     updated_ui = true;
   }
 
@@ -190,7 +193,16 @@ public:
     if (lightOn(idx) != new_on) { lightOn(idx) = new_on; changed = true; }
     if (!std::isnan(ha_brightness) && ha_brightness >= 0) {
       int b = static_cast<int>(ha_brightness);
-      if (lightBrightness(idx) != b) { lightBrightness(idx) = b; changed = true; }
+      // While a local brightness change is pending, keep the local value until the incoming
+      // one is what was set last (±1 for HA's 0-255 rounding) or the wait runs out: an older
+      // in-between state must not make the slider jump back during a run of presses.
+      int& pend = pendingBrightness(idx);
+      if (pend >= 0 && (millis() - pendingSince(idx)) < BRIGHTNESS_PENDING_MS) {
+        if (b >= pend - 1 && b <= pend + 1) pend = -1;
+      } else {
+        pend = -1;
+        if (lightBrightness(idx) != b) { lightBrightness(idx) = b; changed = true; }
+      }
     }
     if (changed) updated_ui = true;
   }
@@ -379,6 +391,30 @@ private:
   static bool& lightOn(int idx) {
     static bool state[LIGHTS_LIST_CAPACITY] = {};
     return state[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
+  }
+
+  // Brightness pending guard (see syncLight): the value last set on this remote, or -1, and
+  // when it was set. Covers the hub's settle wait plus Home Assistant's reply.
+  static const uint32_t BRIGHTNESS_PENDING_MS = 3000;
+
+  static int& pendingBrightness(int idx) {
+    static int  v[LIGHTS_LIST_CAPACITY];
+    static bool init = false;
+    if (!init) {
+      init = true;
+      for (int i = 0; i < LIGHTS_LIST_CAPACITY; i++) v[i] = -1;
+    }
+    return v[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
+  }
+
+  static uint32_t& pendingSince(int idx) {
+    static uint32_t t[LIGHTS_LIST_CAPACITY] = {};
+    return t[wrap_index(idx, LIGHTS_LIST_CAPACITY)];
+  }
+
+  static void markBrightnessPending(int idx) {
+    pendingBrightness(idx) = lightBrightness(idx);
+    pendingSince(idx)      = millis();
   }
 
   static int& lightBrightness(int idx) {

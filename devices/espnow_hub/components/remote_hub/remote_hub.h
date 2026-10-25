@@ -75,6 +75,18 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
     uint8_t on{rnp::LIGHT_UNKNOWN};
     uint8_t brightness{rnp::VALUE_UNKNOWN};
   };
+  // Same idea as AcGuard, for brightness only: a run of brightness presses is held until they
+  // stop for LIGHT_SETTLE_MS, then Home Assistant gets the last value once. Until HA reports it
+  // (or EXPECT_TTL_MS pass) the commanded value is what the remotes are told, so HA's
+  // in-between states never make a remote's brightness jump back.
+  struct LightGuard {
+    bool want{false};
+    uint8_t want_v{0};
+    uint32_t due_at{0};
+    bool exp{false};
+    uint8_t exp_v{0};
+    uint32_t exp_at{0};
+  };
   struct CoverState {
     std::string state;
     uint8_t position{rnp::VALUE_UNKNOWN};
@@ -84,6 +96,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   void mark_dirty_(uint8_t domain_bit);
 
   void apply_ac_(int i);
+  void apply_light_brightness_(int i);
   void confirm_ac_expected_(int i);
   std::string eff_ac_mode_(int i) const;
   std::string eff_ac_fan_(int i) const;
@@ -120,6 +133,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   AcState ac_[AC_LIST_COUNT > 0 ? AC_LIST_COUNT : 1];
   AcGuard ac_guard_[AC_LIST_COUNT > 0 ? AC_LIST_COUNT : 1];
   LightState lights_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
+  LightGuard light_guard_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
   CoverState covers_[COVER_LIST_COUNT > 0 ? COVER_LIST_COUNT : 1];
 
   static const uint8_t DIRTY_AC = 1, DIRTY_LIGHTS = 2, DIRTY_COVERS = 4;
