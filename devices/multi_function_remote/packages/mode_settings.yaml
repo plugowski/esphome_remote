@@ -64,6 +64,7 @@ sensor:
             pct = (pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct;
             id(battery_pct) = static_cast<int>(pct);
             id(battery_percentage_sensor)->publish_state(id(battery_pct));
+            ContextStrip::setBattery(id(battery_pct));
             id(updated_ui) = true;
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }

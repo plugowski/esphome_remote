@@ -126,6 +126,7 @@ esphome:
     - src/remote_core.h
     - src/wake_utils.h
     - src/display_utils.h
+    - src/context_strip.h
     - src/menu_controller.h
     - src/ac_entities.h
     - src/ac_controller.h
@@ -405,6 +406,10 @@ script:
   # dispatches to the active mode's update/draw on every interval tick
   - id: main_update
     then:
+      # Context strip clock: request a redraw when the visible minute changes
+      - lambda: |-
+          auto t = id(sntp_time)->now();
+          if (ContextStrip::setClock(t.is_valid(), t.hour, t.minute)) id(updated_ui) = true;
       - if:
           condition: { lambda: 'return !id(is_shutting_down);' }
           then:

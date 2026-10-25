@@ -7,6 +7,7 @@
 #include "light_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
+#include "context_strip.h"
 
 // ── LightsController ──────────────────────────────────────────────────────────
 // Lights mode. Two views, chosen at build time by the LIGHTS_CARD_VIEW
@@ -36,22 +37,26 @@
 // dispatcher scripts), so buttons.yaml / layout_v2.yaml never need to know
 // which view is active.
 //
-// List view layout (128x64, 4 visible rows of 13 px + bottom menu at y=53):
+// Both views start with the context strip (rows 0..8): "LIGHTS" chip, dots
+// per page (list view: one per 4 lights, card view: one per light), clock
+// and battery. See src/context_strip.h.
+//
+// List view layout (128x64, 4 visible rows of 10 px from y=10, bottom menu
+// at y=53; scrolls a whole page of 4 at a time so the dots match):
 //   x=4            name (font_small, CENTER_LEFT — vertically centred in row)
 //   x=after name   filled_circle r=2 (dimmable indicator) — placed 5 px after
 //                  text right edge via get_text_bounds
 //   x=110 right    brightness "75%" right-aligned (dimmable + ON, all rows)
-//   x=119 r=4      radio button — filled=ON, outline=OFF
+//   x=119 r=3      radio button — filled=ON, outline=OFF
 //   y=53..63       ▲ | ☰ | ▼  bottom bar (draw_bottom_menu)
 //
 // Card view layout:
-//   y=0..15        name (font_base, TOP_LEFT at x=2), "n/N" counter (font_small,
-//                  TOP_RIGHT at x=126); divider at y=16
-//   x=2..34        26 px bulb \ue0f0 centred at (18, 34): filled glyph
+//   y=9            name (font_base, TOP_LEFT at x=2, caps on rows 12..21)
+//   x=2..34        26 px bulb \ue0f0 centred at (18, 36): filled glyph
 //                  (lights_icon_on) when ON, outline (lights_icon_off) when OFF
-//   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=26) over a
-//                  86x9 outline bar at y=36 (filled when ON, tick when OFF)
-//                  non-dimmable: "ON"/"OFF" in font_base centred at (80, 34)
+//   x=40..126      dimmable: "ON"/"OFF" + "75%" (font_small, y=30) over a
+//                  86x9 outline bar at y=38 (filled when ON, tick when OFF)
+//                  non-dimmable: "ON"/"OFF" in font_base centred at (80, 36)
 //   y=53..63       LOW | ☰ | FULL  (dimmable)   or   OFF | ☰ | ON
 //
 // YAML usage:
@@ -72,6 +77,10 @@
 
 class LightsController {
 public:
+
+  static const int ROWS   = 4;   // list view: rows per page
+  static const int ROW_H  = 10;  // list view: row height below the context strip
+  static const int NAME_Y = 9;   // card view: top of the name, under the strip
 
   // ── navigation ─────────────────────────────────────────────────────────────
 
@@ -182,13 +191,13 @@ public:
 
   // Renders the lights list.  No-ops when updated_ui is false.
   //
-  // 4 rows of 13 px visible at a time; scrolls to keep the selected row visible.
-  // Per row (height 13 px, font_small 10 px):
+  // 4 rows of 10 px below the context strip; shows the page of 4 that holds
+  // the selected light. Per row (height 10 px, font_small 10 px):
   //   selected row  → filled_rectangle background (inverted colours)
   //   name          → CENTER_LEFT at (4, y_center) — properly vertically centred
   //   level icon    → 3 growing bars, placed 4 px after right edge of name text
   //   brightness %  → right edge at x=110, all dimmable+ON rows
-  //   radio button  → filled_circle (ON) / circle (OFF) at x=119, r=4
+  //   radio button  → filled_circle (ON) / circle (OFF) at x=119, r=3
   template<class D, class F>
   static void draw(D* it, F* font_small, int selected_idx, bool& updated_ui, int conn_status) {
     if (!updated_ui) return;
@@ -196,12 +205,13 @@ public:
 
     it->clear();
 
-    // Adjust scroll viewport so the selected row is always visible
-    static int scroll_top = 0;
-    if (selected_idx < scroll_top)      scroll_top = selected_idx;
-    if (selected_idx >= scroll_top + 4) scroll_top = selected_idx - 3;
+    // Page of 4 that holds the selected light
+    const int page       = (selected_idx < 0) ? 0 : selected_idx / ROWS;
+    const int page_count = (LIGHTS_LIST_COUNT + ROWS - 1) / ROWS;
+    const int scroll_top = page * ROWS;
+    ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status);
 
-    for (int row = 0; row < 4; row++) {
+    for (int row = 0; row < ROWS; row++) {
       int li = scroll_top + row;
       if (li >= LIGHTS_LIST_COUNT) break;
 
@@ -210,12 +220,12 @@ public:
       const int  bri  = lightBrightness(li);
       const bool dim  = LIGHTS_LIST[li].dimmable;
 
-      const int y_top    = row * 13;
-      const int y_center = y_top + 6;   // vertical centre of row
+      const int y_top    = ContextStrip::CONTENT_Y + row * ROW_H;
+      const int y_center = y_top + 4;   // caps (7 px) on rows y_top+1..y_top+7
 
       Color fg = COLOR_ON;
       if (sel) {
-        it->filled_rectangle(0, y_top, 128, 13, COLOR_ON);
+        it->filled_rectangle(0, y_top, 128, ROW_H, COLOR_ON);
         fg = COLOR_OFF;
       }
 
@@ -257,14 +267,13 @@ public:
 
       // Radio button: filled circle = ON, outline circle = OFF
       if (on) {
-        it->filled_circle(119, y_center, 4, fg);
+        it->filled_circle(119, y_center, 3, fg);
       } else {
-        it->circle(119, y_center, 4, fg);
+        it->circle(119, y_center, 3, fg);
       }
     }
 
     draw_bottom_menu(it, font_small, "\u25b2", nullptr, "\u25bc");
-    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 
@@ -280,9 +289,9 @@ public:
     it->clear();
 
     if (LIGHTS_LIST_COUNT <= 0) {
-      it->print(64, 28, font_base, COLOR_ON, display::TextAlign::CENTER, "NO LIGHTS");
+      ContextStrip::draw(it, "LIGHTS", 0, 0, conn_status);
+      it->print(64, 31, font_base, COLOR_ON, display::TextAlign::CENTER, "NO LIGHTS");
       draw_bottom_menu(it, font_small, "", nullptr, "");
-      RemoteCore::drawConnBadge(it, conn_status);
       it->display();
       return;
     }
@@ -292,56 +301,51 @@ public:
     const int  bri = lightBrightness(li);
     const bool dim = LIGHTS_LIST[li].dimmable;
 
-    // ── name row: name left, "n/N" right, divider ────────────────────────────
-    char cnt[8];
-    snprintf(cnt, sizeof(cnt), "%d/%d", li + 1, LIGHTS_LIST_COUNT);
-    int cx, cy, cw, ch;
-    it->get_text_bounds(126, 2, cnt, font_small, display::TextAlign::TOP_RIGHT, &cx, &cy, &cw, &ch);
-    it->print(126, 2, font_small, COLOR_ON, display::TextAlign::TOP_RIGHT, cnt);
+    // ── context strip: one dot per light ─────────────────────────────────────
+    ContextStrip::draw(it, "LIGHTS", li, LIGHTS_LIST_COUNT, conn_status);
 
+    // ── name row ─────────────────────────────────────────────────────────────
     char buf[16];
     strncpy(buf, LIGHTS_LIST[li].name, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
     for (int k = 0; buf[k]; k++) buf[k] = toupper((unsigned char)buf[k]);
-    // Trim the name until it clears the counter (4 px gap).
-    const int name_max = cx - 4 - 2;
+    // Trim the name until it fits the screen width.
+    const int name_max = 126 - 2;
     int tx, ty, tw, th;
-    it->get_text_bounds(2, 1, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
+    it->get_text_bounds(2, NAME_Y, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
     while (tw > name_max && strlen(buf) > 1) {
       buf[strlen(buf) - 1] = '\0';
-      it->get_text_bounds(2, 1, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
+      it->get_text_bounds(2, NAME_Y, buf, font_base, display::TextAlign::TOP_LEFT, &tx, &ty, &tw, &th);
     }
-    it->print(2, 1, font_base, COLOR_ON, display::TextAlign::TOP_LEFT, buf);
-    it->line(0, 16, 127, 16);
+    it->print(2, NAME_Y, font_base, COLOR_ON, display::TextAlign::TOP_LEFT, buf);
 
     // ── icon: lit bulb when ON, plain bulb when OFF ──────────────────────────
-    it->print(18, 34, on ? icon_on : icon_off, COLOR_ON, display::TextAlign::CENTER, "\ue0f0");
+    it->print(18, 36, on ? icon_on : icon_off, COLOR_ON, display::TextAlign::CENTER, "\ue0f0");
 
     if (dim) {
       // state + percentage on one line, brightness bar below
-      it->print(40, 26, font_small, COLOR_ON, display::TextAlign::CENTER_LEFT, on ? "ON" : "OFF");
+      it->print(40, 30, font_small, COLOR_ON, display::TextAlign::CENTER_LEFT, on ? "ON" : "OFF");
       char pbuf[6];
       snprintf(pbuf, sizeof(pbuf), "%d%%", bri);
-      it->print(126, 26, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
+      it->print(126, 30, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
 
-      it->rectangle(40, 36, 86, 9);                 // outline, inner span x=42..123 (82 px)
+      it->rectangle(40, 38, 86, 9);                 // outline, inner span x=42..123 (82 px)
       const int w = (82 * ((bri < 0) ? 0 : (bri > 100) ? 100 : bri)) / 100;
       if (on) {
-        if (w > 0) it->filled_rectangle(42, 38, w, 5);
+        if (w > 0) it->filled_rectangle(42, 40, w, 5);
       } else {
         // OFF: remembered level as a 2 px tick inside the empty bar
         int x = 42 + w;
         if (x > 123) x = 123;
-        it->filled_rectangle(x, 36, 2, 9);
+        it->filled_rectangle(x, 38, 2, 9);
       }
       draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
     } else {
       // non-dimmable: big state word centred in the free area right of the icon
-      it->print(80, 34, font_base, COLOR_ON, display::TextAlign::CENTER, on ? "ON" : "OFF");
+      it->print(80, 36, font_base, COLOR_ON, display::TextAlign::CENTER, on ? "ON" : "OFF");
       draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
     }
 
-    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 
