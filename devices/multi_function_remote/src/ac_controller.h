@@ -218,28 +218,28 @@ public:
 
   // Layout below the context strip (rows 0..8: "CLIMATE" chip, one dot per
   // unit, the unit's room - or its name, without a room - in the badge). The free area is rows 10..52; everything in the hero row
-  // is centred on HERO_CY = 29:
-  //   x=5          24 px mode icon, top-left (5, 14) → rows 19..38
-  //   x=64         40 px temperature centred at (64, 30) → digits rows 15..43
-  //   x=85         "C" in font_base, top-left (85, 12) → caps start on row 15
+  // is centred on HERO_CY = 31:
+  //   x=5          24 px mode icon, top-left (5, 16) → rows 21..40
+  //   x=64         40 px temperature centred at (64, 32) → digits rows 17..45
+  //   x=85         "C" in font_base, top-left (85, 14) → caps start on row 17
   //   x=108..127   fan indicator (below)
   //   y=53..63     MODE | ••• | FAN
-  static constexpr int HERO_CY = 29;
+  static constexpr int HERO_CY = 31;
 
   // Fan speed on the right of the hero row. Ordered speeds are stacked bars;
   // the named speeds with no place on that scale get an icon, the same way
   // "auto" has always used a letter.
   //
-  // All three share one slot. "A" is printed top-left-anchored at (108, 13)
+  // All three share one slot. "A" is printed top-left-anchored at (108, 15)
   // with font_bigger (Arial Bold 28), which inks the box x=108..127,
-  // y=19..38. The icons are centred on that same box — (118, 28) — rather
+  // y=21..40. The icons are centred on that same box — (118, 30) — rather
   // than sharing the top-left anchor: these are 24 px glyphs of differing
   // widths, so a common top-left origin would both overrun the 128 px panel
   // on the right and make each glyph sit in a slightly different place.
   // Centring keeps them locked to the "A" position whatever the glyph. The
-  // three bars (7 px, 3 px apart) span rows 16..42.
+  // three bars (7 px, 3 px apart) span rows 18..44.
   static constexpr int FAN_ICON_CX = 118;
-  static constexpr int FAN_ICON_CY = 28;
+  static constexpr int FAN_ICON_CY = 30;
 
   template<class D, class F>
   static void drawFanIndicator(D* it, F* symbols, F* font_bigger,
@@ -255,15 +255,15 @@ public:
       return;
     }
     if (fan_mode == "auto") {
-      it->print(108, 13, font_bigger, "A");
+      it->print(108, 15, font_bigger, "A");
       return;
     }
     if (fan_mode == "high")
-      it->filled_rectangle(110, 16, 20, 7);
+      it->filled_rectangle(110, 18, 20, 7);
     if (fan_mode == "high" || fan_mode == "medium")
-      it->filled_rectangle(110, 26, 20, 7);
+      it->filled_rectangle(110, 28, 20, 7);
     if (fan_mode == "high" || fan_mode == "medium" || fan_mode == "low")
-      it->filled_rectangle(110, 36, 20, 7);
+      it->filled_rectangle(110, 38, 20, 7);
   }
 
   // ── display ────────────────────────────────────────────────────────────────

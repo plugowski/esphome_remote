@@ -7,30 +7,27 @@
 // Status line across the top of a screen, telling the user where they are:
 //
 //   ╭───────╮                       ╭───────╮
-//   │CLIMATE│ ▪█▪            20:25 │BEDROOM│ [▮▮▮ ]
+//   │CLIMATE│ ▪█▪                  │BEDROOM│ [▮▮▮ ]
 //   ╰───────╯                       ╰───────╯
 //   rows 0..8 — screen content starts at ContextStrip::CONTENT_Y (10)
 //
 //   x=0..        inverted chip naming the screen ("MENU", "LIGHTS", "CLIMATE", ...)
 //   after chip   position dots: one per page, the current one a 5x5 block. When they
-//                don't fit before the clock, falls back to "3/12" text.
+//                don't fit before what's on the right, falls back to "3/12" text.
 //   ..x=114      optional inverted context badge: which room / unit the screen
 //                is showing ("BEDROOM", or "ALL" while there's no room filter)
 //                Both chips have their corner pixels cut, for a rounded look.
-//   left of it   clock (HH:MM); replaced by NO WIFI / NO HA / NO HUB while
-//                conn_status != 0. Hidden until time is valid (always hidden
-//                on the ESP-NOW build, which has no clock).
+//   left of it   NO WIFI / NO HA / NO HUB while conn_status != 0
 //   x=117..127   battery outline with a 5-step level; outline only while the
-//                level is unknown (battery_pct == -1).
+//                level is unknown (battery_pct == -1). With battery_pct=true
+//                the level also shows as "87%" left of it (Settings).
 //
 // Text uses a built-in 3x5 pixel font (caps, digits, ":/%-."), so the strip
 // needs no extra font component and stays legible at 5 px.
 //
-// Clock and battery are pushed in from YAML, so controllers don't need extra
-// draw() arguments:
+// The battery level is pushed in from YAML, so controllers don't need an
+// extra draw() argument:
 //   ContextStrip::setBattery(id(battery_pct));              // on each reading
-//   if (ContextStrip::setClock(t.is_valid(), t.hour, t.minute))
-//     id(updated_ui) = true;                                // minute rolled over
 //
 // Drawing (from a controller's draw(), after it->clear()):
 //   ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status, "ALL");
@@ -39,15 +36,6 @@ class ContextStrip {
 public:
   static const int HEIGHT    = 9;   // rows 0..8
   static const int CONTENT_Y = 10;  // first free row below the strip
-
-  // Returns true when the visible clock text changed (minute rolled over, or
-  // time became valid), so the caller can request a redraw.
-  static bool setClock(bool valid, int hour, int minute) {
-    const int v = valid ? hour * 60 + minute : -1;
-    if (clockValue() == v) return false;
-    clockValue() = v;
-    return true;
-  }
 
   // 0..100, or -1 while unknown.
   static void setBattery(int pct) { batteryValue() = pct; }
@@ -144,8 +132,6 @@ public:
     if      (conn_status == 1) snprintf(right, sizeof(right), "NO WIFI");
     else if (conn_status == 2) snprintf(right, sizeof(right), "NO HA");
     else if (conn_status == 3) snprintf(right, sizeof(right), "NO HUB");
-    else if (clockValue() >= 0)
-      snprintf(right, sizeof(right), "%d:%02d", clockValue() / 60, clockValue() % 60);
     const int right_x = right_edge - textWidth(right);
     if (right[0]) text(it, right_x, 2, right, COLOR_ON);
 
@@ -171,7 +157,6 @@ public:
 private:
   struct Glyph { char c; uint8_t w; uint8_t rows[5]; };
 
-  static int& clockValue()   { static int v = -1; return v; }
   static int& batteryValue() { static int v = -1; return v; }
 
   template<class D>
