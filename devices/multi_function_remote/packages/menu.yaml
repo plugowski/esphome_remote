@@ -154,7 +154,7 @@ script:
           char name[24];
           snprintf(name, sizeof(name), "%s", QUICK_ACTION_LIST[id(menu_quick_index)].name);
           for (int k = 0; name[k]; k++) name[k] = toupper((unsigned char) name[k]);
-          Toast::show("SENT", name, 2000, Toast::ICON_CHECK);
+          Toast::show("SENT", name, 2000, Toast::ICON_CHECK_INLINE);
           id(updated_ui) = true;
       - script.execute: menu_draw
 
