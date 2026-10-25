@@ -76,7 +76,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_right ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                   then: [ script.execute: automations_btn_next ]
 
   # ── TOGGLE — AC: on/off | Lights: toggle | Covers: open↔close | Autos: trigger
@@ -112,7 +112,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_ok ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                   then: [ script.execute: automations_btn_trigger ]
 
   # ── ☰ menu — open menu / confirm selection ────────────────────────────────
@@ -267,7 +267,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_pos_up ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                   then: [ script.execute: automations_btn_prev ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
@@ -303,7 +303,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_pos_up ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                   then: [ script.execute: automations_btn_prev ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
@@ -339,7 +339,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_pos_down ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                   then: [ script.execute: automations_btn_next ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
@@ -375,7 +375,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                   then: [ script.execute: covers_btn_pos_down ]
               - if:
-                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                   then: [ script.execute: automations_btn_next ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }

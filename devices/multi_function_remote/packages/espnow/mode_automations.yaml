@@ -8,7 +8,7 @@
 # Button entry points (via buttons.yaml / layout):
 #   automations_btn_prev / _next     → scroll
 #   automations_btn_trigger          → trigger selected row
-#   automations_btn_menu_l / _menu_r → trigger L / R slot
+#   automations_btn_menu_l / _menu_r → run the L / R shortcut key
 # Main update loop: automations_update
 
 esphome:
@@ -21,6 +21,12 @@ globals:
     type: int
     initial_value: '0'
     restore_value: true
+
+  # true → one automation per screen (card); false → 4-row list. Set from the
+  # AUTOMATIONS_CARD_VIEW substitution.
+  - id: automations_card_view
+    type: bool
+    initial_value: '${AUTOMATIONS_CARD_VIEW}'
 
   - id: auto_entity
     type: std::string
@@ -52,27 +58,28 @@ script:
   - id: automations_btn_menu_l
     then:
       - lambda: >-
-          AutomationController::triggerMenuSlot("L", id(auto_entity), id(auto_service));
+          AutomationController::triggerShortcut(AUTOMATION_SHORTCUT_L, id(auto_entity), id(auto_service));
       - script.execute: auto_do_trigger
 
   - id: automations_btn_menu_r
     then:
       - lambda: >-
-          AutomationController::triggerMenuSlot("R", id(auto_entity), id(auto_service));
+          AutomationController::triggerShortcut(AUTOMATION_SHORTCUT_R, id(auto_entity), id(auto_service));
       - script.execute: auto_do_trigger
 
+  # Runs whatever the trigger script loaded and confirms it with the SENT
+  # toast over the screen (2 s, any key closes it).
   - id: auto_do_trigger
     mode: single
     then:
       - if:
           condition: { lambda: 'return !id(auto_entity).empty();' }
           then:
-            - lambda: >-
-                AutomationController::drawConfirmation(id(oled_display),
-                  id(font_base), id(auto_entity));
             - script.execute: auto_call_ha
-            - delay: 600ms
-            - lambda: 'id(updated_ui) = true;'
+            - lambda: |-
+                Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK_INLINE, 112, 30);
+                id(updated_ui) = true;
+            - script.execute: automations_draw
 
   # Same id as in packages/mode_automations.yaml so menu.yaml keeps working.
   - id: auto_call_ha
@@ -91,7 +98,9 @@ script:
 
   - id: automations_update
     then:
-      - lambda: 'if (id(selected_auto_index) >= AUTOMATION_LIST_COUNT) id(selected_auto_index) = 0;'
+      - lambda: |-
+          if (id(selected_auto_index) >= AUTOMATION_LIST_COUNT) id(selected_auto_index) = 0;
+          id(selected_auto_index) = RoomFilter::first(id(selected_auto_index), AUTOMATION_LIST_COUNT, automationRoom);
       - script.execute: automations_draw
 
   - id: automations_draw
@@ -102,5 +111,7 @@ script:
           then:
             - lambda: >-
                 id(updated_ui) = true;
-                AutomationController::draw(id(oled_display), id(font_small),
-                                           id(selected_auto_index), id(updated_ui), id(conn_status));
+                AutomationController::draw(id(oled_display), id(font_base), id(font_small),
+                                           id(automation_icon), id(shortcut_icon),
+                                           id(selected_auto_index), id(automations_card_view),
+                                           id(updated_ui), id(conn_status));

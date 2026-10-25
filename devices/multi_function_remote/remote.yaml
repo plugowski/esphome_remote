@@ -12,6 +12,9 @@ substitutions:
   # "false" keeps the original scrollable list. Button mapping for both is
   # documented at the top of src/lights_controller.h.
   LIGHTS_CARD_VIEW: "true"
+  # Automations screen: "true" (default) one automation per screen (card:
+  # icon and name), "false" the 4-row list.
+  AUTOMATIONS_CARD_VIEW: "true"
   # "LIGHT" (default) lets the radio modem sleep between DTIM beacons while
   # awake — lower average current, at the cost of a little response jitter.
   # "NONE" keeps the radio fully powered for the whole awake window — more

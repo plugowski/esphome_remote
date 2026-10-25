@@ -45,14 +45,45 @@ font:
       - "\uf8ab"  # cover: closing
       - "\ue034"  # cover: stopped (pause)
 
-  # ── Quick-action icon font (32 px — matches carousel icon size) ──────────
-  # Add a glyph here for every icon codepoint used in quick_action_entities.h.
+  # ── Shortcut-key icon font (10 px, fits the 11 px soft buttons) ─────────
+  # Every icon on the Automations screen's left / right shortcut keys
+  # (AUTOMATION_SHORTCUT_L / _R in automation_entities.h).
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: shortcut_icon
+    size: 10
+    glyphs:
+      - "\uef44"  # bedtime     (Good Night)
+      - "\ue02c"  # movie       (Movie Time)
+
+  # ── Automation card icon font (26 px — same as the lights / covers cards) ─
+  # Every icon on the Automations cards (automation_entities.h).
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: automation_icon
+    size: 26
+    glyphs:
+      - "\uea05"  # local_fire_department (Boost Heat)
+      - "\uea35"  # eco         (Eco Mode)
+      - "\ue88d"  # lock        (Lock Door)
+      - "\ue32a"  # security    (Arm Alarm)
+      - "\uef44"  # bedtime     (Good Night)
+      - "\ue02c"  # movie       (Movie Time)
+      - "\ue8f9"  # work        (Start Work)
+      - "\uf0ff"  # cleaning_services (Vacuum)
+
+  # ── Quick action icon font (26 px — same as the lights / covers cards) ──
+  # Every icon codepoint used in quick_action_entities.h.
   - file:
       type: gfonts
       family: Material+Symbols+Rounded
       weight: 400
     id: menu_action_icon
-    size: 32
+    size: 26
     glyphs:
       - "\ue8f9"  # work        (Start Work)
       - "\ue510"  # person_off  (Empty Office)
@@ -148,13 +179,10 @@ script:
           id(auto_entity)  = qa.entity_id;
           id(auto_service) = qa.service;
       - script.execute: auto_call_ha
-      # Confirmation over the card you stay on, same size as the battery
-      # notice: SENT over the action's name for 2 s, any key closes it.
+      # Confirmation over the card you stay on: just "✓ SENT", in a box the
+      # size of the battery notice, for 2 s; any key closes it.
       - lambda: |-
-          char name[24];
-          snprintf(name, sizeof(name), "%s", QUICK_ACTION_LIST[id(menu_quick_index)].name);
-          for (int k = 0; name[k]; k++) name[k] = toupper((unsigned char) name[k]);
-          Toast::show("SENT", name, 2000, Toast::ICON_CHECK_INLINE);
+          Toast::show("SENT", nullptr, 2000, Toast::ICON_CHECK_INLINE, 112, 30);
           id(updated_ui) = true;
       - script.execute: menu_draw
 
@@ -201,6 +229,7 @@ script:
           RoomFilter::current()  = id(room_filter);
           id(selected_light_index) = RoomFilter::first(id(selected_light_index), LIGHTS_LIST_COUNT, lightRoom);
           id(selected_cover_index) = RoomFilter::first(id(selected_cover_index), COVER_LIST_COUNT, coverRoom);
+          id(selected_auto_index)  = RoomFilter::first(id(selected_auto_index), AUTOMATION_LIST_COUNT, automationRoom);
       - if:
           condition: { lambda: 'return RoomFilter::first(id(selected_ac_index), AC_LIST_COUNT, acRoom) != id(selected_ac_index);' }
           then:

@@ -131,21 +131,24 @@ private:
 // ── Empty room ────────────────────────────────────────────────────────────────
 // What a filtered screen shows when nothing on it is in the chosen room: the
 // strip (screen chip + room badge), "NO <WHAT>" over "IN <ROOM>" and a bar with
-// only the menu key. Holding the menu key picks another room.
+// only the menu key. Holding the menu key picks another room. send=false
+// leaves the frame unsent, for a caller that draws more on top.
 template<class D, class F>
 inline void drawEmptyRoom(D* it, F* font_base, F* font_small, const char* chip,
-                          const char* what, int conn_status) {
+                          const char* what, int conn_status, bool send = true) {
   it->clear();
   ContextStrip::draw(it, chip, 0, 0, conn_status, RoomFilter::name());
   char line[32];
   snprintf(line, sizeof(line), "NO %s", what);
   for (int k = 0; line[k]; k++) line[k] = toupper((unsigned char) line[k]);
-  it->print(64, 26, font_base, COLOR_ON, display::TextAlign::CENTER, line);
+  int bx, by, bw, bh;   // too wide for font_base (NO AUTOMATIONS): font_small
+  it->get_text_bounds(64, 26, line, font_base, display::TextAlign::CENTER, &bx, &by, &bw, &bh);
+  it->print(64, 26, bw > 120 ? font_small : font_base, COLOR_ON, display::TextAlign::CENTER, line);
   snprintf(line, sizeof(line), "IN %s", RoomFilter::name() ? RoomFilter::name() : "");
   for (int k = 0; line[k]; k++) line[k] = toupper((unsigned char) line[k]);
   it->print(64, 41, font_small, COLOR_ON, display::TextAlign::CENTER, line);
   draw_bottom_menu(it, font_small, "", nullptr, "");
-  Toast::present(it);
+  if (send) Toast::present(it);
 }
 
 // ── RoomPicker ────────────────────────────────────────────────────────────────
