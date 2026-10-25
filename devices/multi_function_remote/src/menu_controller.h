@@ -3,6 +3,7 @@
 #include "quick_action_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
+#include "context_strip.h"
 
 // ── MenuController ────────────────────────────────────────────────────────────
 // Two-view menu overlay:
@@ -14,6 +15,10 @@
 //   Up / Down     — enters / scrolls quick-action view
 //   OK            — carousel view: confirm mode | action view: trigger action
 //   Stop          — carousel view: cancel menu  | action view: back to carousel
+//
+// Layout (both views): context strip on rows 0..8 ("MENU" / "ACTIONS" chip,
+// one dot per item), 32 px icon centred at y=24 (rows 12..37), name in
+// font_base centred at y=46 (caps 41..50), bottom bar from y=53.
 //
 // YAML usage:
 //   MenuController::open(id(menu_index), id(app_mode), id(menu_active));
@@ -28,6 +33,9 @@
 
 class MenuController {
 public:
+
+  static const int ICON_Y = 24;  // centre of the 32 px icon, below the context strip
+  static const int NAME_Y = 46;  // centre of the font_base name, above the bottom bar
 
   static void open(int& menu_index, int app_mode, bool& menu_active) {
     if (MENU_LIST_COUNT <= 1) return;
@@ -74,8 +82,9 @@ public:
   static void drawTriggered(D* it, F* action_icon, F* font_base, F* font_small_f, int quick_idx) {
     it->clear();
     const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
-    it->print(64, 17, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
-    it->print(64, 43, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
+    ContextStrip::draw(it, "ACTIONS", quick_idx, QUICK_ACTION_COUNT, 0);
+    it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
+    it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
     draw_bottom_menu(it, font_small_f, "", "", "");
     it->display();
   }
@@ -92,21 +101,22 @@ public:
       const int prev = wrap_index(cur, MENU_LIST_COUNT, -1);
       const int nxt  = wrap_index(cur, MENU_LIST_COUNT, +1);
 
-      it->print(14,  19, icon_small, COLOR_ON, display::TextAlign::CENTER, MENU_LIST[prev].icon);
-      it->print(114, 19, icon_small, COLOR_ON, display::TextAlign::CENTER, MENU_LIST[nxt].icon);
-      it->print(64,  17, icon_big,   COLOR_ON, display::TextAlign::CENTER, MENU_LIST[cur].icon);
-      it->print(64,  43, font_base,  COLOR_ON, display::TextAlign::CENTER, MENU_LIST[cur].name);
+      ContextStrip::draw(it, "MENU", cur, MENU_LIST_COUNT, conn_status);
+      it->print(14,  ICON_Y + 1, icon_small, COLOR_ON, display::TextAlign::CENTER, MENU_LIST[prev].icon);
+      it->print(114, ICON_Y + 1, icon_small, COLOR_ON, display::TextAlign::CENTER, MENU_LIST[nxt].icon);
+      it->print(64,  ICON_Y,     icon_big,   COLOR_ON, display::TextAlign::CENTER, MENU_LIST[cur].icon);
+      it->print(64,  NAME_Y,     font_base,  COLOR_ON, display::TextAlign::CENTER, MENU_LIST[cur].name);
       draw_bottom_menu(it, font_small_f, "<", "OK", ">");
 
     } else {
       // ── quick-action view (big icon + name, no side icons) ────────────────
       const QuickAction& qa = QUICK_ACTION_LIST[wrap_index(quick_idx, QUICK_ACTION_COUNT)];
-      it->print(64, 17, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
-      it->print(64, 43, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
+      ContextStrip::draw(it, "ACTIONS", quick_idx, QUICK_ACTION_COUNT, conn_status);
+      it->print(64, ICON_Y, action_icon, COLOR_ON, display::TextAlign::CENTER, qa.icon);
+      it->print(64, NAME_Y, font_base,   COLOR_ON, display::TextAlign::CENTER, qa.name);
       draw_bottom_menu(it, font_small_f, "", "", "");
     }
 
-    RemoteCore::drawConnBadge(it, conn_status);
     it->display();
   }
 };

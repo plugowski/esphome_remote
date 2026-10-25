@@ -28,6 +28,7 @@ sensor:
             id(battery_mv) = static_cast<int>(x * 1000.0f);
             float pct = (x - 3.2f) / 1.0f * 100.0f;
             id(battery_pct) = static_cast<int>((pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct);
+            ContextStrip::setBattery(id(battery_pct));
             id(updated_ui) = true;
         - if:
             condition: { lambda: 'return !id(is_timer_wake);' }

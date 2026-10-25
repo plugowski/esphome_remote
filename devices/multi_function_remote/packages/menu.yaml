@@ -4,6 +4,7 @@
 
 esphome:
   includes:
+    - src/context_strip.h
     - src/menu_controller.h
     - src/quick_action_entities.h
 
