@@ -57,7 +57,7 @@ font:
       family: Material+Symbols+Rounded
       weight: 700
     id: ac_symbols_big
-    size: 36
+    size: 28
     glyphs:
       - "\ue8ac"  # power_off (shown when AC is off)
       - "\ue5d5"  # refresh (shown while waiting for HA's first state update)

@@ -273,7 +273,8 @@ public:
   //
   // Font parameters (all ESPHome font::Font*):
   //   symbols      — 24 px Material Symbols (fan, ac_unit, heat, dry, power_off)
-  //   symbols_big  — 36 px Material Symbols bold (power_off hero icon)
+  //   symbols_big  — 28 px Material Symbols bold (power_off / refresh hero
+  //                  icon): 26 px of ink centred on row 30.5, like the mode icon
   //   font_big     — 40 px Arial Bold (temperature number)
   //   font_bigger  — 28 px Arial Bold (fan label / DRY label)
   //   font_base    — 14 px Arial Bold (unit name / misc labels)
@@ -308,7 +309,7 @@ public:
     // ── mode-specific hero row ────────────────────────────────────────────────
     if (mode == "off") {
 
-      it->print(64, HERO_CY + 1, symbols_big, COLOR_ON, display::TextAlign::CENTER, "\ue8ac");
+      it->print(64, HERO_CY, symbols_big, COLOR_ON, display::TextAlign::CENTER, "\ue8ac");
 
     } else if (isSetpointMode(mode)) {
 
