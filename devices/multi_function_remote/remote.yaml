@@ -142,6 +142,9 @@ esphome:
     - src/cover_controller.h
     - src/automation_entities.h
     - src/automation_controller.h
+    - src/system_stats.h
+    - src/about_face.h
+    - src/about_screen.h
     - src/settings_controller.h
   on_boot:
     - priority: 700
@@ -225,6 +228,8 @@ esp32:
     sdkconfig_options:
       CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP: "y"
       CONFIG_BOOTLOADER_LOG_LEVEL_NONE: "y"
+      # Settings > SYSTEM reads each core's idle time for its CPU bar
+      CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS: "y"
       # CONFIG_PM_ENABLE (automatic FreeRTOS-tickless-idle light sleep) was
       # tried here and reverted: on real hardware it destabilized WiFi/API
       # (dropped connections, "took a long time" component warnings from the

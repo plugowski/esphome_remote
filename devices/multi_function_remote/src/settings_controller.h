@@ -4,7 +4,11 @@
 #include <cstdio>
 #include <algorithm>
 #include "display_utils.h"
+#include "context_strip.h"
 #include "remote_core.h"
+#include "toast.h"
+#include "system_stats.h"
+#include "about_screen.h"
 
 // ── Selectable row identifiers ────────────────────────────────────────────────
 // Fixed constants, not positions — a stored selected_setting_index always
@@ -20,28 +24,44 @@ static const int SETTING_QUIET_FROM    = 4;   // Light Sleep + on-device only: q
 static const int SETTING_QUIET_TO      = 5;   // Light Sleep + on-device only: quiet-hours end (0-23)
 static const int SETTING_WIFI          = 6;
 static const int SETTING_IP            = 7;
-static const int SETTING_MAX           = 8;   // total rows that exist; not all are necessarily visible
+static const int SETTING_SYSTEM        = 8;   // CPU / heap / battery / link bars (system_stats.h)
+static const int SETTING_ABOUT         = 9;   // intro animation + credits (about_screen.h)
+static const int SETTING_MAX           = 10;  // total rows that exist; not all are necessarily visible
 
 // ── SettingsController ────────────────────────────────────────────────────────
-// Settings mode layout (128×64 OLED):
+// Settings mode layout (128×64 OLED) - one setting per screen:
 //
-//   y= 0-12  │ [battery icon]              72%  │  fixed, never selected
-//   y=13-25  │ visible slot 0                   │  selectable
-//   y=26-38  │ visible slot 1                   │  selectable
-//   y=39-51  │ visible slot 2                   │  selectable
-//   y=53-63  │ ▲    │   •••   │    ▼            │  bottom bar
+//   rows 0..8   context strip: SETTINGS chip, one dot per setting, battery
+//               with its % on the right
+//   y=19        setting name (font_small), centred
+//   rows 29..47 editable value in an input box: the value (font_base, or the
+//               contrast level as 10 blocks of 5x10) centred on y=38, and a
+//               ▲▼ section at the box's right edge - up / down change it
+//               (+ / - on v1). Read-only values (WIFI / IP) are plain text.
+//   y=53..63    < | ••• | >  bottom bar: round keys (and ← → on v2) =
+//               previous / next setting
 //
-// Up to 8 settings rows scroll through 3 visible slots; which rows actually
+// The last two pages are different: SYSTEM shows CPU / heap / battery / link
+// bars (system_stats.h) and ABOUT plays an intro animation into the credits
+// (about_screen.h). Both redraw on a 50 ms tick while needsTick() says so.
+//
+// Up to 10 pages, one at a time (see visibleSettings()); which rows actually
 // appear depends on battery_enabled / light_sleep / quiet_hours_on_device
 // (all three are build-time substitutions passed in from mode_settings.yaml).
 // contrast_level:           int 1–10  →  0.1–1.0 for set_contrast()
-// sleep_timeout_mins:       int 1–30
+// sleep_timeout_mins:       int 1–60, on the SLEEP_LADDER steps
 // battery_interval_mins:    int 15–20160 (14 days), a fixed ladder (hidden if !battery_enabled)
 // deep_sleep_fallback_mins: int 0 (off) or 5-1440, steps of 5 (hidden unless light_sleep)
 // quiet_hours_start/end:    int 0–23, wraps              (hidden unless light_sleep && quiet_hours_on_device)
 
 class SettingsController {
 public:
+
+  // name and value box centred together as one group on the content rows 10..52
+  static const int NAME_Y  = 19;  // setting name (font_small) centre row
+  static const int VALUE_Y = 38;  // value / contrast blocks centre row
+  static const int BOX_Y   = 29;  // input box around an editable value: rows 29..47
+  static const int BOX_H   = 19;
 
   // ── visibility ────────────────────────────────────────────────────────────
   // Fills `out` with the rows this build actually shows, in display order,
@@ -63,6 +83,8 @@ public:
     }
     out[n++] = SETTING_WIFI;
     out[n++] = SETTING_IP;
+    out[n++] = SETTING_SYSTEM;
+    out[n++] = SETTING_ABOUT;
     return n;
   }
 
@@ -101,14 +123,24 @@ public:
     return level * 0.1f;
   }
 
-  // ── sleep timeout (1–30 minutes) ─────────────────────────────────────────────
+  // ── sleep timeout (1–60 minutes) ─────────────────────────────────────────────
+  // 1-minute steps to 10, 5-minute steps to 30, then 45 and 60. A value off
+  // the ladder (restored, or set by the generator) moves to the nearest one
+  // in the pressed direction.
+
+  static constexpr int SLEEP_LADDER[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 45, 60};
+  static const int SLEEP_LADDER_LEN = sizeof(SLEEP_LADDER) / sizeof(SLEEP_LADDER[0]);
 
   static void sleepUp(int& mins, bool& updated_ui) {
-    if (mins < 30) { mins++; updated_ui = true; }
+    for (int i = 0; i < SLEEP_LADDER_LEN; i++) {
+      if (SLEEP_LADDER[i] > mins) { mins = SLEEP_LADDER[i]; updated_ui = true; return; }
+    }
   }
 
   static void sleepDown(int& mins, bool& updated_ui) {
-    if (mins > 1) { mins--; updated_ui = true; }
+    for (int i = SLEEP_LADDER_LEN - 1; i >= 0; i--) {
+      if (SLEEP_LADDER[i] < mins) { mins = SLEEP_LADDER[i]; updated_ui = true; return; }
+    }
   }
 
   // ── battery check interval (15 minutes to 14 days, on the same ladder as the generator slider) ──
@@ -152,137 +184,136 @@ public:
   // ── display ──────────────────────────────────────────────────────────────────
 
   template<class D, class F>
-  static void draw(D* it, F* font_small,
+  static void draw(D* it, F* font_base, F* font_small,
                    int selected_idx, int contrast_level,
                    const std::string& ssid, const std::string& ip,
-                   int battery_pct, int sleep_timeout_mins, int battery_interval_mins,
+                   int battery_pct, int battery_mv, int sleep_timeout_mins, int battery_interval_mins,
                    int deep_sleep_fallback_mins, int quiet_hours_start, int quiet_hours_end,
                    bool battery_enabled, bool light_sleep, bool quiet_hours_on_device,
-                   bool& updated_ui, int conn_status)
+                   bool& updated_ui, int conn_status,
+                   const char* link_label = "WIFI", const char* addr_label = "IP")
   {
     if (!updated_ui) return;
     updated_ui = false;
     it->clear();
 
-    // ── Row 0: battery — fixed, not selectable ────────────────────────────────
-    {
-      const int y_c = 6;
-      drawBattery(it, 4, y_c, battery_pct, COLOR_ON);
-      char pct[6];
-      if (battery_pct >= 0)
-        snprintf(pct, sizeof(pct), "%d%%", battery_pct);
-      else
-        strncpy(pct, "---", sizeof(pct));
-      it->print(124, y_c, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pct);
-    }
-
-    // ── Scrolling settings rows (3 visible out of however many apply) ────────
     int visible[SETTING_MAX];
     const int count = visibleSettings(visible, battery_enabled, light_sleep, quiet_hours_on_device);
-
     int pos = 0;
     for (int i = 0; i < count; i++) {
       if (visible[i] == selected_idx) { pos = i; break; }
     }
+    const int idx = visible[pos];
+    ContextStrip::setBattery(battery_pct);
 
-    const int VISIBLE = 3;
-    // Centre selected row in the visible window where possible
-    int offset = std::max(0, std::min(pos - 1, count - VISIBLE));
+    // A page "comes on screen" when it wasn't the last one drawn here, or
+    // another screen sent a frame since (Toast::frames() moved on).
+    const bool fresh = idx != lastIdx() || Toast::frames() != lastFrame();
 
-    static const char* labels[SETTING_MAX] = {
-      "CONTRAST", "BATTERY CHECK", "SLEEP", "DEEP SLEEP", "QUIET FROM", "QUIET TO", "WIFI", "IP"
-    };
-
-    for (int slot = 0; slot < VISIBLE; slot++) {
-      int listPos = offset + slot;
-      if (listPos >= count) break;
-      int idx = visible[listPos];
-
-      const bool sel   = (idx == selected_idx);
-      const int  y_top = (slot + 1) * 13;
-      const int  y_c   = y_top + 6;
-
-      Color fg = COLOR_ON;
-      if (sel) {
-        it->filled_rectangle(0, y_top, 128, 13, COLOR_ON);
-        fg = COLOR_OFF;
-      }
-
-      it->print(4, y_c, font_small, fg, display::TextAlign::CENTER_LEFT, labels[idx]);
-
-      switch (idx) {
-
-        case SETTING_CONTRAST: {
-          // 10 blocks × 3 px wide + 1 px gap, right-aligned to x=124
-          for (int i = 0; i < 10; i++) {
-            int bx = 85 + i * 4;
-            if (i < contrast_level)
-              it->filled_rectangle(bx, y_c - 3, 3, 6, fg);
-            else
-              it->rectangle(bx, y_c - 3, 3, 6, fg);
-          }
-          break;
-        }
-
-        case SETTING_WIFI: {
-          char buf[20];
-          strncpy(buf, ssid.c_str(), 19); buf[19] = '\0';
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT,
-                    buf[0] ? buf : "---");
-          break;
-        }
-
-        case SETTING_IP: {
-          char buf[20];
-          strncpy(buf, ip.c_str(), 19); buf[19] = '\0';
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT,
-                    buf[0] ? buf : "---");
-          break;
-        }
-
-        case SETTING_SLEEP: {
-          char buf[10];
-          formatMinutes(sleep_timeout_mins, buf, sizeof(buf));
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
-          break;
-        }
-
-        case SETTING_BATT_INTERVAL: {
-          char buf[10];
-          formatMinutes(battery_interval_mins, buf, sizeof(buf));
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
-          break;
-        }
-
-        case SETTING_DEEP_AFTER: {
-          char buf[10];
-          formatMinutes(deep_sleep_fallback_mins, buf, sizeof(buf));
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
-          break;
-        }
-
-        case SETTING_QUIET_FROM: {
-          char buf[8];
-          formatHour(quiet_hours_start, buf, sizeof(buf));
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
-          break;
-        }
-
-        case SETTING_QUIET_TO: {
-          char buf[8];
-          formatHour(quiet_hours_end, buf, sizeof(buf));
-          it->print(124, y_c, font_small, fg, display::TextAlign::CENTER_RIGHT, buf);
-          break;
-        }
-      }
+    // ABOUT: the intro (re)starts each time the page comes on screen and
+    // runs full screen; once done, the strip and keys go over its last frame
+    if (idx == SETTING_ABOUT) {
+      if (fresh) AboutScreen::start();
+      AboutScreen::draw(it, font_base, font_small);
+      if (AboutScreen::done()) AboutScreen::overlayChrome(it, font_small, pos, count, conn_status);
+      present(it, idx);
+      return;
     }
 
-    draw_bottom_menu(it, font_small, "▲", nullptr, "▼");
-    RemoteCore::drawConnBadge(it, conn_status);
-    Toast::present(it);
+    // strip: SETTINGS chip, one dot per setting, battery with its %
+    ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, nullptr, true);
+
+    if (idx == SETTING_SYSTEM) {
+      if (fresh || SystemStats::due()) SystemStats::sample();
+      SystemStats::draw(it, battery_pct, battery_mv);
+      draw_bottom_menu(it, font_small, "<", nullptr, ">");
+      present(it, idx);
+      return;
+    }
+
+    static const char* labels[SETTING_MAX] = {
+      "CONTRAST", "BATTERY CHECK", "SLEEP", "DEEP SLEEP", "QUIET FROM", "QUIET TO", "WIFI", "IP",
+      "SYSTEM", "ABOUT"
+    };
+    const char* name = idx == SETTING_WIFI ? link_label : idx == SETTING_IP ? addr_label : labels[idx];
+    it->print(64, NAME_Y, font_small, COLOR_ON, display::TextAlign::CENTER, name);
+
+    // value: contrast as 10 blocks, everything else as text in font_base.
+    // An editable value sits in an input box with a ▲▼ section on its right
+    // (up / down change it); a read-only one (WIFI / IP) is plain text,
+    // font_small when it's too wide for font_base.
+    const bool editable = idx != SETTING_WIFI && idx != SETTING_IP;
+    char buf[20] = "";
+    int vw = 59;  // contrast blocks: 10 x 5 px, 1 px apart
+    F* vf = font_base;
+    if (idx != SETTING_CONTRAST) {
+      switch (idx) {
+        case SETTING_BATT_INTERVAL: formatMinutes(battery_interval_mins, buf, sizeof(buf)); break;
+        case SETTING_SLEEP:         formatMinutes(sleep_timeout_mins, buf, sizeof(buf)); break;
+        case SETTING_DEEP_AFTER:    formatMinutes(deep_sleep_fallback_mins, buf, sizeof(buf)); break;
+        case SETTING_QUIET_FROM:    formatHour(quiet_hours_start, buf, sizeof(buf)); break;
+        case SETTING_QUIET_TO:      formatHour(quiet_hours_end, buf, sizeof(buf)); break;
+        case SETTING_WIFI:          snprintf(buf, sizeof(buf), "%s", ssid.empty() ? "---" : ssid.c_str()); break;
+        default:                    snprintf(buf, sizeof(buf), "%s", ip.empty() ? "---" : ip.c_str()); break;
+      }
+      int bx, by, bh;
+      it->get_text_bounds(64, VALUE_Y, buf, font_base, display::TextAlign::CENTER, &bx, &by, &vw, &bh);
+      if (!editable && vw > 120) vf = font_small;
+    }
+
+    int vx = 64;  // value centre
+    if (editable) {
+      // box: value area + 10 px ▲▼ section, at least 62 px wide, rows 29..47
+      const int bw = std::max(vw, 40) + 22, x0 = 64 - bw / 2, sx = x0 + bw - 6;
+      it->rectangle(x0, BOX_Y, bw, BOX_H, COLOR_ON);
+      it->draw_pixel_at(x0,          BOX_Y,             COLOR_OFF);
+      it->draw_pixel_at(x0 + bw - 1, BOX_Y,             COLOR_OFF);
+      it->draw_pixel_at(x0,          BOX_Y + BOX_H - 1, COLOR_OFF);
+      it->draw_pixel_at(x0 + bw - 1, BOX_Y + BOX_H - 1, COLOR_OFF);
+      it->line(x0 + bw - 11, BOX_Y + 1, x0 + bw - 11, BOX_Y + BOX_H - 2, COLOR_ON);
+      for (int k = 0; k < 3; k++) {
+        it->line(sx - k, VALUE_Y - 5 + k, sx + k, VALUE_Y - 5 + k, COLOR_ON);  // ▲ apex at VALUE_Y-5
+        it->line(sx - k, VALUE_Y + 5 - k, sx + k, VALUE_Y + 5 - k, COLOR_ON);  // ▼ apex at VALUE_Y+5
+      }
+      vx = x0 + (bw - 10) / 2;
+    }
+
+    if (idx == SETTING_CONTRAST) {
+      const int x0 = vx - vw / 2;
+      for (int i = 0; i < 10; i++) {
+        const int bx = x0 + i * 6;
+        if (i < contrast_level) it->filled_rectangle(bx, VALUE_Y - 5, 5, 10, COLOR_ON);
+        else                    it->rectangle(bx, VALUE_Y - 5, 5, 10, COLOR_ON);
+      }
+    } else {
+      it->print(vx, VALUE_Y, vf, COLOR_ON, display::TextAlign::CENTER, buf);
+    }
+
+    // round keys: previous / next setting
+    draw_bottom_menu(it, font_small, "<", nullptr, ">");
+    present(it, idx);
+  }
+
+  // The 50 ms tick (mode_settings.yaml) redraws while this is true: the
+  // ABOUT intro is playing, or a SYSTEM sample is due.
+  static bool needsTick(int selected_idx) {
+    if (selected_idx == SETTING_ABOUT)  return AboutScreen::running();
+    if (selected_idx == SETTING_SYSTEM) return SystemStats::due();
+    return false;
   }
 
 private:
+
+  static int& lastIdx()        { static int v = -1; return v; }
+  static uint32_t& lastFrame() { static uint32_t v = 0; return v; }
+
+  // Sends the frame and remembers it as this page's, for the next `fresh`.
+  template<class D>
+  static void present(D* it, int idx) {
+    Toast::present(it);
+    lastIdx()   = idx;
+    lastFrame() = Toast::frames();
+  }
 
   static void move(int& idx, int step, bool battery_enabled, bool light_sleep, bool quiet_hours_on_device) {
     int visible[SETTING_MAX];
@@ -315,16 +346,5 @@ private:
       snprintf(buf, buf_size, "%d H", mins / 60);
     else
       snprintf(buf, buf_size, "%dH%02d", mins / 60, mins % 60);
-  }
-
-  // Narrow battery icon: 16×6 body + 2×3 terminal nub on the right
-  template<class D>
-  static void drawBattery(D* it, int x, int y_c, int pct, Color fg) {
-    it->rectangle(x, y_c - 4, 14, 8, fg);             // body  16×8
-    it->filled_rectangle(x + 14, y_c - 2, 2, 4, fg);  // nub    2×4
-    if (pct > 0) {
-      int fill = (pct * 12) / 100;                     // max 14 px inside body
-      it->filled_rectangle(x + 1, y_c - 3, fill, 6, fg);
-    }
   }
 };

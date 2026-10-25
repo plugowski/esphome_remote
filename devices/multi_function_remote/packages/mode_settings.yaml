@@ -96,7 +96,7 @@ globals:
     type: int
     initial_value: '-1'
 
-  - id: sleep_timeout_mins  # idle time before sleeping (1–30 min)
+  - id: sleep_timeout_mins  # idle time before sleeping (1–60 min)
     type: int
     initial_value: '${SLEEP_TIMEOUT_MIN}'
     restore_value: true
@@ -230,10 +230,29 @@ script:
             lambda: 'return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting);'
           then:
             - lambda: >-
-                SettingsController::draw(id(oled_display), id(font_small),
+                SettingsController::draw(id(oled_display), id(font_base), id(font_small),
                   id(selected_setting_index), id(contrast_level),
                   id(wifi_ssid_sensor).state, id(wifi_ip_sensor).state,
-                  id(battery_pct), id(sleep_timeout_mins), id(battery_interval_mins),
+                  id(battery_pct),
+                  std::isnan(id(battery_voltage).state) ? 0 : int(id(battery_voltage).state * 1000),
+                  id(sleep_timeout_mins), id(battery_interval_mins),
                   id(deep_sleep_fallback_mins), id(quiet_hours_start), id(quiet_hours_end),
                   ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE},
                   id(updated_ui), id(conn_status));
+
+# ── Settings SYSTEM / ABOUT tick ──────────────────────────────────────────────
+# Redraws every 50 ms while the ABOUT intro plays or a SYSTEM sample is due
+# (SettingsController::needsTick); otherwise does nothing.
+interval:
+  - interval: 50ms
+    then:
+      - if:
+          condition:
+            lambda: >-
+              return id(app_mode) == APP_SETTINGS && !id(menu_active) && !id(is_booting)
+                && !id(is_timer_wake) && id(conn_status) == 0
+                && SettingsController::needsTick(id(selected_setting_index));
+          then:
+            - lambda: 'SystemStats::setLink(wifi::global_wifi_component->wifi_rssi());'
+            - lambda: 'id(updated_ui) = true;'
+            - script.execute: settings_draw
