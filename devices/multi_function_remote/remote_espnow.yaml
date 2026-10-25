@@ -196,6 +196,9 @@ esphome:
               # Normal wake: HELLO → snapshot → draw
               - script.execute: hub_connect
               - script.wait: hub_connect
+              # Read the battery now: the sensor's on_value shows it in Settings and reports it
+              # to the hub when it changed (see espnow/mode_settings.yaml).
+              - component.update: battery_raw
               - lambda: |-
                   id(is_booting) = false;
                   id(updated_ui) = true;

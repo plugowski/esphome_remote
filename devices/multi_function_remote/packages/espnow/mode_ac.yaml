@@ -11,9 +11,13 @@
 #   ac_btn_temp_up / _down, ac_btn_power_on / _off
 # Main update called by main_update: ac_update
 #
-# Send guard: after a command is sent, ac_pending_command blocks re-sends
-# until the hub echoes the new state (or 3 s pass).  Without it the remote
-# would resend every 500 ms while HA is still applying the change.
+# Sending: every press is sent at once, and a change is sent when the selection differs from what the hub is
+# known to have.  Right after a send that is the value just sent (ac_sent_*),
+# not the hub's older cached state, so a second press made before the hub has
+# answered (ON, then OFF) is still sent.  The hub waits for the presses to stop,
+# skips anything that changes nothing and answers with the resulting state.
+# ac_pending_command lasts until the hub reports what was last sent, or 4 s;
+# then the remote simply takes the hub's state (no resends).
 
 esphome:
   on_boot:
@@ -106,6 +110,21 @@ globals:
   - id: ac_pending_command
     type: bool
     initial_value: 'false'
+
+  # What the remote last sent, per field; the baseline for new presses while a send is pending.
+  # A send that starts a pending period first copies the hub's current values into all three, so a
+  # field that was not touched compares equal and is not sent along with the one that was.
+  - id: ac_sent_mode
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: ac_sent_fan
+    type: std::string
+    initial_value: '"unknown"'
+
+  - id: ac_sent_temp
+    type: int
+    initial_value: '-1'
 
 # ── AC scripts ────────────────────────────────────────────────────────────────
 script:
@@ -230,6 +249,13 @@ script:
   - id: ac_send_mode_update
     mode: single
     then:
+      - lambda: |-
+          if (!id(ac_pending_command)) {
+            id(ac_sent_mode) = id(current_ac_mode);
+            id(ac_sent_fan) = id(current_fan_mode);
+            id(ac_sent_temp) = id(current_temp);
+          }
+          id(ac_sent_mode) = id(selected_ac_mode);
       - script.execute: ac_mark_pending
       - script.execute:
           id: espnow_cmd
@@ -241,6 +267,13 @@ script:
   - id: ac_send_temp_update
     mode: single
     then:
+      - lambda: |-
+          if (!id(ac_pending_command)) {
+            id(ac_sent_mode) = id(current_ac_mode);
+            id(ac_sent_fan) = id(current_fan_mode);
+            id(ac_sent_temp) = id(current_temp);
+          }
+          id(ac_sent_temp) = id(selected_temp);
       - script.execute: ac_mark_pending
       - script.execute:
           id: espnow_cmd
@@ -252,6 +285,13 @@ script:
   - id: ac_send_fan_update
     mode: single
     then:
+      - lambda: |-
+          if (!id(ac_pending_command)) {
+            id(ac_sent_mode) = id(current_ac_mode);
+            id(ac_sent_fan) = id(current_fan_mode);
+            id(ac_sent_temp) = id(current_temp);
+          }
+          id(ac_sent_fan) = id(selected_fan_mode);
       - script.execute: ac_mark_pending
       - script.execute:
           id: espnow_cmd
@@ -260,50 +300,56 @@ script:
           action: !lambda 'return rnp::AC_SET_FAN;'
           value: !lambda 'return EspNowRemote::acFanValue(id(selected_ac_index), id(selected_fan_mode));'
 
-  # Pending flag: cleared when the hub echoes a matching state, or after 3 s.
+  # Pending flag: cleared when the hub's state matches the selection, or after 4 s. On the timeout
+  # the remote takes the hub's state (the unit refused or clamped the value, or the hub never
+  # answered) instead of sending again, so it cannot loop and make the AC beep.
   - id: ac_mark_pending
     mode: restart
     then:
       - lambda: 'id(ac_pending_command) = true;'
-      - delay: 3s
+      - delay: 4s
       - lambda: 'id(ac_pending_command) = false;'
+      - script.execute: ac_set_selections
+      - script.execute: ac_draw
 
-  # ── debounce (300 ms settle before sending) ───────────────────────────────
+  # ── tap guard (every press is sent at once; the hub decides what reaches the AC) ───────
+  # debounce_active only keeps a state frame from the hub from overwriting the selection while taps
+  # are still coming in (300 ms after the last one).
 
   - id: ac_await
     mode: restart
     then:
       - lambda: 'id(debounce_active) = true;'
+      # Send this press now, as an absolute value. The hub merges the presses and applies the result.
+      - script.execute: ac_update
       - delay: 300ms
       - lambda: 'id(debounce_active) = false;'
-      # Send the settled change now instead of waiting for the next 500ms
-      # interval tick — ac_update() also runs from the main loop, so this is
-      # only closing the gap between "debounce cleared" and "next tick".
-      - script.execute: ac_update
 
   # ── main AC update (called from main_update every 500 ms) ────────────────
 
   - id: ac_update
     then:
       - lambda: |-
+          // Pending ends when the hub reports what the remote last SENT, not when it happens to
+          // equal the current selection: a stale hub state can match a selection that was never sent.
           if (id(ac_pending_command) &&
-              id(selected_ac_mode) == id(current_ac_mode) &&
-              id(selected_fan_mode) == id(current_fan_mode) &&
-              id(selected_temp)    == id(current_temp)) {
+              id(ac_sent_mode) == id(current_ac_mode) &&
+              id(ac_sent_fan)  == id(current_fan_mode) &&
+              id(ac_sent_temp) == id(current_temp)) {
             id(ac_pending_command) = false;
             id(ac_mark_pending).stop();
           }
       - if:
           condition:
-            lambda: 'return !id(debounce_active) && !id(ac_pending_command) && id(selected_ac_mode) != id(current_ac_mode);'
+            lambda: 'return id(selected_ac_mode) != (id(ac_pending_command) ? id(ac_sent_mode) : id(current_ac_mode));'
           then: [ script.execute: ac_send_mode_update ]
       - if:
           condition:
-            lambda: 'return !id(debounce_active) && !id(ac_pending_command) && id(selected_fan_mode) != id(current_fan_mode);'
+            lambda: 'return id(selected_fan_mode) != (id(ac_pending_command) ? id(ac_sent_fan) : id(current_fan_mode));'
           then: [ script.execute: ac_send_fan_update ]
       - if:
           condition:
-            lambda: 'return !id(debounce_active) && !id(ac_pending_command) && id(selected_temp) != id(current_temp);'
+            lambda: 'return id(selected_temp) != (id(ac_pending_command) ? id(ac_sent_temp) : id(current_temp));'
           then: [ script.execute: ac_send_temp_update ]
       - script.execute: ac_set_current_states
       - script.execute: ac_draw
