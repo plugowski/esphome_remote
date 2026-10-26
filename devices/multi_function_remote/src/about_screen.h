@@ -15,13 +15,15 @@
 //   900–1100 ms  keeps growing to 104 px, rushing at the viewer
 //   1100–1250 ms holds, oversized
 //   1250–1650 ms shrinks back to 64 px while sliding to the left edge
-//   1700 ms–     the credits type in on the right, one letter every 17 ms
-//   2600 ms      done: the context strip and the < ••• > keys appear on top
-//                of the final frame, each with 1 px of black around it - the
-//                frame itself doesn't move
+//   1700–2397 ms the credits type in on the right, one letter every 17 ms
+//   +3 s         the context strip eases in from the top and the < ••• >
+//                keys from the bottom (300 ms), over the final frame, each
+//                with 1 px of black around it - the frame itself doesn't move
 //
 // The animation runs full screen. SettingsController starts it whenever the
-// ABOUT page comes on screen and calls draw() on a 50 ms tick until done().
+// ABOUT page comes on screen and redraws on a 50 ms tick while needsFrame():
+// through the animation, not during the 3 s pause, then through the slide
+// until one frame with the strip and keys fully in place has been drawn.
 // The face comes as two bitmaps (about_face.h): 104 px tall for the
 // oversized part, 64 px for its final size; anything in between or smaller
 // is the nearest one at or above it, scaled down nearest-neighbour.
@@ -35,16 +37,26 @@ public:
   static const uint32_t T_SHRINK   = 1650;
   static const uint32_t T_TEXT     = 1700;
   static const uint32_t CHAR_MS    = 17;
-  static const uint32_t T_OVERLAY  = 2600;
+  static const uint32_t CREDIT_CHARS = 11 + 5 + 8 + 17;     // all four lines
+  static const uint32_t T_TYPED    = T_TEXT + CREDIT_CHARS * CHAR_MS;
+  static const uint32_t T_CHROME   = T_TYPED + 3000;        // strip + keys start
+  static const uint32_t CHROME_MS  = 300;                   // ... and take this
 
-  static void start() { st().t0 = esphome::millis(); st().started = true; }
+  static void start() {
+    st().t0 = esphome::millis();
+    st().started = true;
+    st().final_drawn = false;
+  }
 
-  // Still animating (the overlay isn't up yet): keep the 50 ms tick going.
-  static bool running() { return st().started && elapsed() < T_OVERLAY; }
-  static bool done()    { return st().started && elapsed() >= T_OVERLAY; }
+  // Whether the 50 ms tick should redraw: anything still moving, nothing in
+  // the pause before the strip and keys, and stop once they're fully in.
+  static bool needsFrame() {
+    if (!st().started || st().final_drawn) return false;
+    const uint32_t t = elapsed();
+    return t < T_TYPED + 2 * CHAR_MS || t >= T_CHROME;
+  }
 
-  // One frame for now. With done() true this is the final frame, which the
-  // caller then puts the strip and keys over (overlayChrome()).
+  // The animation frame for now (the caller adds overlayChrome() on top).
   template<class D, class F>
   static void draw(D* it, F* font_base, F* font_small) {
     const uint32_t t = elapsed();
@@ -73,16 +85,25 @@ public:
     if (t >= T_TEXT) credits(it, font_base, font_small, int((t - T_TEXT) / CHAR_MS));
   }
 
-  // The strip and the bottom keys over the final frame, 1 px of black
-  // around each so they read cleanly on top of the face.
+  // The strip and the bottom keys over the final frame, once T_CHROME is
+  // reached: they ease in from above / below the screen over CHROME_MS,
+  // 1 px of black around each so they read cleanly on top of the face.
   template<class D, class F>
   static void overlayChrome(D* it, F* font_small, int pos, int count, int conn_status) {
-    it->filled_rectangle(0, 0, 128, ContextStrip::HEIGHT + 1, COLOR_OFF);
-    ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, nullptr, true);
-    it->filled_rectangle(1, SOFT_BTN_Y - 1, 42, SOFT_BTN_H + 1, COLOR_OFF);
-    it->filled_rectangle(46, SOFT_BTN_Y - 1, 36, SOFT_BTN_H + 1, COLOR_OFF);
-    it->filled_rectangle(85, SOFT_BTN_Y - 1, 42, SOFT_BTN_H + 1, COLOR_OFF);
-    draw_bottom_menu(it, font_small, "<", nullptr, ">");
+    const uint32_t t = elapsed();
+    if (t < T_CHROME) return;
+    const float p = t < T_CHROME + CHROME_MS ? easeOut(float(t - T_CHROME) / CHROME_MS) : 1.0f;
+    if (p >= 1.0f) st().final_drawn = true;
+
+    const int sy = -int((ContextStrip::HEIGHT + 1) * (1 - p));          // -10 → 0
+    it->filled_rectangle(0, sy, 128, ContextStrip::HEIGHT + 1, COLOR_OFF);
+    ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, nullptr, true, sy);
+
+    const int by = SOFT_BTN_Y + int((64 - SOFT_BTN_Y + 1) * (1 - p));  // 65 → 53
+    it->filled_rectangle(1, by - 1, 42, SOFT_BTN_H + 1, COLOR_OFF);
+    it->filled_rectangle(46, by - 1, 36, SOFT_BTN_H + 1, COLOR_OFF);
+    it->filled_rectangle(85, by - 1, 42, SOFT_BTN_H + 1, COLOR_OFF);
+    draw_bottom_menu(it, font_small, "<", nullptr, ">", true, true, by);
   }
 
 private:
@@ -93,7 +114,7 @@ private:
   static const int TEXT_L   = FACE_W + 3;   // credits area: right of the face
                                             // to the screen edge
 
-  struct State { uint32_t t0; bool started; };
+  struct State { uint32_t t0; bool started; bool final_drawn; };
   static State& st() { static State s{}; return s; }
   static uint32_t elapsed() { return esphome::millis() - st().t0; }
 

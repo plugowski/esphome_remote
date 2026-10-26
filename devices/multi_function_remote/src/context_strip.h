@@ -31,6 +31,8 @@
 //
 // Drawing (from a controller's draw(), after it->clear()):
 //   ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status, "ALL");
+// y moves the whole strip down (negative: up, partly off screen) - the
+// Settings ABOUT page slides it in from the top.
 
 class ContextStrip {
 public:
@@ -106,25 +108,25 @@ public:
 
   template<class D>
   static void draw(D* it, const char* label, int pos, int count, int conn_status,
-                   const char* context = nullptr, bool battery_pct = false) {
+                   const char* context = nullptr, bool battery_pct = false, int y = 0) {
     // label chip
     int x = 0;
-    if (label && label[0]) x = chip(it, 0, label) + 4;
+    if (label && label[0]) x = chip(it, 0, label, y) + 4;
 
     // right side, from the edge inwards: battery, context badge, link status
-    drawBattery(it, 117, 1);
+    drawBattery(it, 117, y + 1);
     int right_edge = 114;
     // battery_pct: the level as "87%" left of the icon (once it's known)
     if (battery_pct && batteryValue() >= 0) {
       char pct[6];
       snprintf(pct, sizeof(pct), "%d%%", batteryValue());
       const int w = textWidth(pct);
-      text(it, right_edge - w, 2, pct, COLOR_ON);
+      text(it, right_edge - w, y + 2, pct, COLOR_ON);
       right_edge -= w + 3;
     }
     if (context && context[0]) {
       const int w = textWidth(context) + 4;
-      chip(it, right_edge - w, context);
+      chip(it, right_edge - w, context, y);
       right_edge -= w + 3;
     }
 
@@ -133,7 +135,7 @@ public:
     else if (conn_status == 2) snprintf(right, sizeof(right), "NO HA");
     else if (conn_status == 3) snprintf(right, sizeof(right), "NO HUB");
     const int right_x = right_edge - textWidth(right);
-    if (right[0]) text(it, right_x, 2, right, COLOR_ON);
+    if (right[0]) text(it, right_x, y + 2, right, COLOR_ON);
 
     // position: dots when they fit, "n/N" otherwise
     if (count <= 1) return;
@@ -143,14 +145,14 @@ public:
     if (x + dots_w <= limit) {
       for (int i = 0; i < count; i++) {
         // current page: 5x5 (rows 2..6, the text height); others 2x3 (rows 3..5)
-        if (i == cur) it->filled_rectangle(x, 2, 5, 5, COLOR_ON);
-        else          it->filled_rectangle(x, 3, 2, 3, COLOR_ON);
+        if (i == cur) it->filled_rectangle(x, y + 2, 5, 5, COLOR_ON);
+        else          it->filled_rectangle(x, y + 3, 2, 3, COLOR_ON);
         x += ((i == cur) ? 5 : 2) + 2;
       }
     } else {
       char buf[8];
       snprintf(buf, sizeof(buf), "%d/%d", cur + 1, count);
-      if (x + textWidth(buf) <= limit) text(it, x, 2, buf, COLOR_ON);
+      if (x + textWidth(buf) <= limit) text(it, x, y + 2, buf, COLOR_ON);
     }
   }
 
