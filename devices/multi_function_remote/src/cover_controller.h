@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <algorithm>
 #include "cover_entities.h"
 #include "display_utils.h"
 #include "remote_core.h"
@@ -43,6 +44,7 @@
 //   CoverController::syncCoverPosition(sensor_idx, x, id(updated_ui));
 //   CoverController::positionUp(id(selected_cover_index), id(updated_ui));
 //   CoverController::positionDown(id(selected_cover_index), id(updated_ui));
+//   CoverController::endEdit(id(selected_cover_index), commit, id(updated_ui));
 //   CoverController::getPosition(id(selected_cover_index))   → int
 //   CoverController::isClosed(id(selected_cover_index))      → bool
 //   CoverController::draw(id(oled_display),
@@ -83,32 +85,45 @@ public:
                                  bool& updated_ui) {
     int ha_pos = (std::isnan(ha_pos_f) || ha_pos_f < 0) ? -1
                                                          : static_cast<int>(ha_pos_f);
+    reported(sensor_idx) = ha_pos;
+    // While position presses are being collected the shown value is the one being
+    // set; a moving cover's reports must not drag it around (see endEdit).
+    if (editing(sensor_idx)) return;
     int& p = pos(sensor_idx);
     if (p == ha_pos) return;
     p = ha_pos;
     updated_ui = true;
   }
 
-  // ── position control (10 % steps, clamped 0-100) ──────────────────────────
+  // ── position control (5 % steps, clamped 0-100) ───────────────────────────
+  // A cover stopped mid-way can sit at any value (26, 38 …); the first press
+  // snaps it to the next multiple of 5 in the pressed direction (26 → 30 up,
+  // 26 → 25 down), later presses move 5 at a time. The press only sets the
+  // shown value; covers_do_position sends it once the presses stop.
 
   static void positionUp(int idx, bool& updated_ui) {
-    int& p   = pos(idx);
-    int newp = ((p < 0 ? 0 : p) + 10);
-    if (newp > 100) newp = 100;
-    p          = newp;
-    st(idx)    = (p == 0) ? "closed" : "open";
-    tgt(idx)   = p;
-    updated_ui = true;
+    int p = pos(idx);
+    if (p < 0) p = 0;
+    setEdited(idx, std::min(100, (p / 5 + 1) * 5), updated_ui);
   }
 
   static void positionDown(int idx, bool& updated_ui) {
-    int& p   = pos(idx);
-    int newp = ((p < 0 ? 100 : p) - 10);
-    if (newp < 0) newp = 0;
-    p          = newp;
-    st(idx)    = (p == 0) ? "closed" : "open";
-    tgt(idx)   = p;
-    updated_ui = true;
+    int p = pos(idx);
+    if (p < 0) p = 100;
+    setEdited(idx, std::max(0, ((p + 4) / 5 - 1) * 5), updated_ui);
+  }
+
+  // The collected position was sent (commit) or dropped for OPEN / CLOSE / STOP:
+  // reports from the cover drive the shown value again. Dropping it puts the
+  // last reported position back on screen.
+  static void endEdit(int idx, bool commit, bool& updated_ui) {
+    if (!editing(idx)) return;
+    editing(idx) = false;
+    if (!commit) {
+      pos(idx)   = reported(idx);
+      tgt(idx)   = -1;
+      updated_ui = true;
+    }
   }
 
   // ── movement target (for the slider tick while it moves) ──────────────────
@@ -218,6 +233,31 @@ private:
       init = true;
     }
     return positions[wrap_index(idx, COVER_LIST_CAPACITY)];
+  }
+
+  static void setEdited(int idx, int p, bool& updated_ui) {
+    pos(idx)     = p;
+    st(idx)      = (p == 0) ? "closed" : "open";
+    tgt(idx)     = p;
+    editing(idx) = true;
+    updated_ui   = true;
+  }
+
+  // True between a position press and its send (or its cancel).
+  static bool& editing(int idx) {
+    static bool flags[COVER_LIST_CAPACITY] = {};
+    return flags[wrap_index(idx, COVER_LIST_CAPACITY)];
+  }
+
+  // Last position the cover reported, kept while editing hides it.
+  static int& reported(int idx) {
+    static bool init = false;
+    static int values[COVER_LIST_CAPACITY];
+    if (!init) {
+      for (int i = 0; i < COVER_LIST_CAPACITY; i++) values[i] = -1;
+      init = true;
+    }
+    return values[wrap_index(idx, COVER_LIST_CAPACITY)];
   }
 
   static const char* stateWord(const std::string& state) {
