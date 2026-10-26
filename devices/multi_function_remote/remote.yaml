@@ -205,14 +205,15 @@ esphome:
               # network. conn_status drives a small corner badge instead of
               # a full-screen gate; boot_connect_watchdog updates it
               # asynchronously without holding up anything else here.
+              # Read the battery now so the low-battery notice below has a value.
+              - component.update: battery_voltage
               - lambda: |-
                   mark_normal_wake();
                   id(is_booting) = false;
                   id(updated_ui) = true;
-                  // Low-battery notice. MOCK: the reading is pinned to 9 % so the
-                  // toast shows on every boot; swap in id(battery_pct) once the
-                  // real reading is trusted here.
-                  const int battery_now = 9;
+                  // Low-battery notice from the reading just taken (battery_voltage's
+                  // on_value sets battery_pct; -1 = no reading).
+                  const int battery_now = id(battery_pct);
                   if (battery_now >= 0 && battery_now < 10) {
                     char msg[16];
                     snprintf(msg, sizeof(msg), "BATTERY %d%%", battery_now);
