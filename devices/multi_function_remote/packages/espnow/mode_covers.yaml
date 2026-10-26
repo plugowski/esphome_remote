@@ -6,7 +6,7 @@
 # Button entry points (via buttons.yaml / layout):
 #   covers_btn_left / covers_btn_right   → previous / next cover
 #   covers_btn_open / _close / _stop / _ok
-#   covers_btn_pos_up / _down            → ±10 %
+#   covers_btn_pos_up / _down            → ±5 % (snapped to a multiple of 5, sent 900 ms after the last press)
 # Main update loop: covers_update
 
 esphome:
@@ -24,11 +24,13 @@ script:
 
   - id: covers_btn_left
     then:
+      - script.execute: covers_cancel_position
       - lambda: 'CoverController::prevCover(id(selected_cover_index));'
       - script.execute: covers_select
 
   - id: covers_btn_right
     then:
+      - script.execute: covers_cancel_position
       - lambda: 'CoverController::nextCover(id(selected_cover_index));'
       - script.execute: covers_select
 
@@ -41,6 +43,7 @@ script:
   # labels it STOP then), otherwise open it.
   - id: covers_btn_open
     then:
+      - script.execute: covers_cancel_position
       - if:
           condition: { lambda: 'return CoverController::isOpening(id(selected_cover_index));' }
           then: [ script.execute: covers_btn_stop ]
@@ -61,6 +64,7 @@ script:
   # labels it STOP then), otherwise close it.
   - id: covers_btn_close
     then:
+      - script.execute: covers_cancel_position
       - if:
           condition: { lambda: 'return CoverController::isClosing(id(selected_cover_index));' }
           then: [ script.execute: covers_btn_stop ]
@@ -79,6 +83,7 @@ script:
 
   - id: covers_btn_stop
     then:
+      - script.execute: covers_cancel_position
       - script.execute:
           id: espnow_cmd
           domain: !lambda 'return rnp::DOM_COVERS;'
@@ -106,10 +111,18 @@ script:
       - script.execute: covers_do_position
       - script.execute: covers_draw
 
+  # A pending position is dropped by any other cover key: STOP, OPEN and CLOSE
+  # act at once, and a position meant for this cover must not follow it to the next.
+  - id: covers_cancel_position
+    then:
+      - script.stop: covers_do_position
+      - lambda: 'CoverController::endEdit(id(selected_cover_index), false, id(updated_ui));'
+
   - id: covers_do_position
     mode: restart
     then:
-      - delay: 300ms    # debounce — coalesce rapid presses before sending
+      - delay: 900ms    # send once the presses stop (the hub's AC settle time)
+      - lambda: 'CoverController::endEdit(id(selected_cover_index), true, id(updated_ui));'
       - script.execute:
           id: espnow_cmd
           domain: !lambda 'return rnp::DOM_COVERS;'
