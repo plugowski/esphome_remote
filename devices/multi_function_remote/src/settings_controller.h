@@ -215,7 +215,7 @@ public:
     if (idx == SETTING_ABOUT) {
       if (fresh) AboutScreen::start();
       AboutScreen::draw(it, font_base, font_small);
-      if (AboutScreen::done()) AboutScreen::overlayChrome(it, font_small, pos, count, conn_status);
+      AboutScreen::overlayChrome(it, font_small, pos, count, conn_status);
       present(it, idx);
       return;
     }
@@ -295,9 +295,10 @@ public:
   }
 
   // The 50 ms tick (mode_settings.yaml) redraws while this is true: the
-  // ABOUT intro is playing, or a SYSTEM sample is due.
+  // ABOUT intro is playing or its strip and keys are sliding in (not in
+  // the pause between), or a SYSTEM sample is due.
   static bool needsTick(int selected_idx) {
-    if (selected_idx == SETTING_ABOUT)  return AboutScreen::running();
+    if (selected_idx == SETTING_ABOUT)  return AboutScreen::needsFrame();
     if (selected_idx == SETTING_SYSTEM) return SystemStats::due();
     return false;
   }

@@ -72,12 +72,13 @@ inline const uint8_t* grab_raw_buffer(T* display) {
 static const int SOFT_BTN_Y = 53, SOFT_BTN_H = 11;
 
 // One button; outline = frame only (content then goes in COLOR_ON).
-inline void draw_soft_button(esphome::display::Display *it, int x, int w, bool outline = false) {
-    if (outline) it->rectangle(x, SOFT_BTN_Y, w, SOFT_BTN_H, COLOR_ON);
-    else         it->filled_rectangle(x, SOFT_BTN_Y, w, SOFT_BTN_H, COLOR_ON);
-    const int y2 = SOFT_BTN_Y + SOFT_BTN_H - 1;
-    it->draw_pixel_at(x,         SOFT_BTN_Y, COLOR_OFF);
-    it->draw_pixel_at(x + w - 1, SOFT_BTN_Y, COLOR_OFF);
+inline void draw_soft_button(esphome::display::Display *it, int x, int w, bool outline = false,
+                             int y = SOFT_BTN_Y) {
+    if (outline) it->rectangle(x, y, w, SOFT_BTN_H, COLOR_ON);
+    else         it->filled_rectangle(x, y, w, SOFT_BTN_H, COLOR_ON);
+    const int y2 = y + SOFT_BTN_H - 1;
+    it->draw_pixel_at(x,         y, COLOR_OFF);
+    it->draw_pixel_at(x + w - 1, y, COLOR_OFF);
     it->draw_pixel_at(x,         y2,         COLOR_OFF);
     it->draw_pixel_at(x + w - 1, y2,         COLOR_OFF);
 }
@@ -89,13 +90,14 @@ inline void draw_bottom_menu(
     const char *center,
     const char *right,
     bool center_box = true,
-    bool separator = true
+    bool separator = true,
+    int y = SOFT_BTN_Y              // top row of the buttons (the ABOUT page slides them in)
 ) {
     using esphome::display::TextAlign;
-    const int cy = SOFT_BTN_Y + 5;  // vertical centre of the buttons (row 58)
+    const int cy = y + 5;  // vertical centre of the buttons (row 58)
 
     if (left && left[0] != '\0') {
-        draw_soft_button(it, 2, 40);
+        draw_soft_button(it, 2, 40, false, y);
         if (left[0] == '<' && left[1] == '\0') {
             // ◀ 6x6, tip at left, centred on the button (x=19..24)
             const int x = 19;
@@ -115,22 +117,22 @@ inline void draw_bottom_menu(
         const Color ink     = outline ? COLOR_ON : COLOR_OFF;
         if (!center) {
             // nullptr → ••• menu key, three 3x3 dots 2 px apart (x=58..70)
-            draw_soft_button(it, 47, 34, outline);
+            draw_soft_button(it, 47, 34, outline, y);
             for (int k = 0; k < 3; k++)
                 it->filled_rectangle(58 + k * 5, cy - 1, 3, 3, ink);
         } else if (center[0] != '\0') {
-            draw_soft_button(it, 47, 34, outline);
+            draw_soft_button(it, 47, 34, outline, y);
             it->print(64, cy, font, ink, TextAlign::CENTER, center);
         }
     } else {
         // plain centre text, no button (wide notes)
-        if (separator) it->rectangle(0, 53, 128, 1);
+        if (separator) it->rectangle(0, y, 128, 1);
         if (center && center[0] != '\0')
-            it->print(64, 59, font, COLOR_ON, TextAlign::CENTER, center);
+            it->print(64, y + 6, font, COLOR_ON, TextAlign::CENTER, center);
     }
 
     if (right && right[0] != '\0') {
-        draw_soft_button(it, 86, 40);
+        draw_soft_button(it, 86, 40, false, y);
         if (right[0] == '>' && right[1] == '\0') {
             // ▶ 6x6, tip at right, centred on the button (x=103..108)
             const int x = 103;

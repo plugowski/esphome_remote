@@ -135,7 +135,11 @@ script:
 
   - id: menu_confirm
     then:
-      - lambda: 'MenuController::confirm(id(app_mode), id(menu_index), id(menu_active), id(updated_ui));'
+      - lambda: |-
+          MenuController::confirm(id(app_mode), id(menu_index), id(menu_active), id(updated_ui));
+          // Settings always opens on its first page (the page is otherwise
+          // restored, e.g. after deep sleep while Settings was open)
+          if (id(app_mode) == APP_SETTINGS) id(selected_setting_index) = SETTING_CONTRAST;
 
   - id: menu_cancel
     then:
