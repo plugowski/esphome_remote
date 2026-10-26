@@ -96,6 +96,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
 
   void subscribe_all_();
   void mark_dirty_(uint8_t domain_bit);
+  void cover_changed_();
 
   void apply_ac_(int i);
   void apply_light_brightness_(int i);
@@ -125,6 +126,9 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   bool have_src_{false};
   uint8_t last_rx_src_[6]{0, 0, 0, 0, 0, 0};  // remote that sent the latest packet of any kind
   bool have_rx_src_{false};
+  // Cover states are announced once more when they stop changing (see cover_changed_).
+  bool covers_repeat_{false};
+  uint32_t covers_repeat_at_{0};
   bool shot_pending_{false};
   uint32_t shot_req_at_{0};  // 0 = request not sent yet
   uint8_t shot_mask_{0};     // bit n = chunk n received

@@ -26,6 +26,8 @@ static const uint32_t EXPECT_TTL_MS = 6000;  // how long a commanded value stand
 // Brightness presses are applied this long after the last one (shorter than SETTLE_MS: a
 // light has no mode / fan sequencing to wait for, and a dimmer should feel quick).
 static const uint32_t LIGHT_SETTLE_MS = 500;
+// A cover's final state is announced again this long after its last change (see cover_changed_).
+static const uint32_t COVER_REPEAT_MS = 1500;
 static const uint32_t EMU_STEP_MS = 250;  // cover emulator: one 5 % step this often
 // Resend the screenshot request on the next packet if no image arrived by then.
 static const uint32_t SCREENSHOT_RETRY_MS = 5000;
@@ -84,6 +86,11 @@ void RemoteHub::loop() {
       this->mark_dirty_(DIRTY_LIGHTS);
     }
   }
+  if (this->covers_repeat_ && (int32_t) (millis() - this->covers_repeat_at_) >= 0) {
+    this->covers_repeat_ = false;
+    this->send_covers_(rnp::BROADCAST_ADDR);
+    if (this->have_rx_src_) this->send_covers_(this->last_rx_src_);
+  }
   if (this->dirty_ == 0) return;
   if (millis() - this->dirty_since_ < PUSH_DEBOUNCE_MS) return;
   uint8_t d = this->dirty_;
@@ -125,7 +132,7 @@ void RemoteHub::emulate_cover_(int i, uint8_t action, int value) {
     if (e.moving) c.state = e.target > cur ? "opening" : "closing";
   }
   ESP_LOGI(TAG, "Emulated cover %d: %s at %u%% -> %u%%", i, c.state.c_str(), cur, e.target);
-  this->mark_dirty_(DIRTY_COVERS);
+  this->cover_changed_();
 }
 
 void RemoteHub::step_emulated_covers_() {
@@ -142,7 +149,7 @@ void RemoteHub::step_emulated_covers_() {
       e.moving = false;
       c.state = c.position == 0 ? "closed" : "open";
     }
-    this->mark_dirty_(DIRTY_COVERS);
+    this->cover_changed_();
   }
 }
 
@@ -156,6 +163,16 @@ void RemoteHub::dump_config() {
 void RemoteHub::mark_dirty_(uint8_t bit) {
   if (this->dirty_ == 0) this->dirty_since_ = millis();
   this->dirty_ |= bit;
+}
+
+// Covers report every step of a movement and each one goes out as an unacknowledged broadcast; a
+// lost last one (OPEN 100 after OPENING 98) would leave the remote showing the cover still moving.
+// So once the reports stop, the result is sent again: broadcast, and unicast to the remote heard
+// last (acknowledged and retried by the radio).
+void RemoteHub::cover_changed_() {
+  this->mark_dirty_(DIRTY_COVERS);
+  this->covers_repeat_ = true;
+  this->covers_repeat_at_ = millis() + COVER_REPEAT_MS;
 }
 
 // ── Home Assistant subscriptions ──────────────────────────────────────────────
@@ -220,11 +237,11 @@ void RemoteHub::subscribe_all_() {
   for (int i = 0; i < COVER_LIST_COUNT && !this->cover_emu_; i++) {
     std::string eid = COVER_LIST[i].entity_id;
     api->subscribe_home_assistant_state(eid, optional<std::string>{}, state_cb_t([this, i](const std::string &s) {
-      if (this->covers_[i].state != s) { this->covers_[i].state = s; this->mark_dirty_(DIRTY_COVERS); }
+      if (this->covers_[i].state != s) { this->covers_[i].state = s; this->cover_changed_(); }
     }));
     api->subscribe_home_assistant_state(eid, optional<std::string>{"current_position"}, state_cb_t([this, i](const std::string &s) {
       uint8_t p = pct_from_ha_(s, 1.0f);
-      if (this->covers_[i].position != p) { this->covers_[i].position = p; this->mark_dirty_(DIRTY_COVERS); }
+      if (this->covers_[i].position != p) { this->covers_[i].position = p; this->cover_changed_(); }
     }));
   }
 }
