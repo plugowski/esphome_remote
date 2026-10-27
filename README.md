@@ -1,5 +1,9 @@
 # ESPHome Multi-Function OLED Remote
 
+[![Online configurator: quick actions, rooms and modes on the left, a live emulator of the remote on the right](devices/multi_function_remote/screenshots/configurator.png)](https://tech.lugowski.dev/tools/#multi)
+
+**[Configure your remote online →](https://tech.lugowski.dev/tools/#multi)** Pick the modes, add your Home Assistant entities and quick actions, and watch every change on a live emulator of the remote. Then download a ready-to-build ESPHome project, WiFi or ESP-NOW. No YAML editing needed.
+
 ESP32-based wireless remote with a 128×64 OLED display. Controls AC units, lights, covers, and automations via Home Assistant. All display and interaction logic lives in C++ header files under `src/`; ESPHome YAML handles connectivity, sensors, and button wiring.
 
 Two firmware flavours share the same code: the original **WiFi remote** (`remote.yaml`, talks to Home Assistant directly) and the **ESP-NOW remote** (`remote_espnow.yaml`, talks to a small always-on hub for sub-second wake and much longer battery life). See [ESP-NOW variant](#esp-now-variant).
