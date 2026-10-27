@@ -31,7 +31,7 @@
 // Button mapping (routing in buttons.yaml / the layouts):
 //   round keys L / R      → shortcut L / R
 //   ← / → and ↑ / ↓       → previous / next automation
-//   OK                    → run the selected automation
+//   ●  (btn_ok)           → run the selected automation
 //   MENU                  → mode menu
 // Every run shows the SENT toast.
 //

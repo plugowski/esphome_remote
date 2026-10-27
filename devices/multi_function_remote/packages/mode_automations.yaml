@@ -181,3 +181,16 @@ script:
                                            id(automation_icon), id(shortcut_icon),
                                            id(selected_auto_index), id(automations_card_view),
                                            id(updated_ui), id(conn_status));
+
+# ── quick-action toggle states ────────────────────────────────────────────────
+# A quick action with a *.toggle service (switch.toggle, input_boolean.toggle)
+# shows its entity's on / off state on its card (src/quick_action_state.h).
+# Add one text_sensor per such entity - the configurator generates them:
+#
+# text_sensor:
+#   - platform: homeassistant
+#     id: qa_desk_fan_state
+#     entity_id: switch.desk_fan
+#     on_value:
+#       then:
+#         - lambda: 'QuickActionState::sync("switch.desk_fan", x); id(updated_ui) = true;'

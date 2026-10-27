@@ -5,9 +5,9 @@
 #
 # Button entry points (called from remote.yaml):
 #   covers_btn_left    → previous cover    (pin14)
-#   covers_btn_right   → next cover        (pin33 — open action)
-#   covers_btn_open    → open              (pin33)
-#   covers_btn_close   → close             (pin22)
+#   covers_btn_right   → next cover
+#   covers_btn_open    → open              (pin22)
+#   covers_btn_close   → close             (pin33)
 #   covers_btn_stop    → stop              (pin26)
 #   covers_btn_pos_up  → position +5 %    (pin23)
 #   covers_btn_pos_down→ position -5 %    (pin19)

@@ -97,18 +97,26 @@ script:
   # depends on the active view (lights_card_view). See the mapping table at
   # the top of src/lights_controller.h.
 
-  - id: lights_btn_circle_l         # pin22 — list: prev | card: LOW / OFF
+  - id: lights_btn_circle_l         # pin22 — list: prev | card: LOW / ON
     then:
       - if:
           condition: { lambda: 'return id(lights_card_view);' }
-          then: [ script.execute: lights_btn_preset_low ]
+          then:
+            - if:
+                condition: { lambda: 'return LightsController::isDimmable(id(selected_light_index));' }
+                then: [ script.execute: lights_btn_preset_low ]
+                else: [ script.execute: lights_btn_preset_full ]   # no dimmer: ON
           else: [ script.execute: lights_btn_prev ]
 
-  - id: lights_btn_circle_r         # pin33 — list: next | card: FULL / ON
+  - id: lights_btn_circle_r         # pin33 — list: next | card: FULL / OFF
     then:
       - if:
           condition: { lambda: 'return id(lights_card_view);' }
-          then: [ script.execute: lights_btn_preset_full ]
+          then:
+            - if:
+                condition: { lambda: 'return LightsController::isDimmable(id(selected_light_index));' }
+                then: [ script.execute: lights_btn_preset_full ]
+                else: [ script.execute: lights_btn_preset_low ]    # no dimmer: OFF
           else: [ script.execute: lights_btn_next ]
 
   - id: lights_btn_left             # ← — list: brightness − | card: prev
@@ -125,12 +133,8 @@ script:
           then: [ script.execute: lights_btn_next ]
           else: [ script.execute: lights_btn_brightness_up ]
 
-  - id: lights_btn_ok               # OK — list: toggle | card: ON
-    then:
-      - if:
-          condition: { lambda: 'return id(lights_card_view);' }
-          then: [ script.execute: lights_btn_on ]
-          else: [ script.execute: lights_btn_toggle ]
+  - id: lights_btn_ok               # ● — toggle on/off (both views)
+    then: [ script.execute: lights_btn_toggle ]
 
   - id: lights_btn_up               # ↑ — list: prev | card: brightness +
     then:
@@ -146,13 +150,10 @@ script:
           then: [ script.execute: lights_btn_brightness_down ]
           else: [ script.execute: lights_btn_next ]
 
-  - id: lights_btn_stop             # ⏸ — list: nothing | card: OFF
-    then:
-      - if:
-          condition: { lambda: 'return id(lights_card_view);' }
-          then: [ script.execute: lights_btn_off ]
+  - id: lights_btn_stop             # ■ — OFF (both views)
+    then: [ script.execute: lights_btn_off ]
 
-  # ── card-view actions ─────────────────────────────────────────────────────
+  # ── on / off ──────────────────────────────────────────────────────────────
 
   - id: lights_btn_on
     then:

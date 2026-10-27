@@ -28,6 +28,9 @@
 //                                            brightness u8 (0-100, 255 unknown)
 //   STATE_COVERS : count u8, then per cover: idx u8, state str,
 //                                            position u8 (0-100, 255 unknown)
+//   STATE_QUICK  : count u8, then per toggle quick action: idx u8 (into
+//                  QUICK_ACTION_LIST), on u8 (0/1, 2 unknown) - only the
+//                  *.toggle actions are listed
 //   STATE_DONE   : (no payload) — ends a full snapshot after HELLO
 //   SCREENSHOT_REQ : (no payload) — remote answers with 8 SCREENSHOT_DATA
 //   HIST_DATA    : req_id u8, status u8 (hist::Status), bucket_minutes u16,
@@ -62,6 +65,7 @@ enum PacketType : uint8_t {
   STATE_DONE   = 0x05,
   SCREENSHOT_REQ  = 0x06,
   HIST_DATA    = 0x07,
+  STATE_QUICK  = 0x08,
   CMD          = 0x10,
   BATTERY      = 0x20,
   HIST_REQ     = 0x21,

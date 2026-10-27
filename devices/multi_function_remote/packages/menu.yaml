@@ -1,6 +1,8 @@
 # ── menu.yaml ────────────────────────────────────────────────────────────────
 # Mode-selector carousel + quick-action overlay.
 # menu_quick_index == -1 → carousel view  |  >= 0 → quick-action view
+# Actions-only build (no modes, only quick actions): the menu stays open in the
+# quick-action view - see MenuController::actionsOnly().
 
 esphome:
   includes:
@@ -8,6 +10,7 @@ esphome:
     - src/room_filter.h
     - src/menu_controller.h
     - src/quick_action_entities.h
+    - src/quick_action_state.h
 
 font:
   - file:
@@ -131,7 +134,12 @@ script:
           id(room_picker_from_menu) = false;
           MenuController::open(id(menu_index), id(app_mode), id(menu_active));
           id(menu_quick_index) = -1;
-      - script.execute: menu_draw
+          MenuController::openActions(id(menu_active), id(menu_quick_index));
+          MenuController::pinActions(id(menu_active), id(menu_quick_index));
+      # one mode and no quick actions: nothing opened, keep the mode screen
+      - if:
+          condition: { lambda: 'return id(menu_active);' }
+          then: [ script.execute: menu_draw ]
 
   - id: menu_confirm
     then:
@@ -143,7 +151,10 @@ script:
 
   - id: menu_cancel
     then:
-      - lambda: 'id(menu_active) = false; id(updated_ui) = true;'
+      - lambda: |-
+          if (MenuController::actionsOnly()) return;   // nowhere to close to
+          id(menu_active) = false;
+          id(updated_ui) = true;
 
   - id: menu_prev
     then:
@@ -169,10 +180,15 @@ script:
       - lambda: 'MenuController::scrollDown(id(menu_quick_index));'
       - script.execute: menu_draw
 
+  # One mode: there is no carousel, so BACK goes back to the mode itself.
   - id: menu_back_to_carousel
     then:
-      - lambda: 'id(menu_quick_index) = -1;'
-      - script.execute: menu_draw
+      - if:
+          condition: { lambda: 'return MenuController::actionsMenuOnly();' }
+          then: [ script.execute: menu_cancel ]
+          else:
+            - lambda: 'if (!MenuController::actionsOnly()) id(menu_quick_index) = -1;'
+            - script.execute: menu_draw
 
   # Trigger selected quick action — reuses auto_entity / auto_service / auto_call_ha
   # from mode_automations.yaml (merged globals accessible across all packages).
@@ -182,6 +198,7 @@ script:
           const auto& qa   = QUICK_ACTION_LIST[id(menu_quick_index)];
           id(auto_entity)  = qa.entity_id;
           id(auto_service) = qa.service;
+          QuickActionState::flip(id(menu_quick_index));   // toggles: show the new state now
       - script.execute: auto_call_ha
       # Confirmation over the card you stay on: just "✓ SENT", in a box the
       # size of the battery notice, for 2 s; any key closes it.
@@ -249,6 +266,7 @@ script:
           if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
           id(menu_active)           = id(room_picker_from_menu);
           id(room_picker_from_menu) = false;
+          MenuController::pinActions(id(menu_active), id(menu_quick_index));
           id(updated_ui) = true;
 
   - id: room_picker_draw

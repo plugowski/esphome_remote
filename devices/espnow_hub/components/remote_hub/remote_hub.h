@@ -131,6 +131,7 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   void send_ac_(const uint8_t *dest);
   void send_lights_(const uint8_t *dest);
   void send_covers_(const uint8_t *dest);
+  void send_quick_(const uint8_t *dest);
   void send_snapshot_(const uint8_t *dest);
 
   void handle_cmd_(const uint8_t *src, rnp::Reader &r);
@@ -196,8 +197,11 @@ class RemoteHub : public Component, public api::CustomAPIDevice {
   LightState lights_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
   LightGuard light_guard_[LIGHTS_LIST_COUNT > 0 ? LIGHTS_LIST_COUNT : 1];
   CoverState covers_[COVER_LIST_COUNT > 0 ? COVER_LIST_COUNT : 1];
+  // On / off of the *.toggle quick actions (rnp light-state values), shown on
+  // the remote's quick-action card
+  uint8_t quick_on_[QUICK_ACTION_CAPACITY];
 
-  static const uint8_t DIRTY_AC = 1, DIRTY_LIGHTS = 2, DIRTY_COVERS = 4;
+  static const uint8_t DIRTY_AC = 1, DIRTY_LIGHTS = 2, DIRTY_COVERS = 4, DIRTY_QUICK = 8;
   uint8_t dirty_{0};
   uint32_t dirty_since_{0};
   uint32_t rx_count_{0};

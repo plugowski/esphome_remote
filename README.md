@@ -1,5 +1,9 @@
 # ESPHome Multi-Function OLED Remote
 
+[![Online configurator: quick actions, rooms and modes on the left, a live emulator of the remote on the right](devices/multi_function_remote/screenshots/configurator.png)](https://tech.lugowski.dev/tools/#multi)
+
+**[Configure your remote online →](https://tech.lugowski.dev/tools/#multi)** Pick the modes, add your Home Assistant entities and quick actions, and watch every change on a live emulator of the remote. Then download a ready-to-build ESPHome project, WiFi or ESP-NOW. No YAML editing needed.
+
 ESP32-based wireless remote with a 128×64 OLED display. Controls AC units, lights, covers, and automations via Home Assistant. All display and interaction logic lives in C++ header files under `src/`; ESPHome YAML handles connectivity, sensors, and button wiring.
 
 Two firmware flavours share the same code: the original **WiFi remote** (`remote.yaml`, talks to Home Assistant directly) and the **ESP-NOW remote** (`remote_espnow.yaml`, talks to a small always-on hub for sub-second wake and much longer battery life). See [ESP-NOW variant](#esp-now-variant).
@@ -53,6 +57,15 @@ The images are rendered with the firmware's own layout and fonts.
 Left / right (and the round keys) move between settings, up / down changes the value in the box. Read-only values have no box.
 
 **HISTORY** shows the battery level over the last 24 hours (hourly bars), 7 days (2 h columns) or 30 days (6 h columns); up / down switch the range. The remote stores nothing itself: the samples come from Home Assistant's Recorder, so the battery sensor must be recorded there. A sample Home Assistant has no value for is a gap in the graph, never 0 %. The WiFi remote fetches them from the history REST API by itself; the ESP-NOW remote asks the hub. Both need a long-lived access token, see [Battery history](#battery-history).
+
+| 24 hours | 7 days | 30 days |
+|:---:|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/history_24h.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/history_7d.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/history_30d.png" width="200"> |
+| hourly bars | 2 h columns, today inverted, a gap while HA was offline | 6 h columns, a date every week, charged 18 days ago |
+
+| No samples yet | Waiting for the data |
+|:---:|:---:|
+| <img src="devices/multi_function_remote/screenshots/ui/history_empty.png" width="200"> | <img src="devices/multi_function_remote/screenshots/ui/history_loading.png" width="200"> |
 
 ### Room selection
 
@@ -149,7 +162,7 @@ Files marked ★ are the ones you edit to match your Home Assistant setup.
 
 | | v1 (left) | v2 (right) |
 |---|---|---|
-| **Buttons** | AC, Power, +, − | ↑ ↓ ← → OK ⏸ |
+| **Buttons** | AC, Power, +, − | ↑ ↓ ← → ● ■ |
 | **Use case** | AC-only | Multi-mode (AC, lights, covers, automations) |
 | **Layout file** | `layouts/layout_v1.yaml` | `layouts/layout_v2.yaml` _(default)_ |
 
@@ -286,7 +299,7 @@ All firmwares can dump the current OLED framebuffer as hex lines over the logger
 
 ### Trigger
 
-**Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the Pause/Stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
+**Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the ■ stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
 
 **Product firmware** (`remote.yaml`, generator-built): press the **Screenshot** button — it's a plain HA button entity (no `internal:` flag), so it shows up under the device in Home Assistant automatically and can be pressed there, called from an automation/script (`button.press`), or pressed on demand from the ESPHome dashboard. To capture the output over USB serial (rather than just watching HA's log viewer), turn on the generator's **"Enable debug logging (UART)"** toggle first — the raw hex lines only reach the serial port when `LOGGER_BAUD_RATE` is a real baud rate, not the power-optimized default of `0`.
 

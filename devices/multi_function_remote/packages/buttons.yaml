@@ -11,22 +11,25 @@
 #
 # Dispatch table:
 #
-#   btn_*      │ menu  │ AC             │ Lights         │ Covers          │ Automations
-#   ───────────┼───────┼────────────────┼────────────────┼─────────────────┼─────────────────
-#   btn_left   │ prev  │ prev unit      │ list: bri – / card: prev  │ prev cover      │ prev
-#   btn_right  │ next  │ next unit      │ list: bri + / card: next  │ next cover      │ next
-#   btn_ok     │ confm │ cycle HVAC     │ list: toggle / card: ON   │ open ↔ close    │ trigger selected
-#   btn_up     │  —    │ temp +         │ list: prev  / card: bri + │ position +10 %  │ scroll up ▲
-#   btn_down   │  —    │ temp –         │ list: next  / card: bri – │ position –10 %  │ scroll down ▼
-#   btn_stop   │ cancl │ cycle fan      │ list: —     / card: OFF   │ stop            │  —
-#   btn_menu_open │ — │  —             │  —             │  —              │  —  (opens menu)
+#   btn_*        │ menu  │ AC             │ Lights                    │ Covers          │ Automations
+#   ─────────────┼───────┼────────────────┼───────────────────────────┼─────────────────┼─────────────────
+#   btn_left     │ prev  │ prev unit      │ list: bri – / card: prev  │ prev cover      │ prev
+#   btn_right    │ next  │ next unit      │ list: bri + / card: next  │ next cover      │ next
+#   btn_ok   ●   │ confm │ toggle on/off  │ toggle on/off             │ open ↔ close    │ trigger selected
+#   btn_up       │  —    │ temp +         │ list: prev  / card: bri + │ position +10 %  │ scroll up ▲
+#   btn_down     │  —    │ temp –         │ list: next  / card: bri – │ position –10 %  │ scroll down ▼
+#   btn_stop ■   │ cancl │ OFF            │ OFF                       │ stop            │  —
+#   btn_menu_open│  —    │  —             │  —                        │  —              │  —  (opens menu)
+#
+# ● (btn_ok) is the primary action: toggle, run, confirm.
+# ■ (btn_stop) is always the safe way out: OFF, stop, cancel.
 #
 # Settings (one setting per screen, like the cards): left / right → previous /
 # next setting (as the round keys), up / down → change the value.
 #
 # While the room picker is open (app_mode == APP_ROOMS, long press on the
-# menu key): left / up → previous room, right / down → next room, OK →
-# apply, stop → close. Each picker branch sits next to the AC branch it
+# menu key): left / up → previous room, right / down → next room, ● →
+# apply, ■ → close. Each picker branch sits next to the AC branch it
 # mirrors.
 
 script:
@@ -93,9 +96,9 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
           then: [ script.execute: settings_btn_down ]    # next setting
 
-  # ── btn_ok ────────────────────────────────────────────────────────────────
-  # Menu / action view: back to carousel  |  Menu / carousel: confirm mode
-  # AC: turn ON  |  Lights: toggle on/off
+  # ── btn_ok  ● ─────────────────────────────────────────────────────────────
+  # Menu / action view: run the quick action  |  Menu / carousel: confirm mode
+  # AC: toggle on/off  |  Lights: toggle on/off
   # Covers: toggle open ↔ close  |  Automations: trigger selected
 
   - id: btn_ok
@@ -113,7 +116,7 @@ script:
                 then: [ script.execute: room_picker_select ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_AC && RoomFilter::any(AC_LIST_COUNT, acRoom);' }
-                then: [ script.execute: ac_btn_power_on ]
+                then: [ script.execute: ac_btn_power_toggle ]
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
                 then: [ script.execute: lights_btn_ok ]
@@ -181,9 +184,9 @@ script:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
           then: [ script.execute: settings_btn_left ]    # value -
 
-  # ── btn_stop ──────────────────────────────────────────────────────────────
+  # ── btn_stop  ■ ───────────────────────────────────────────────────────────
   # Menu / action view: back to carousel  |  Menu / carousel: cancel
-  # AC: turn OFF  |  Lights (card view): OFF  |  Covers: stop
+  # AC: turn OFF  |  Lights: OFF  |  Covers: stop
 
   - id: btn_stop
     then:
