@@ -53,6 +53,8 @@ inline const uint8_t* grab_raw_buffer(T* display) {
 //   center == nullptr              →  ••• menu key (three 3x3 dots: the menu
 //                                      is a carousel you step through)
 //   center == ""                   →  no centre button
+//   (the ••• is left out when menu_key_shown() is false: a build where the
+//    middle key has nothing to open - one mode and no quick actions)
 //   left   == "<"                  →  ◀ left-pointing filled triangle
 //   right  == ">"                  →  ▶ right-pointing filled triangle
 //   any other string               →  rendered as text
@@ -83,6 +85,14 @@ inline void draw_soft_button(esphome::display::Display *it, int x, int w, bool o
     it->draw_pixel_at(x + w - 1, y2,         COLOR_OFF);
 }
 
+// Whether the ••• menu key is drawn; set once at boot from
+// MenuController::menuKeyLive(). A function-local static so it stays
+// header-only.
+inline bool& menu_key_shown() {
+    static bool shown = true;
+    return shown;
+}
+
 inline void draw_bottom_menu(
     esphome::display::Display *it,
     esphome::font::Font *font,
@@ -95,6 +105,7 @@ inline void draw_bottom_menu(
 ) {
     using esphome::display::TextAlign;
     const int cy = y + 5;  // vertical centre of the buttons (row 58)
+    if (!center && !menu_key_shown()) center = "";   // nothing for the middle key to open
 
     if (left && left[0] != '\0') {
         draw_soft_button(it, 2, 40, false, y);
@@ -160,10 +171,14 @@ inline void draw_soft_buttons(
 }
 
 // A name printed beside an icon (quick-action card, lights card): left-aligned
-// at x and vertically centred on cy, in the space up to `right`. One line in
-// font_big when it fits, else two lines split at the first space (centred on
-// cy-7 / cy+8), else one line in font_small. centered=true centres each line
-// horizontally between x and right instead (automation card).
+// at x and vertically centred on cy, in the space up to `right`. Three spaces
+// in a row force a line break there ("DESK   LIGHT" -> DESK / LIGHT, the
+// spaces dropped). Otherwise one line in font_big when it fits, else two
+// lines split at the first space (centred on cy-7 / cy+8), else one line in
+// font_small. centered=true centres each line horizontally between x and
+// right instead (automation card).
+static const char* const NAME_BREAK = "   ";   // forced line break in a name
+
 template<class D, class F>
 inline void print_name_beside(D* it, F* font_big, F* font_small, const char* name,
                               int x, int cy, int right, bool centered = false) {
@@ -171,6 +186,19 @@ inline void print_name_beside(D* it, F* font_big, F* font_small, const char* nam
     const int avail = right - x;
     const TextAlign align = centered ? TextAlign::CENTER : TextAlign::CENTER_LEFT;
     const int px = centered ? (x + right) / 2 : x;   // where each line is anchored
+    const char* brk = strstr(name, NAME_BREAK);
+    if (brk) {
+        char first[24];
+        const size_t len = static_cast<size_t>(brk - name);
+        const size_t n = len < sizeof(first) - 1 ? len : sizeof(first) - 1;
+        memcpy(first, name, n);
+        first[n] = '\0';
+        const char* second = brk;
+        while (*second == ' ') second++;
+        it->print(px, cy - 7, font_big, COLOR_ON, align, first);
+        it->print(px, cy + 8, font_big, COLOR_ON, align, second);
+        return;
+    }
     int bx, by, bw, bh;
     it->get_text_bounds(px, cy, name, font_big, align, &bx, &by, &bw, &bh);
     if (bw <= avail) {

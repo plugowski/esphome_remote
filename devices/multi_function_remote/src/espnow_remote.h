@@ -12,13 +12,15 @@
 #include "cover_controller.h"
 #include "automation_entities.h"
 #include "quick_action_entities.h"
+#include "quick_action_state.h"
 
 // ── EspNowRemote ──────────────────────────────────────────────────────────────
 // Remote-side glue between the ESP-NOW protocol and the shared controllers.
 //
 //   • Parses STATE_* packets from the hub and pushes values into the
-//     Lights / Cover controllers directly; AC values are cached here and read
-//     by ac_set_current_states (packages/espnow/mode_ac.yaml).
+//     Lights / Cover controllers and QuickActionState directly; AC values
+//     are cached here and read by ac_set_current_states
+//     (packages/espnow/mode_ac.yaml).
 //   • Builds CMD packets for the YAML send scripts.
 //
 // YAML usage:
@@ -145,6 +147,18 @@ public:
           if (idx >= COVER_LIST_COUNT) continue;
           CoverController::syncCoverState(idx, state, updated_ui);
           CoverController::syncCoverPosition(idx, pos == rnp::VALUE_UNKNOWN ? NAN : static_cast<float>(pos), updated_ui);
+        }
+        break;
+      }
+
+      case rnp::STATE_QUICK: {
+        uint8_t count;
+        if (!r.u8(count)) return 0;
+        for (uint8_t i = 0; i < count; i++) {
+          uint8_t idx, on;
+          if (!r.u8(idx) || !r.u8(on)) break;
+          if (QuickActionState::get(idx) != on) updated_ui = true;
+          QuickActionState::setRaw(idx, on);
         }
         break;
       }

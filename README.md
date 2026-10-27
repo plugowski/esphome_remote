@@ -148,7 +148,7 @@ Files marked ★ are the ones you edit to match your Home Assistant setup.
 
 | | v1 (left) | v2 (right) |
 |---|---|---|
-| **Buttons** | AC, Power, +, − | ↑ ↓ ← → OK ⏸ |
+| **Buttons** | AC, Power, +, − | ↑ ↓ ← → ● ■ |
 | **Use case** | AC-only | Multi-mode (AC, lights, covers, automations) |
 | **Layout file** | `layouts/layout_v1.yaml` | `layouts/layout_v2.yaml` _(default)_ |
 
@@ -274,7 +274,7 @@ All firmwares can dump the current OLED framebuffer as hex lines over the logger
 
 ### Trigger
 
-**Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the Pause/Stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
+**Demo firmware** (`remote_demo.yaml`, always logs over serial — no toggle needed): while the device is connected over USB, navigate to the screen you want to capture and **hold the ■ stop button for 3 seconds**. The device logs the raw framebuffer (1024 bytes, 128×64) as hex lines and immediately returns to normal operation.
 
 **Product firmware** (`remote.yaml`, generator-built): press the **Screenshot** button — it's a plain HA button entity (no `internal:` flag), so it shows up under the device in Home Assistant automatically and can be pressed there, called from an automation/script (`button.press`), or pressed on demand from the ESPHome dashboard. To capture the output over USB serial (rather than just watching HA's log viewer), turn on the generator's **"Enable debug logging (UART)"** toggle first — the raw hex lines only reach the serial port when `LOGGER_BAUD_RATE` is a real baud rate, not the power-optimized default of `0`.
 

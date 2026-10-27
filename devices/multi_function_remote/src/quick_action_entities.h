@@ -5,7 +5,8 @@
 // packages/menu.yaml, otherwise the glyph will not render.
 //
 // service: automation.trigger | script.turn_on | scene.turn_on |
-//          input_boolean.toggle | switch.toggle | lock.lock | lock.unlock
+//          input_boolean.toggle | switch.toggle | light.toggle | lock.lock |
+//          lock.unlock  (*.toggle ones show their on / off state, quick_action_state.h)
 
 struct QuickAction {
   const char* name;       // label — keep short (~12 chars for font_small)

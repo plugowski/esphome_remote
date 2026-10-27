@@ -30,7 +30,7 @@
 //   x=117..125   9x39 slider (draw_vslider), rows 12..50, filled from the
 //                bottom with the position; while moving, a tick marks the
 //                target; "35%" (font_small) right-aligned at x=114 by its foot
-//   y=53..63     CLOSE | ••• | OPEN; while moving, the key in that
+//   y=53..63     OPEN | ••• | CLOSE; while moving, the key in that
 //                direction reads STOP (covers_btn_open / _close stop it)
 // Prev / next skip covers outside the room filter; a room with no cover in
 // it shows the empty-room screen (room_filter.h).
@@ -207,8 +207,8 @@ public:
       it->print(VSLIDER_TEXT_R, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pct);
     }
 
-    draw_bottom_menu(it, font_small, state == "closing" ? "STOP" : "CLOSE", nullptr,
-                     state == "opening" ? "STOP" : "OPEN");
+    draw_bottom_menu(it, font_small, state == "opening" ? "STOP" : "OPEN", nullptr,
+                     state == "closing" ? "STOP" : "CLOSE");
 
     Toast::present(it);
   }

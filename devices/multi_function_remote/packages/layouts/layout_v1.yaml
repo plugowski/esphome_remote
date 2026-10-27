@@ -9,9 +9,9 @@
 #                   long (0.8 s): room picker (src/room_filter.h)
 #   14  SELECT      AC: cycle entity | Lights: next | Covers: next | Autos: next
 #   26  TOGGLE      AC: power on/off | Lights: toggle | Covers: open<->close | Autos: trigger
-#   22  MODE / <<   menu: prev | AC: cycle HVAC mode | Lights: prev | Covers: close
+#   22  MODE / <<   menu: prev | AC: cycle HVAC mode | Lights: LOW/ON or prev | Covers: open
 #                   Autos: L slot | Settings: prev row
-#   33  FAN  / >>   menu: next | AC: cycle fan speed | Lights: next | Covers: open
+#   33  FAN  / >>   menu: next | AC: cycle fan speed | Lights: FULL/OFF or next | Covers: close
 #                   Autos: R slot | Settings: next row
 #
 # +/- pair - adjusts whatever value the active mode exposes; each wired to
@@ -97,7 +97,7 @@ binary_sensor:
             then:
               # MENU (pin 5) already handles carousel confirm/back - this
               # only fills the one gap it doesn't: triggering a selected
-              # quick action, same as v2's OK button.
+              # quick action, same as v2's ● key.
               - if:
                   condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
                   then: [ script.execute: menu_quick_trigger ]
@@ -138,7 +138,7 @@ binary_sensor:
                     condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
                     then: [ script.execute: room_picker_cancel ]
                     else: [ script.execute: room_picker_open ]
-      # short press → menu as before; OK while the room picker is open
+      # short press → menu as before; acts as ● while the room picker is open
       - timing:
           - ON for at most 700ms
           - OFF for at least 10ms
@@ -156,12 +156,12 @@ binary_sensor:
                           then: [ script.execute: menu_open ]
                           else:
                             - if:
-                                # quick-action view: the middle key has no job there (BACK / RUN
+                                # quick-action view: the middle key has no job there (RUN / BACK
                                 # are the round keys), so only the carousel confirms
                                 condition: { lambda: 'return id(menu_quick_index) < 0;' }
                                 then: [ script.execute: menu_confirm ]
 
-  # ── FAN / >> — menu next / AC fan / Covers open / Autos R ────────────────
+  # ── FAN / >> — menu next / AC fan / Covers close / Autos R ───────────────
   - platform: gpio
     pin:
       number: 33
@@ -180,7 +180,7 @@ binary_sensor:
                   then: [ script.execute: menu_next ]
               - if:
                   condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
-                  then: [ script.execute: menu_quick_trigger ]
+                  then: [ script.execute: menu_back_to_carousel ]   # BACK (none when actions-only)
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
                   then: [ script.execute: room_picker_down ]
@@ -189,10 +189,10 @@ binary_sensor:
                   then: [ script.execute: ac_btn_fan ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
-                  then: [ script.execute: lights_btn_next ]
+                  then: [ script.execute: lights_btn_circle_r ]   # card: FULL / OFF | list: next
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
-                  then: [ script.execute: covers_btn_open ]
+                  then: [ script.execute: covers_btn_close ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
                   then: [ script.execute: automations_btn_menu_r ]
@@ -200,7 +200,7 @@ binary_sensor:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
                   then: [ script.execute: settings_btn_down ]
 
-  # ── MODE / << — menu prev / AC HVAC mode / Lights prev / Covers close / Autos L
+  # ── MODE / << — menu prev / AC HVAC mode / Lights prev / Covers open / Autos L
   - platform: gpio
     pin:
       number: 22
@@ -219,7 +219,7 @@ binary_sensor:
                   then: [ script.execute: menu_prev ]
               - if:
                   condition: { lambda: 'return id(menu_active) && id(menu_quick_index) >= 0;' }
-                  then: [ script.execute: menu_back_to_carousel ]
+                  then: [ script.execute: menu_quick_trigger ]   # RUN
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_ROOMS;' }
                   then: [ script.execute: room_picker_up ]
@@ -228,10 +228,10 @@ binary_sensor:
                   then: [ script.execute: ac_btn_mode ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_LIGHTS && RoomFilter::any(LIGHTS_LIST_COUNT, lightRoom);' }
-                  then: [ script.execute: lights_btn_prev ]
+                  then: [ script.execute: lights_btn_circle_l ]   # card: LOW / ON | list: prev
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
-                  then: [ script.execute: covers_btn_close ]
+                  then: [ script.execute: covers_btn_open ]
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_AUTOMATIONS;' }
                   then: [ script.execute: automations_btn_menu_l ]

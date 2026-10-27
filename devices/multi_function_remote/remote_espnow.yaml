@@ -143,6 +143,7 @@ esphome:
   includes:
     - src/menu_entities.h
     - src/quick_action_entities.h
+    - src/quick_action_state.h
     - src/remote_core.h
     - src/wake_utils.h
     - src/toast.h
@@ -181,7 +182,10 @@ esphome:
             then:
               - lambda: |-
                   if (id(app_mode) == APP_ROOMS) id(app_mode) = id(room_picker_return);
-                  if (id(app_mode) >= MENU_LIST_COUNT) id(app_mode) = 0;
+                  id(app_mode) = MenuController::validMode(id(app_mode));
+                  // actions-only build: the quick-action list is the home screen
+                  MenuController::pinActions(id(menu_active), id(menu_quick_index));
+                  menu_key_shown() = MenuController::menuKeyLive();
                   RoomFilter::current() = id(room_filter);
                   Toast::setFonts(id(font_base), id(font_small));
                   RemoteCore::resetIdleTimer(id(last_active));

@@ -416,7 +416,7 @@ binary_sensor:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
             then: [ script.execute: info_btn_next ]
 
-  # ── OK — menu confirm / AC mode / Lights toggle / Covers open↔close / Autos trigger
+  # ── ● — menu confirm / AC mode / Lights toggle / Covers open↔close / Autos trigger
   - platform: gpio
     pin:
       number: 23
@@ -506,7 +506,7 @@ binary_sensor:
             condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_INFO;' }
             then: [ script.execute: info_btn_next ]
 
-  # ── ⏸ stop / menu — short: stop action; long (≥800ms): open menu ─────────
+  # ── ■ stop / menu — short: AC power / cover stop / cancel; long (≥800ms): open menu
   - platform: gpio
     pin:
       number: 19
@@ -654,7 +654,7 @@ script:
           it->display();
 
   # ── Screenshot — dumps 128×64 framebuffer as hex over serial ────────────────
-  # Trigger: hold Pause/Stop (pin 19) for 3 s. Output 8 lines of 256 hex chars.
+  # Trigger: hold ■ stop (pin 19) for 3 s. Output 8 lines of 256 hex chars.
   # Convert to PNG with:  python3 tools/screenshot.py <serial_port>
   - id: screenshot
     then:

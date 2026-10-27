@@ -12,3 +12,6 @@ devices/*/secrets.yaml
 
 # Python bytecode (ESPHome external components)
 __pycache__/
+
+# Local working files
+**/hardware/

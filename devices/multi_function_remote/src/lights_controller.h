@@ -22,16 +22,16 @@
 // Button mapping, list view (original):
 //   circles L/R (pin22/33) -> prev / next light   (▲ / ▼ in the bar)
 //   ← →  (btn_left/right)  -> brightness − / +
-//   OK                      -> toggle on/off
+//   ●  (btn_ok)             -> toggle on/off
 //   ↑ ↓                     -> prev / next light
-//   ⏸                       -> (nothing)
+//   ■  (btn_stop)           -> OFF
 //
 // Button mapping, card view:
 //   circles L/R (pin22/33) -> dimmable: LOW (25 %) / FULL (100 %)
-//                             non-dimmable: OFF / ON
+//                             non-dimmable: ON / OFF
 //   ← →  (btn_left/right)  -> prev / next light
-//   OK                      -> ON   (keeps last brightness)
-//   ⏸                       -> OFF
+//   ●  (btn_ok)             -> toggle on/off (ON keeps last brightness)
+//   ■  (btn_stop)           -> OFF
 //   ↑ ↓                     -> brightness + / −
 //   MENU (pin5)             -> opens mode menu  (both views)
 //
@@ -63,7 +63,7 @@
 //                  from the bottom when ON; when OFF a tick marks the level it
 //                  comes back at. "75%" (font_small) right-aligned at x=114,
 //                  next to the slider's foot
-//   y=53..63       LOW | ••• | FULL  (dimmable)   or   OFF | ••• | ON
+//   y=53..63       LOW | ••• | FULL  (dimmable)   or   ON | ••• | OFF
 //
 // YAML usage:
 //   LightsController::prevLight(id(selected_light_index)); id(updated_ui)=true;
@@ -122,7 +122,8 @@ public:
 
   // ── presets (card view circles) ───────────────────────────────────────────
   // Dimmable light: ON at the given percentage (0 % means OFF).
-  // Non-dimmable light: the circles degrade to plain OFF / ON.
+  // Non-dimmable light: the circles degrade to plain ON / OFF (the YAML sends
+  // the left circle to the full preset and the right one to the low preset).
   static const int PRESET_LOW  = 25;
   static const int PRESET_FULL = 100;
 
@@ -135,7 +136,7 @@ public:
       lightOn(idx)         = (pct > 0);
       markBrightnessPending(idx);
     } else {
-      // No dimmer: the circles are plain OFF (low preset) / ON (full preset).
+      // No dimmer: the circles are plain ON (full preset) / OFF (low preset).
       lightOn(idx) = (pct >= PRESET_FULL);
     }
     updated_ui = true;
@@ -361,7 +362,7 @@ public:
       it->print(VSLIDER_TEXT_R, 47, font_small, COLOR_ON, display::TextAlign::CENTER_RIGHT, pbuf);
       draw_bottom_menu(it, font_small, "LOW", nullptr, "FULL");
     } else {
-      draw_bottom_menu(it, font_small, "OFF", nullptr, "ON");
+      draw_bottom_menu(it, font_small, "ON", nullptr, "OFF");
     }
 
     Toast::present(it);

@@ -32,6 +32,14 @@ static const uint32_t EMU_STEP_MS = 250;  // cover emulator: one 5 % step this o
 // Resend the screenshot request on the next packet if no image arrived by then.
 static const uint32_t SCREENSHOT_RETRY_MS = 5000;
 
+// A quick action with on / off state to show: service *.toggle (switch.toggle,
+// input_boolean.toggle) - the same rule as QuickActionState::isToggle on the remote.
+static bool is_toggle_(const char *service) {
+  static const char SUFFIX[] = ".toggle";
+  const size_t n = service ? strlen(service) : 0, k = sizeof(SUFFIX) - 1;
+  return n > k && strcmp(service + n - k, SUFFIX) == 0;
+}
+
 static bool older_than(uint32_t since, uint32_t ms) { return (uint32_t) (millis() - since) > ms; }
 using state_cb_t = std::function<void(const std::string &)>;
 
@@ -98,6 +106,7 @@ void RemoteHub::loop() {
   if (d & DIRTY_AC) this->send_ac_(rnp::BROADCAST_ADDR);
   if (d & DIRTY_LIGHTS) this->send_lights_(rnp::BROADCAST_ADDR);
   if (d & DIRTY_COVERS) this->send_covers_(rnp::BROADCAST_ADDR);
+  if (d & DIRTY_QUICK) this->send_quick_(rnp::BROADCAST_ADDR);
 }
 
 // Sends the held brightness for light i to Home Assistant; it stays the reported value until
@@ -232,6 +241,16 @@ void RemoteHub::subscribe_all_() {
         if (g.exp && !g.want && b != rnp::VALUE_UNKNOWN && (b + 1 >= g.exp_v && b <= g.exp_v + 1)) g.exp = false;
       }));
     }
+  }
+
+  for (int i = 0; i < QUICK_ACTION_CAPACITY; i++) this->quick_on_[i] = rnp::LIGHT_UNKNOWN;
+  for (int i = 0; i < QUICK_ACTION_COUNT; i++) {
+    if (!is_toggle_(QUICK_ACTION_LIST[i].service)) continue;
+    std::string eid = QUICK_ACTION_LIST[i].entity_id;
+    api->subscribe_home_assistant_state(eid, optional<std::string>{}, state_cb_t([this, i](const std::string &s) {
+      uint8_t on = (s == "on") ? 1 : (s == "off") ? 0 : rnp::LIGHT_UNKNOWN;
+      if (this->quick_on_[i] != on) { this->quick_on_[i] = on; this->mark_dirty_(DIRTY_QUICK); }
+    }));
   }
 
   for (int i = 0; i < COVER_LIST_COUNT && !this->cover_emu_; i++) {
@@ -412,10 +431,34 @@ void RemoteHub::send_covers_(const uint8_t *dest) {
   this->send_(dest, out);
 }
 
+void RemoteHub::send_quick_(const uint8_t *dest) {
+  rnp::Writer w(this->key_, rnp::STATE_QUICK);
+  w.u8(0);
+  uint8_t count = 0;
+  for (int i = 0; i < QUICK_ACTION_COUNT; i++) {
+    if (!is_toggle_(QUICK_ACTION_LIST[i].service)) continue;
+    if (!w.fits(2)) {
+      std::vector<uint8_t> out = w.take();
+      out[rnp::HEADER_LEN] = count;
+      this->send_(dest, out);
+      w.begin(this->key_, rnp::STATE_QUICK);
+      w.u8(0);
+      count = 0;
+    }
+    w.u8(i).u8(this->quick_on_[i]);
+    count++;
+  }
+  if (count == 0) return;   // no toggle actions: nothing to tell
+  std::vector<uint8_t> out = w.take();
+  out[rnp::HEADER_LEN] = count;
+  this->send_(dest, out);
+}
+
 void RemoteHub::send_snapshot_(const uint8_t *dest) {
   this->send_ac_(dest);
   this->send_lights_(dest);
   this->send_covers_(dest);
+  this->send_quick_(dest);
   this->send_(dest, rnp::build_state_done(this->key_));
 }
 
