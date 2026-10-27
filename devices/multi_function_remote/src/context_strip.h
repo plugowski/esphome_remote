@@ -20,7 +20,9 @@
 //   left of it   NO WIFI / NO HA / NO HUB while conn_status != 0
 //   x=117..127   battery outline with a 5-step level; outline only while the
 //                level is unknown (battery_pct == -1). With battery_pct=true
-//                the level also shows as "87%" left of it (Settings).
+//                the level also shows as "87%" left of it (Settings). With
+//                battery=false neither is drawn and the badge moves to the
+//                right edge (Settings HISTORY, whose badge says BATTERY).
 //
 // Text uses a built-in 3x5 pixel font (caps, digits, ":/%-."), so the strip
 // needs no extra font component and stays legible at 5 px.
@@ -108,16 +110,20 @@ public:
 
   template<class D>
   static void draw(D* it, const char* label, int pos, int count, int conn_status,
-                   const char* context = nullptr, bool battery_pct = false, int y = 0) {
+                   const char* context = nullptr, bool battery_pct = false, int y = 0,
+                   bool battery = true) {
     // label chip
     int x = 0;
     if (label && label[0]) x = chip(it, 0, label, y) + 4;
 
     // right side, from the edge inwards: battery, context badge, link status
-    drawBattery(it, 117, y + 1);
-    int right_edge = 114;
+    int right_edge = 128;
+    if (battery) {
+      drawBattery(it, 117, y + 1);
+      right_edge = 114;
+    }
     // battery_pct: the level as "87%" left of the icon (once it's known)
-    if (battery_pct && batteryValue() >= 0) {
+    if (battery && battery_pct && batteryValue() >= 0) {
       char pct[6];
       snprintf(pct, sizeof(pct), "%d%%", batteryValue());
       const int w = textWidth(pct);

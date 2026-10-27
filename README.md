@@ -52,7 +52,7 @@ The images are rendered with the firmware's own layout and fonts.
 
 Left / right (and the round keys) move between settings, up / down changes the value in the box. Read-only values have no box.
 
-**HISTORY** shows the battery level over the last 24 hours (hourly bars, a hollow bar = charging), 7 days (2 h columns) or 30 days (6 h columns); up / down switch the range. The remote stores nothing itself: the samples come from Home Assistant's Recorder, so the battery sensor must be recorded there. A sample Home Assistant has no value for is a gap in the graph, never 0 %. The WiFi remote fetches them from the history REST API by itself; the ESP-NOW remote asks the hub. Both need a long-lived access token, see [Battery history](#battery-history).
+**HISTORY** shows the battery level over the last 24 hours (hourly bars), 7 days (2 h columns) or 30 days (6 h columns); up / down switch the range. The remote stores nothing itself: the samples come from Home Assistant's Recorder, so the battery sensor must be recorded there. A sample Home Assistant has no value for is a gap in the graph, never 0 %. The WiFi remote fetches them from the history REST API by itself; the ESP-NOW remote asks the hub. Both need a long-lived access token, see [Battery history](#battery-history).
 
 ### Room selection
 

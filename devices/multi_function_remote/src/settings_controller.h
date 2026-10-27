@@ -237,11 +237,14 @@ public:
       return;
     }
 
-    // HISTORY: the range as the strip's badge; the page asks for its data
-    // when it comes on screen (open), the tick sends the request
+    // HISTORY: "BATTERY 24H" as the strip's badge, in place of the battery
+    // icon and %; the page asks for its data when it comes on screen (open),
+    // the tick sends the request
     if (idx == SETTING_HISTORY) {
       if (fresh) BatteryHistory::open(history_range);
-      ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, BatteryHistory::rangeLabel(history_range), true);
+      char badge[16];
+      snprintf(badge, sizeof(badge), "BATTERY %s", BatteryHistory::rangeLabel(history_range));
+      ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, badge, false, 0, false);
       BatteryHistory::draw(it, history_range, battery_interval_mins);
       draw_bottom_menu(it, font_small, "<", nullptr, ">");
       present(it, idx);

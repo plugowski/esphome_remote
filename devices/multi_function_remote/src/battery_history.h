@@ -16,14 +16,14 @@
 // already resampled into hist::RANGES buckets, and stay cached in RAM for
 // CACHE_MS so flipping between ranges doesn't ask again.
 //
-//   rows 0..8     context strip: SETTINGS chip, dots, the range as badge
-//                 (24H / 7D / 30D), battery with its %
-//   rows 14..43   plot, columns 2..111 (110 px): dotted lines at 100 % and
-//                 50 %, solid baseline at 0 %, the level as 29 px of height.
-//                 100% / 50% / 0% labels sit right of the plot, right-aligned
-//                 to the edge of the screen.
-//                   24H  one bar per hour (3-4 px, 1 px gap); a hollow bar =
-//                        the level went up during that hour (charging)
+//   rows 0..8     context strip: SETTINGS chip, page dots, "BATTERY 24H"
+//                 (7D / 30D) as badge at the right edge - no battery icon
+//   rows 14..43   plot, columns 2..103 (102 px): dotted lines at 100 % and
+//                 50 % behind the level (bars / area cover them), solid
+//                 baseline at 0 %, the level as 29 px of height.
+//                 100% / 50% / 0% labels left-aligned at column 106.
+//   x 123..127    vertical dots, one per range (ContextStrip::drawVerticalDots)
+//                   24H  one filled bar per hour (3-4 px, 1 px gap)
 //                   7D / 30D  one column per 2 h / 6 h, dithered area with a
 //                        solid top edge; a charge shows as a vertical jump
 //                 A sample Home Assistant has no value for is left out: a gap,
@@ -31,7 +31,7 @@
 //   rows 46..50   time axis (3x5 font): 24H hours "00 06 12 18", 7D a letter
 //                 per day (today inverted), 30D week ticks with a D.M date.
 //                 Without a clock (end_ts 0) the labels count back instead:
-//                 -18H, -6D, -3W. A 2 px tick under the newest column = now.
+//                 -18H, -6D, -3W.
 //   rows 53..63   < ••• > soft keys (previous / next setting, as everywhere
 //                 in Settings); up / down switch the range
 //
@@ -54,7 +54,8 @@ public:
   static const int      MAX_TRIES        = 2;
 
   // plot geometry
-  static const int X0 = 2, W = 110;          // plot columns 2..111; the % labels take 113..127
+  static const int X0 = 2, W = 102;          // plot columns 2..103
+  static const int LABEL_X = X0 + W + 2;     // % labels 106..120, range dots 123..127
   static const int Y100 = 14, Y50 = 28, Y0 = 43;
   static const int PLOT_H = Y0 - Y100;       // 29 px for 0..100 %
   static const int AXIS_Y = 46;              // time labels (rows 46..50)
@@ -179,15 +180,13 @@ public:
     const bool have = s.state == READY && c.ready;
 
     it->filled_rectangle(X0, Y0, W, 1, COLOR_ON);                  // baseline
+    for (int y = Y100; y <= Y50; y += Y50 - Y100)                   // dotted 100 % / 50 % lines,
+      for (int x = X0; x < X0 + W; x += 2) it->draw_pixel_at(x, y, COLOR_ON);   // behind the level
     if (have) plot(it, c);
-    for (int y = Y100; y <= Y50; y += Y50 - Y100)                   // dotted 100 % / 50 % lines, inverting
-      for (int x = X0; x < X0 + W; x += 2) {                         // what they cross so they stay visible
-        // the display has no read-back; the plot drew solid bars/contours, so xor by redrawing:
-        it->draw_pixel_at(x, y, (have && lit(c, x, y)) ? COLOR_OFF : COLOR_ON);
-      }
-    rightLabel(it, Y100 - 2, "100%");
-    rightLabel(it, Y50 - 2, "50%");
-    rightLabel(it, Y0 - 2, "0%");
+    ContextStrip::text(it, LABEL_X, Y100 - 2, "100%", COLOR_ON);
+    ContextStrip::text(it, LABEL_X, Y50 - 2, "50%", COLOR_ON);
+    ContextStrip::text(it, LABEL_X, Y0 - 2, "0%", COLOR_ON);
+    ContextStrip::drawVerticalDots(it, range, hist::RANGE_COUNT);
     if (have) axis(it, c);
 
     char line1[24] = "", line2[24] = "";
@@ -263,11 +262,7 @@ private:
   static int  validCount(const Series& c) { int n = 0; for (int i = 0; i < c.count; i++) if (isValid(c, i)) n++; return n; }
   static int  height(uint8_t pct) { return (int(pct) * PLOT_H + 50) / 100; }
   static int  colX(const Series& c, int j) { return X0 + (j * W) / c.count; }   // left edge of column j, j = count → right edge
-  static int  colAt(const Series& c, int x) {                                    // the column whose colX range holds x
-    return ((x - X0 + 1) * c.count + W - 1) / W - 1;
-  }
   static bool bars(const Series& c) { return W / c.count >= 3; }                 // wide enough for bars with a gap
-  static bool charging(const Series& c, int i) { return isValid(c, i) && isValid(c, i - 1) && c.values[i] > c.values[i - 1] + 1; }
 
   // ── the level ─────────────────────────────────────────────────────────────
   // Bars fill their column up to a 1 px gap, so 24 bars spread over the whole
@@ -282,10 +277,8 @@ private:
         const int h = height(c.values[i]);
         if (h <= 0) continue;
         const int x = colX(c, i), w = colX(c, i + 1) - x - 1;
-        if (charging(c, i) && h >= 2) it->rectangle(x, Y0 - h, w, h, COLOR_ON);
-        else                          it->filled_rectangle(x, Y0 - h, w, h, COLOR_ON);
+        it->filled_rectangle(x, Y0 - h, w, h, COLOR_ON);
       }
-      it->filled_rectangle(colX(c, c.count - 1), Y0 + 1, colX(c, c.count) - colX(c, c.count - 1) - 1, 2, COLOR_ON);   // now
       return;
     }
     for (int i = 0; i < c.count; i++) {
@@ -302,31 +295,8 @@ private:
         it->filled_rectangle(xa, y0, 1, y1 - y0 + 1, COLOR_ON);
       }
     }
-    it->filled_rectangle(colX(c, c.count - 1), Y0 + 1, colX(c, c.count) - colX(c, c.count - 1), 2, COLOR_ON);
   }
 
-  // Whether plot() lit pixel (x, y) - the gridlines invert what they cross.
-  static bool lit(const Series& c, int x, int y) {
-    if (c.count == 0 || x < X0 || x >= X0 + W) return false;
-    const int i = colAt(c, x);
-    if (bars(c)) {
-      const int xa = colX(c, i), xb = colX(c, i + 1) - 1;                        // bar spans xa..xb-1, xb is the gap
-      if (x == xb || !isValid(c, i)) return false;
-      const int h = height(c.values[i]);
-      if (y < Y0 - h) return false;
-      if (!(charging(c, i) && h >= 2)) return true;
-      return y == Y0 - h || x == xa || x == xb - 1;                               // hollow bar: its frame
-    }
-    if (!isValid(c, i)) return false;
-    const int top = Y0 - height(c.values[i]);
-    if (y == top) return true;
-    if (y > top && ((x + y) & 1) == 0) return true;
-    if (x == colX(c, i) && isValid(c, i - 1)) {                                  // the step line
-      const int ptop = Y0 - height(c.values[i - 1]);
-      return y >= (top < ptop ? top : ptop) && y <= (top < ptop ? ptop : top);
-    }
-    return false;
-  }
 
   // ── text helpers (3x5 font on a black box) ────────────────────────────────
 
@@ -336,25 +306,19 @@ private:
     ContextStrip::text(it, x, y, s, COLOR_ON);
   }
 
-  // The % scale, right-aligned to the screen edge, right of the plot.
-  template<class D>
-  static void rightLabel(D* it, int y, const char* s) {
-    ContextStrip::text(it, 128 - ContextStrip::textWidth(s), y, s, COLOR_ON);
-  }
-
   template<class D>
   static void message(D* it, int y, const char* s) {
     const int w = ContextStrip::textWidth(s);
     label(it, X0 + (W - w) / 2, y, s);
   }
 
-  // Label centred on x, kept inside the screen.
+  // Label centred on x, kept inside the plot's columns.
   template<class D>
   static void centred(D* it, int cx, const char* s, bool inverted = false) {
     const int w = ContextStrip::textWidth(s);
     int x = cx - w / 2;
     if (x < X0) x = X0;
-    if (x + w > 128) x = 128 - w;
+    if (x + w > X0 + W) x = X0 + W - w;
     if (inverted) {
       it->filled_rectangle(x - 1, AXIS_Y - 1, w + 2, 7, COLOR_ON);
       ContextStrip::text(it, x, AXIS_Y, s, COLOR_OFF);
@@ -395,7 +359,7 @@ private:
         const int per_day = 1440 / c.bucket_min;
         for (int i = c.count - 1; i >= 0; i -= per_day) {
           const int back = (c.count - 1 - i) / per_day;
-          if (back == 0) snprintf(buf, sizeof(buf), "NOW"); else snprintf(buf, sizeof(buf), "-%dD", back);
+          snprintf(buf, sizeof(buf), back ? "-%dD" : "%dD", back);   // "0D": "NOW" is wider than a day
           centred(it, (colX(c, i) + colX(c, i + 1) - 1) / 2, buf);
         }
         return;
