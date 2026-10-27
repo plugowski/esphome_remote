@@ -89,6 +89,11 @@ substitutions:
   # Default for BATTERY CHECK (battery_interval_mins), adjustable later on
   # the physical Settings screen — this is just where it starts out.
   BATTERY_INTERVAL_MIN: "60"
+  # Settings > HISTORY: the battery level over the last 24 h / 7 d / 30 d.
+  # The hub fetches it from Home Assistant's Recorder (hub.yaml: history:),
+  # for the entity the hub's "Remote Battery" sensor got in HA - the hub's
+  # device name + the sensor name.
+  BATTERY_HISTORY_ENTITY: "sensor.espnow_hub_remote_battery"
   # 0 (default): disables the UART logger entirely - saves power and boot
   # time. A real baud rate (e.g. 115200) is only needed for on-device
   # debugging. This variant has no Home Assistant API, so USB serial is its
@@ -162,8 +167,10 @@ esphome:
     - src/system_stats.h
     - src/about_face.h
     - src/about_screen.h
-    - src/settings_controller.h
     - src/espnow_protocol.h
+    - src/history_core.h
+    - src/battery_history.h
+    - src/settings_controller.h
     - src/espnow_remote.h
   on_boot:
     - priority: 700

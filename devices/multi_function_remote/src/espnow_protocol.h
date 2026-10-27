@@ -15,6 +15,9 @@
 //   HELLO    : proto_version u8, flags u8 (bit0 = request full state)
 //   CMD      : domain u8, idx u8, action u8, value i16
 //   BATTERY  : pct u8, millivolts u16
+//   HIST_REQ : req_id u8, bucket_minutes u16, count u8 (1-120), entity str
+//              - asks for the entity's Home Assistant history, resampled
+//              into `count` buckets of `bucket_minutes` ending now
 //   SCREENSHOT_DATA : chunk u8 (0-7), then 128 raw framebuffer bytes
 //                     (page `chunk` of the 128×64 OLED buffer)
 //
@@ -27,8 +30,17 @@
 //                                            position u8 (0-100, 255 unknown)
 //   STATE_DONE   : (no payload) — ends a full snapshot after HELLO
 //   SCREENSHOT_REQ : (no payload) — remote answers with 8 SCREENSHOT_DATA
+//   HIST_DATA    : req_id u8, status u8 (hist::Status), bucket_minutes u16,
+//                  count u8, end_ts u32 (UTC epoch, end of the last bucket),
+//                  tz_offset i16 (minutes to add to UTC for local time),
+//                  frag u8, frag_count u8, offset u8, n u8,
+//                  valid bitmap ((n+7)/8 bytes, bit k = sample offset+k is
+//                  present), then n sample bytes (u8, 0-100). A sample
+//                  whose bit is clear is a gap, never a value. The whole
+//                  series is split into fragments of at most
+//                  HIST_FRAG_SAMPLES; status != 0 comes with count = 0.
 //
-// Strings are length-prefixed (u8 length, max 31 bytes, no terminator).
+// Strings are length-prefixed (u8 length, max 63 bytes, no terminator).
 // Max ESP-NOW payload is 250 bytes; the hub splits long state lists into
 // several packets of the same type (each is self-contained).
 
@@ -40,7 +52,7 @@ static const uint8_t VERSION = 1;
 
 static const size_t MAX_PACKET = 250;
 static const size_t HEADER_LEN = 8;
-static const size_t MAX_STR    = 31;
+static const size_t MAX_STR    = 63;
 
 enum PacketType : uint8_t {
   HELLO        = 0x01,
@@ -49,13 +61,18 @@ enum PacketType : uint8_t {
   STATE_COVERS = 0x04,
   STATE_DONE   = 0x05,
   SCREENSHOT_REQ  = 0x06,
+  HIST_DATA    = 0x07,
   CMD          = 0x10,
   BATTERY      = 0x20,
+  HIST_REQ     = 0x21,
   SCREENSHOT_DATA = 0x30,
 };
 
 static const size_t SCREENSHOT_CHUNKS     = 8;
 static const size_t SCREENSHOT_CHUNK_SIZE = 128;
+// Samples per HIST_DATA fragment: 200 values + a 25-byte bitmap + the
+// 15-byte fixed part stay under MAX_PACKET.
+static const size_t HIST_FRAG_SAMPLES = 200;
 
 enum Domain : uint8_t {
   DOM_AC          = 0,
@@ -148,6 +165,7 @@ public:
   bool i8(int8_t& v)    { uint8_t t; if (!u8(t)) return false; v = static_cast<int8_t>(t); return true; }
   bool u16(uint16_t& v) { if (pos_ + 2 > n_) return false; v = uint16_t(p_[pos_]) | (uint16_t(p_[pos_ + 1]) << 8); pos_ += 2; return true; }
   bool i16(int16_t& v)  { uint16_t t; if (!u16(t)) return false; v = static_cast<int16_t>(t); return true; }
+  bool u32(uint32_t& v) { uint16_t lo, hi; if (!u16(lo) || !u16(hi)) return false; v = uint32_t(lo) | (uint32_t(hi) << 16); return true; }
   bool str(std::string& s) {
     uint8_t n; if (!u8(n)) return false;
     if (pos_ + n > n_) return false;
@@ -181,6 +199,34 @@ inline std::vector<uint8_t> build_battery(uint32_t key, int pct, int millivolts)
   if (pct < 0) pct = 0; if (pct > 100) pct = 100;
   if (millivolts < 0) millivolts = 0; if (millivolts > 65535) millivolts = 65535;
   w.u8(static_cast<uint8_t>(pct)).u16(static_cast<uint16_t>(millivolts));
+  return w.take();
+}
+
+inline std::vector<uint8_t> build_hist_req(uint32_t key, uint8_t req_id, uint16_t bucket_minutes, uint8_t count,
+                                           const char* entity) {
+  Writer w(key, HIST_REQ);
+  w.u8(req_id).u16(bucket_minutes).u8(count).str(entity);
+  return w.take();
+}
+
+// One fragment of a history reply: samples [offset, offset + n) of the
+// series described by `values` / `valid` (bit i of valid = sample i present).
+inline std::vector<uint8_t> build_hist_data(uint32_t key, uint8_t req_id, uint8_t status, uint16_t bucket_minutes,
+                                            uint8_t count, uint32_t end_ts, int16_t tz_minutes,
+                                            uint8_t frag, uint8_t frag_count, uint8_t offset, uint8_t n,
+                                            const uint8_t* values, const uint8_t* valid) {
+  Writer w(key, HIST_DATA);
+  w.u8(req_id).u8(status).u16(bucket_minutes).u8(count).u32(end_ts).i16(tz_minutes);
+  w.u8(frag).u8(frag_count).u8(offset).u8(n);
+  for (size_t b = 0; b < (size_t(n) + 7) / 8; b++) {
+    uint8_t bits = 0;
+    for (size_t k = 0; k < 8 && b * 8 + k < n; k++) {
+      const size_t i = offset + b * 8 + k;
+      if (valid[i / 8] & (1 << (i % 8))) bits |= 1 << k;
+    }
+    w.u8(bits);
+  }
+  for (size_t k = 0; k < n; k++) w.u8(values[offset + k]);
   return w.take();
 }
 

@@ -7,14 +7,16 @@
 #     COVERS / DONE) within a few milliseconds,
 #   • broadcasts changes to all awake remotes,
 #   • executes CMD packets as Home Assistant service calls,
-#   • exposes the last reported remote battery as HA sensors.
+#   • exposes the last reported remote battery as HA sensors,
+#   • answers HIST_REQ (the remote's battery history screen) from Home
+#     Assistant's history REST API - needs ha_url / ha_token in secrets.yaml.
 #
 # Entity configuration is NOT duplicated here: the hub includes the same
 # src/*_entities.h files as the remote.  Rebuild + flash the hub and the
 # remote(s) whenever those lists change (indices must match on both sides).
 #
 # Setup:
-#   1. secrets.yaml → wifi_ssid / wifi_password
+#   1. secrets.yaml → wifi_ssid / wifi_password, ha_url / ha_token (history)
 #   2. NETWORK_KEY  → same number as in remote_espnow.yaml
 #   3. API_KEY      → any 32-byte base64 key (see repository README)
 #   4. make hub-flash  (from devices/multi_function_remote) or esphome run hub.yaml
@@ -36,6 +38,8 @@ esphome:
   name_add_mac_suffix: false
   includes:
     - ../multi_function_remote/src/espnow_protocol.h
+    - ../multi_function_remote/src/history_core.h
+    - ../multi_function_remote/src/history_fetch.h
     - ../multi_function_remote/src/ac_entities.h
     - ../multi_function_remote/src/light_entities.h
     - ../multi_function_remote/src/cover_entities.h
@@ -88,9 +92,28 @@ espnow:
     - then:
         - lambda: 'id(hub).handle_packet(info.src_addr, data, size);'
 
+# Battery history for the remote's Settings > HISTORY page. The native API
+# has no history call, so the hub asks Home Assistant's REST API with a
+# long-lived access token (HA → your profile → Security → Long-lived access
+# tokens). Remove this block and the `history:` entry below to build without
+# it; the remote then shows NOT CONFIGURED on that page.
+http_request:
+  id: http_client
+  timeout: 10s
+  verify_ssl: false       # plain http://, or https:// with a self-signed cert
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
 remote_hub:
   id: hub
   network_key: ${NETWORK_KEY}
+  history:
+    http_request_id: http_client
+    time_id: ha_time
+    url: !secret ha_url     # e.g. http://homeassistant.local:8123
+    token: !secret ha_token
 
 # ── HA entities exposed by the hub ───────────────────────────────────────────
 sensor:

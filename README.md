@@ -52,6 +52,8 @@ The images are rendered with the firmware's own layout and fonts.
 
 Left / right (and the round keys) move between settings, up / down changes the value in the box. Read-only values have no box.
 
+**HISTORY** shows the battery level over the last 24 hours (hourly bars, a hollow bar = charging), 7 days (2 h columns) or 30 days (6 h columns); up / down switch the range. The remote stores nothing itself: the samples come from Home Assistant's Recorder, so the battery sensor must be recorded there. A sample Home Assistant has no value for is a gap in the graph, never 0 %. The WiFi remote fetches them from the history REST API by itself; the ESP-NOW remote asks the hub. Both need a long-lived access token, see [Battery history](#battery-history).
+
 ### Room selection
 
 | Hold the menu key | The room in the badge | Nothing in that room |
@@ -115,6 +117,9 @@ esphome_remote/
     │       ├── *_controller.h          ← logic for each mode (no need to be modified!)
     │       ├── espnow_protocol.h       ← packet format shared by remote and hub
     │       ├── espnow_remote.h         ← remote-side packet ↔ controller glue
+    │       ├── history_core.h          ← history buckets: HA JSON scanner + resampler (remote and hub)
+    │       ├── history_fetch.h         ← history REST fetch (WiFi remote and hub)
+    │       ├── battery_history.h       ← Settings > HISTORY page
     │       ├── display_utils.h
     │       └── remote_core.h
     └── oled_remote/                    ← legacy device (v1 hardware, original AC board)
@@ -179,9 +184,20 @@ Add it to `devices/multi_function_remote/secrets.yaml` (`remote.yaml` reads it v
 api_key: "paste_your_base64_key_here"
 ```
 
+### 3. Battery history
+
+The Settings → HISTORY page reads the battery's past values back from Home Assistant, through its REST API (the native API has no history call). Create a long-lived access token in Home Assistant (your profile → Security → Long-lived access tokens) and add, to `devices/multi_function_remote/secrets.yaml` for the WiFi remote or `devices/espnow_hub/secrets.yaml` for the hub:
+
+```yaml
+ha_url: "http://homeassistant.local:8123"
+ha_token: "paste_the_long_lived_token_here"
+```
+
+`BATTERY_HISTORY_ENTITY` in `remote.yaml` / `remote_espnow.yaml` is the entity Home Assistant gave the battery sensor (the device name plus the sensor name: `sensor.oled_remote_battery` for the WiFi remote, `sensor.espnow_hub_remote_battery` for the hub's *Remote Battery*); change it if you renamed either. Without a token the page shows `HISTORY NOT SET UP` and everything else works as before.
+
 After flashing, HA will auto-discover the device. Go to **Settings → Devices & Services → ESPHome → Configure** and enter the same key — HA stores it for all future connections.
 
-### 3. (Optional) Static IP, sleep mode, serial logs
+### 4. (Optional) Static IP, sleep mode, serial logs
 
 `remote.yaml`'s `substitutions:` block has `USE_LIGHT_SLEEP` — the generator's "Light Sleep" toggle sets it `"true"` (default `"false"`, Deep Sleep). Deep Sleep deep-sleeps on the idle timeout and reboots (WiFi/API reconnect) on every wake; Light Sleep only blanks the display on that same timeout — WiFi and the API connection stay up, so the next press is instant with no reboot — and falls back to a real deep sleep after `DEEP_SLEEP_FALLBACK_MIN` (default 60) minutes of continued inactivity as a safety net. `WIFI_POWER_SAVE_MODE` (`LIGHT`/`NONE`) also moves with the toggle — `NONE` for Light Sleep keeps the radio fully powered for maximum responsiveness while connected. Edit these by hand if you're building straight from this repo instead of the generator.
 
@@ -191,11 +207,11 @@ For a static IP, add a `manual_ip:` block under `wifi:` in `remote.yaml` (values
 
 `logger:` uses `baud_rate: ${LOGGER_BAUD_RATE}`, which defaults to `0` (no UART output — nothing to power on a device with no console attached). The generator's "Enable debug logging (UART)" toggle sets it to `115200`; edit `LOGGER_BAUD_RATE` by hand if you're building straight from this repo instead. `make logs-ota`/`esphome logs --device <ip>` still work at `baud_rate: 0` since remote logging goes over the API, not the UART — a real baud rate is only needed for USB-serial development logs or `tools/screenshot.py`'s serial capture (see below).
 
-### 4. Configure your entities
+### 5. Configure your entities
 
 Edit the `src/*_entities.h` files to match your Home Assistant setup (see [Entity configuration](#entity-configuration) below).
 
-### 5. Flash the device
+### 6. Flash the device
 
 See [Building and flashing](#building-and-flashing) below.
 
@@ -420,6 +436,7 @@ The WiFi remote has to boot, associate with WiFi, open the Home Assistant API co
 - **Commands**: every button action becomes one small `CMD` packet; the hub turns it into the Home Assistant service call.
 - **Live updates**: while the remote is awake the hub broadcasts changes, so external changes still show up.
 - **Sleep**: idle timeout defaults to 1 minute (Settings → SLEEP). Timer wakes only send a `BATTERY` packet and go back to sleep; the hub exposes it as `sensor.remote_battery`.
+- **History**: Settings → HISTORY sends a `HIST_REQ` (entity, bucket length, sample count); the hub fetches the entity's history from Home Assistant's REST API, resamples it into those buckets and answers with `HIST_DATA`. The request is generic, so other sensors can use it later.
 - **Several remotes** can share one hub.
 
 The remote-side code is the same as the WiFi remote: all `src/*_controller.h` logic, the menu, button layouts and the `src/*_entities.h` lists are reused unchanged. Only the transport differs (`packages/espnow/`).
@@ -427,7 +444,7 @@ The remote-side code is the same as the WiFi remote: all `src/*_controller.h` lo
 ### Hub setup (`devices/espnow_hub/`)
 
 1. Any ESP32 board on permanent power.
-2. `secrets.yaml` → WiFi credentials, `hub.yaml` → `API_KEY` and `NETWORK_KEY` (any `uint32`, shared with the remote; it keeps other ESP-NOW traffic from being interpreted).
+2. `secrets.yaml` → WiFi credentials plus `ha_url` / `ha_token` for the battery history (see [Battery history](#battery-history); remove the `history:` block from `hub.yaml` to build without it), `hub.yaml` → `API_KEY` and `NETWORK_KEY` (any `uint32`, shared with the remote; it keeps other ESP-NOW traffic from being interpreted).
 3. Flash: `make flash-hub` from `devices/multi_function_remote/`, later `make ota-hub IP=…`.
 4. Add the hub to Home Assistant like any ESPHome device. It exposes *Remote Battery*, *Remote Battery Voltage*, *Last Remote* (MAC of the last remote that talked) and a *Resync Remotes* button.
 
@@ -465,6 +482,12 @@ Documented in `src/espnow_protocol.h`. Every packet starts with `R N <version> <
 - Hub powered and connected to WiFi? (`make logs-hub IP=…`)
 - `NETWORK_KEY` identical on both sides
 - The remote scans all channels; a hub on a 5 GHz-only network cannot be reached (ESP-NOW is 2.4 GHz)
+
+**HISTORY page shows an error**
+- `HISTORY NOT SET UP`: no `ha_url` / `ha_token` in `secrets.yaml` (hub for the ESP-NOW remote, the remote itself for WiFi)
+- `HOME ASSISTANT NOT REACHED`: wrong URL, expired token or the entity does not exist — the hub / remote log says which (`History: HTTP 401 …`)
+- `NO HISTORY YET` with a flat graph: the battery sensor is not recorded in Home Assistant (check the Recorder's `exclude`), or the remote was only just set up
+- `WAITING FOR THE CLOCK`: the hub has no time from Home Assistant yet; try again in a few seconds
 
 **ESP-NOW remote shows stale or missing entity state**
 - Both firmwares must be built from the same `src/*_entities.h`; reflash the hub after editing a list

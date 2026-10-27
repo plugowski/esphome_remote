@@ -12,13 +12,15 @@
 #include "cover_controller.h"
 #include "automation_entities.h"
 #include "quick_action_entities.h"
+#include "battery_history.h"
 
 // ── EspNowRemote ──────────────────────────────────────────────────────────────
 // Remote-side glue between the ESP-NOW protocol and the shared controllers.
 //
 //   • Parses STATE_* packets from the hub and pushes values into the
 //     Lights / Cover controllers directly; AC values are cached here and read
-//     by ac_set_current_states (packages/espnow/mode_ac.yaml).
+//     by ac_set_current_states (packages/espnow/mode_ac.yaml). HIST_DATA
+//     fragments go to BatteryHistory (Settings > HISTORY).
 //   • Builds CMD packets for the YAML send scripts.
 //
 // YAML usage:
@@ -151,6 +153,11 @@ public:
 
       case rnp::STATE_DONE:
         state_done = true;
+        break;
+
+      case rnp::HIST_DATA:
+        BatteryHistory::onPacket(r);
+        updated_ui = true;
         break;
 
       default:

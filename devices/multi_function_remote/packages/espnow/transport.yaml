@@ -14,6 +14,8 @@
 #   espnow_cmd (domain, idx, action, value) → sends one rnp::CMD packet
 #   hub_connect                              → HELLO + channel scan
 #   hub_send_battery                         → BATTERY packet (timer wake)
+#   history_request (req_id, bucket_min, count) → HIST_REQ for the battery
+#                    entity (Settings > HISTORY); the hub answers HIST_DATA
 
 esphome:
   includes:
@@ -106,6 +108,9 @@ script:
       - if:
           condition: { lambda: 'return id(rx_type) == rnp::STATE_COVERS;' }
           then: [ script.execute: covers_draw ]
+      - if:
+          condition: { lambda: 'return id(rx_type) == rnp::HIST_DATA;' }
+          then: [ script.execute: settings_draw ]
 
   # ── HELLO + channel scan ──────────────────────────────────────────────────
   - id: hub_send_hello
@@ -192,6 +197,34 @@ script:
                 data: !lambda 'return rnp::build_cmd(${NETWORK_KEY}UL, domain, idx, action, value);'
                 wait_for_sent: true
                 continue_on_error: true
+
+  # ── battery history (Settings > HISTORY) ──────────────────────────────────
+  # One HIST_REQ for ${BATTERY_HISTORY_ENTITY}, unicast to the hub. The hub
+  # fetches the samples from Home Assistant and answers with HIST_DATA
+  # (handled in EspNowRemote::handle → BatteryHistory). A failed send (hub
+  # not acknowledging) fails the page right away; no answer is retried once
+  # by BatteryHistory::poll.
+  - id: history_request
+    mode: queued
+    parameters:
+      req_id: int
+      bucket_min: int
+      count: int
+    then:
+      - if:
+          condition: { lambda: 'return !id(hub_known);' }
+          then:
+            - lambda: 'BatteryHistory::sendFailed(); id(updated_ui) = true;'
+            - script.execute: settings_draw
+          else:
+            - espnow.send:
+                address: !lambda 'return id(hub_mac);'
+                data: !lambda 'return rnp::build_hist_req(${NETWORK_KEY}UL, req_id, bucket_min, count, "${BATTERY_HISTORY_ENTITY}");'
+                wait_for_sent: true
+                continue_on_error: true
+                on_error:
+                  - lambda: 'ESP_LOGW("hub", "HIST_REQ send failed"); BatteryHistory::sendFailed(); id(updated_ui) = true;'
+                  - script.execute: settings_draw
 
   # ── battery report (timer wake) ───────────────────────────────────────────
   - id: hub_send_battery

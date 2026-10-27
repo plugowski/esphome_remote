@@ -10,6 +10,10 @@
 
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "esphome/core/time.h"
+#ifdef REMOTE_HUB_HISTORY
+#include "history_fetch.h"
+#endif
 #include "esphome/components/api/api_server.h"
 #include "esphome/components/espnow/espnow_component.h"
 
@@ -31,6 +35,8 @@ static const uint32_t COVER_REPEAT_MS = 1500;
 static const uint32_t EMU_STEP_MS = 250;  // cover emulator: one 5 % step this often
 // Resend the screenshot request on the next packet if no image arrived by then.
 static const uint32_t SCREENSHOT_RETRY_MS = 5000;
+// A history answer stands in for a repeated identical request this long (see HistReply).
+static const uint32_t HIST_CACHE_MS = 60000;
 
 static bool older_than(uint32_t since, uint32_t ms) { return (uint32_t) (millis() - since) > ms; }
 using state_cb_t = std::function<void(const std::string &)>;
@@ -158,6 +164,11 @@ void RemoteHub::dump_config() {
   ESP_LOGCONFIG(TAG, "  Network key: %u", (unsigned) this->key_);
   ESP_LOGCONFIG(TAG, "  AC units: %d  lights: %d  covers: %d", AC_LIST_COUNT, LIGHTS_LIST_COUNT, COVER_LIST_COUNT);
   ESP_LOGCONFIG(TAG, "  Automations: %d  quick actions: %d", AUTOMATION_LIST_COUNT, QUICK_ACTION_COUNT);
+#ifdef REMOTE_HUB_HISTORY
+  ESP_LOGCONFIG(TAG, "  History: %s", this->ha_url_.c_str());
+#else
+  ESP_LOGCONFIG(TAG, "  History: not configured");
+#endif
 }
 
 void RemoteHub::mark_dirty_(uint8_t bit) {
@@ -520,6 +531,10 @@ void RemoteHub::handle_packet(const uint8_t *src, const uint8_t *data, uint8_t s
     case rnp::BATTERY:
       this->handle_battery_(src, r);
       break;
+    case rnp::HIST_REQ:
+      this->handle_hist_req_(src, r);
+      this->maybe_send_screenshot_req_(src);
+      break;
     default:
       ESP_LOGW(TAG, "Unexpected packet type 0x%02X from %s", type, mac_str_(src).c_str());
       break;
@@ -534,6 +549,73 @@ void RemoteHub::handle_battery_(const uint8_t *src, rnp::Reader &r) {
   if (this->battery_sensor_ != nullptr) this->battery_sensor_->publish_state(pct);
   if (this->battery_voltage_sensor_ != nullptr) this->battery_voltage_sensor_->publish_state(mv / 1000.0f);
   if (this->last_remote_sensor_ != nullptr) this->last_remote_sensor_->publish_state(mac_str_(src));
+}
+
+// ── history ───────────────────────────────────────────────────────────────────
+
+void RemoteHub::handle_hist_req_(const uint8_t *src, rnp::Reader &r) {
+  uint8_t req_id = 0, count = 0;
+  uint16_t bucket_min = 0;
+  std::string entity;
+  if (!r.u8(req_id) || !r.u16(bucket_min) || !r.u8(count) || !r.str(entity)) {
+    ESP_LOGW(TAG, "Malformed HIST_REQ from %s", mac_str_(src).c_str());
+    return;
+  }
+  if (bucket_min == 0 || count == 0 || count > hist::MAX_SAMPLES || entity.empty()) {
+    ESP_LOGW(TAG, "HIST_REQ from %s rejected: %u x %u min of '%s'", mac_str_(src).c_str(), count, bucket_min,
+             entity.c_str());
+    return;
+  }
+  HistReply &h = this->hist_;
+  const bool same = h.have && h.entity == entity && h.bucket_min == bucket_min && h.count == count;
+  if (same && h.status == hist::ST_OK && !older_than(h.at, HIST_CACHE_MS)) {
+    ESP_LOGI(TAG, "HIST_REQ from %s: %u x %u min of %s, answered from the last fetch", mac_str_(src).c_str(), count,
+             bucket_min, entity.c_str());
+    this->send_hist_(src, req_id);
+    return;
+  }
+  ESP_LOGI(TAG, "HIST_REQ from %s: %u x %u min of %s", mac_str_(src).c_str(), count, bucket_min, entity.c_str());
+  h.entity = entity;
+  h.bucket_min = bucket_min;
+  h.count = count;
+  h.status = this->fetch_history_(entity, bucket_min, count);
+  h.at = millis();
+  h.have = true;
+  this->send_hist_(src, req_id);
+}
+
+// Fetches the entity's history from Home Assistant into hist_ (hist::fetch_ha); returns a hist::Status.
+uint8_t RemoteHub::fetch_history_(const std::string &entity, uint16_t bucket_min, uint8_t count) {
+#ifndef REMOTE_HUB_HISTORY
+  ESP_LOGW(TAG, "History requested but hub.yaml has no remote_hub.history block");
+  return hist::ST_NOT_CONFIGURED;
+#else
+  HistReply &h = this->hist_;
+  const bool have_time = this->clock_ != nullptr && this->clock_->now().is_valid();
+  const uint32_t now = have_time ? (uint32_t) this->clock_->timestamp_now() : 0;
+  hist::fetch_ha(this->http_, this->ha_url_, this->ha_token_, entity, now, ESPTime::timezone_offset(), bucket_min,
+                 count, h.data, TAG);
+  h.end_ts = h.data.end_ts;
+  h.tz_min = (int16_t) (h.data.tz_s / 60);
+  return h.data.status;
+#endif
+}
+
+// The reply as one or more HIST_DATA fragments, unicast (acknowledged and retried by the radio).
+void RemoteHub::send_hist_(const uint8_t *dest, uint8_t req_id) {
+  const HistReply &h = this->hist_;
+  if (h.status != hist::ST_OK) {
+    this->send_(dest, rnp::build_hist_data(this->key_, req_id, h.status, h.bucket_min, 0, 0, 0, 0, 1, 0, 0, nullptr,
+                                           nullptr));
+    return;
+  }
+  const uint8_t frags = (uint8_t) ((h.count + rnp::HIST_FRAG_SAMPLES - 1) / rnp::HIST_FRAG_SAMPLES);
+  for (uint8_t f = 0; f < frags; f++) {
+    const uint8_t offset = (uint8_t) (f * rnp::HIST_FRAG_SAMPLES);
+    const uint8_t n = (uint8_t) std::min<size_t>(rnp::HIST_FRAG_SAMPLES, h.count - offset);
+    this->send_(dest, rnp::build_hist_data(this->key_, req_id, hist::ST_OK, h.bucket_min, h.count, h.end_ts, h.tz_min,
+                                           f, frags, offset, n, h.data.data.values(), h.data.data.valid()));
+  }
 }
 
 void RemoteHub::handle_cmd_(const uint8_t *src, rnp::Reader &r) {

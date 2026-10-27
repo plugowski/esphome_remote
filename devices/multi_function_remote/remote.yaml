@@ -69,6 +69,14 @@ substitutions:
   # Default for BATTERY CHECK (battery_interval_mins), adjustable later on
   # the physical Settings screen — this is just where it starts out.
   BATTERY_INTERVAL_MIN: "60"
+  # Settings > HISTORY: the battery level over the last 24 h / 7 d / 30 d,
+  # read back from Home Assistant's Recorder through its REST API. The
+  # entity is this device's own "Battery" sensor as HA names it (device name
+  # + sensor name); ha_url / ha_token live in secrets.yaml (a long-lived
+  # access token from your HA profile → Security).
+  BATTERY_HISTORY_ENTITY: "sensor.${DEVICE_NAME}_battery"
+  HA_URL: !secret ha_url
+  HA_TOKEN: !secret ha_token
   # 0 (default): disables the UART logger entirely - saves power and boot
   # time. A real baud rate (e.g. 115200) is only needed for on-device
   # debugging or tools/screenshot.py's serial capture. Remote logging over
@@ -145,6 +153,9 @@ esphome:
     - src/system_stats.h
     - src/about_face.h
     - src/about_screen.h
+    - src/espnow_protocol.h
+    - src/history_core.h
+    - src/battery_history.h
     - src/settings_controller.h
   on_boot:
     - priority: 700

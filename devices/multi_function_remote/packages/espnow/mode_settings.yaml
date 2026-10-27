@@ -74,6 +74,11 @@ globals:
     initial_value: '${BATTERY_INTERVAL_MIN}'
     restore_value: true
 
+  - id: battery_history_range  # Settings > HISTORY: 0 = 24H, 1 = 7D, 2 = 30D
+    type: int
+    initial_value: '0'
+    restore_value: true
+
   # ── Light Sleep only (USE_LIGHT_SLEEP) — inert on a Deep Sleep build ────────
 
   - id: deep_sleep_fallback_mins  # total idle minutes before a real deep sleep (0=off, 5-1440)
@@ -136,6 +141,10 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
           then:
             - lambda: 'SettingsController::hourDown(id(quiet_hours_end), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_HISTORY;' }
+          then:
+            - lambda: 'SettingsController::historyRangeDown(id(battery_history_range), id(updated_ui));'
       # restore_value globals only queue their NVS write - ESPHome's default
       # preferences component batches the actual flash commit every 60s, so
       # a value changed here would silently revert to its old default if
@@ -174,10 +183,23 @@ script:
           condition: { lambda: 'return id(selected_setting_index) == SETTING_QUIET_TO;' }
           then:
             - lambda: 'SettingsController::hourUp(id(quiet_hours_end), id(updated_ui));'
+      - if:
+          condition: { lambda: 'return id(selected_setting_index) == SETTING_HISTORY;' }
+          then:
+            - lambda: 'SettingsController::historyRangeUp(id(battery_history_range), id(updated_ui));'
       # See the matching comment in settings_btn_left - forces the NVS write
       # through now instead of leaving it queued for the periodic 60s flush.
       - lambda: 'global_preferences->sync();'
       - script.execute: settings_draw
+
+  # Settings > HISTORY asked for a range (BatteryHistory::open): send the
+  # HIST_REQ through transport.yaml's history_request.
+  - id: history_request_if_due
+    then:
+      - lambda: |-
+          int range; uint8_t req_id, count; uint16_t bucket_min;
+          if (BatteryHistory::takeSendRequest(range, req_id, bucket_min, count))
+            id(history_request)->execute(req_id, bucket_min, count);
 
   - id: settings_apply_contrast
     then:
@@ -207,12 +229,14 @@ script:
                   id(battery_pct), id(battery_mv), id(sleep_timeout_mins), id(battery_interval_mins),
                   id(deep_sleep_fallback_mins), id(quiet_hours_start), id(quiet_hours_end),
                   ${BATTERY_ENABLED}, ${USE_LIGHT_SLEEP}, ${QUIET_HOURS_ON_DEVICE},
-                  id(updated_ui), id(conn_status), "LINK", "HUB");
+                  id(updated_ui), id(conn_status), id(battery_history_range), "LINK", "HUB");
 
-# ── Settings SYSTEM / ABOUT tick ──────────────────────────────────────────────
-# Redraws every 50 ms while the ABOUT intro plays or a SYSTEM sample is due
-# (SettingsController::needsTick); otherwise does nothing. Stops for good once
-# shutdown begins, and while a Light Sleep build has the screen blanked.
+# ── Settings SYSTEM / ABOUT / HISTORY tick ────────────────────────────────────
+# Every 50 ms while the ABOUT intro plays, a SYSTEM sample is due or HISTORY
+# waits for its data (SettingsController::needsTick); otherwise does nothing.
+# Redraws when the page says so (tick) and sends the history request the page
+# asked for. Stops for good once shutdown begins, and while a Light Sleep
+# build has the screen blanked.
 interval:
   - interval: 50ms
     then:
@@ -224,5 +248,9 @@ interval:
                 && id(conn_status) == 0
                 && SettingsController::needsTick(id(selected_setting_index));
           then:
-            - lambda: 'id(updated_ui) = true;'
-            - script.execute: settings_draw
+            - if:
+                condition: { lambda: 'return SettingsController::tick(id(selected_setting_index));' }
+                then:
+                  - lambda: 'id(updated_ui) = true;'
+                  - script.execute: settings_draw
+            - script.execute: history_request_if_due

@@ -9,6 +9,7 @@
 #include "toast.h"
 #include "system_stats.h"
 #include "about_screen.h"
+#include "battery_history.h"
 
 // ── Selectable row identifiers ────────────────────────────────────────────────
 // Fixed constants, not positions — a stored selected_setting_index always
@@ -26,7 +27,8 @@ static const int SETTING_WIFI          = 6;
 static const int SETTING_IP            = 7;
 static const int SETTING_SYSTEM        = 8;   // CPU / heap / battery / link bars (system_stats.h)
 static const int SETTING_ABOUT         = 9;   // intro animation + credits (about_screen.h)
-static const int SETTING_MAX           = 10;  // total rows that exist; not all are necessarily visible
+static const int SETTING_HISTORY       = 10;  // battery level over 24H / 7D / 30D (battery_history.h)
+static const int SETTING_MAX           = 11;  // total rows that exist; not all are necessarily visible
 
 // ── SettingsController ────────────────────────────────────────────────────────
 // Settings mode layout (128×64 OLED) - one setting per screen:
@@ -41,11 +43,13 @@ static const int SETTING_MAX           = 10;  // total rows that exist; not all 
 //   y=53..63    < | ••• | >  bottom bar: round keys (and ← → on v2) =
 //               previous / next setting
 //
-// The last two pages are different: SYSTEM shows CPU / heap / battery / link
-// bars (system_stats.h) and ABOUT plays an intro animation into the credits
-// (about_screen.h). Both redraw on a 50 ms tick while needsTick() says so.
+// The last pages are different: SYSTEM shows CPU / heap / battery / link
+// bars (system_stats.h), HISTORY the battery level over the last day, week
+// or month (battery_history.h; up / down switch the range) and ABOUT plays
+// an intro animation into the credits (about_screen.h). All three redraw on
+// a 50 ms tick while needsTick() says so.
 //
-// Up to 10 pages, one at a time (see visibleSettings()); which rows actually
+// Up to 11 pages, one at a time (see visibleSettings()); which rows actually
 // appear depends on battery_enabled / light_sleep / quiet_hours_on_device
 // (all three are build-time substitutions passed in from mode_settings.yaml).
 // contrast_level:           int 1–10  →  0.1–1.0 for set_contrast()
@@ -84,6 +88,7 @@ public:
     out[n++] = SETTING_WIFI;
     out[n++] = SETTING_IP;
     out[n++] = SETTING_SYSTEM;
+    if (battery_enabled) out[n++] = SETTING_HISTORY;
     out[n++] = SETTING_ABOUT;
     return n;
   }
@@ -181,6 +186,18 @@ public:
     hour = (hour + 23) % 24; updated_ui = true;
   }
 
+  // ── battery history range (24H / 7D / 30D, wraps) ──────────────────────────
+  // "Down" walks the list forward (24H → 7D → 30D), "up" back. The new range
+  // is shown from its cache or fetched (BatteryHistory::open).
+
+  static void historyRangeDown(int& range, bool& updated_ui) {
+    BatteryHistory::rangeNext(range); BatteryHistory::open(range); updated_ui = true;
+  }
+
+  static void historyRangeUp(int& range, bool& updated_ui) {
+    BatteryHistory::rangePrev(range); BatteryHistory::open(range); updated_ui = true;
+  }
+
   // ── display ──────────────────────────────────────────────────────────────────
 
   template<class D, class F>
@@ -190,7 +207,7 @@ public:
                    int battery_pct, int battery_mv, int sleep_timeout_mins, int battery_interval_mins,
                    int deep_sleep_fallback_mins, int quiet_hours_start, int quiet_hours_end,
                    bool battery_enabled, bool light_sleep, bool quiet_hours_on_device,
-                   bool& updated_ui, int conn_status,
+                   bool& updated_ui, int conn_status, int history_range,
                    const char* link_label = "WIFI", const char* addr_label = "IP")
   {
     if (!updated_ui) return;
@@ -220,6 +237,17 @@ public:
       return;
     }
 
+    // HISTORY: the range as the strip's badge; the page asks for its data
+    // when it comes on screen (open), the tick sends the request
+    if (idx == SETTING_HISTORY) {
+      if (fresh) BatteryHistory::open(history_range);
+      ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, BatteryHistory::rangeLabel(history_range), true);
+      BatteryHistory::draw(it, history_range, battery_interval_mins);
+      draw_bottom_menu(it, font_small, "<", nullptr, ">");
+      present(it, idx);
+      return;
+    }
+
     // strip: SETTINGS chip, one dot per setting, battery with its %
     ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, nullptr, true);
 
@@ -233,7 +261,7 @@ public:
 
     static const char* labels[SETTING_MAX] = {
       "CONTRAST", "BATTERY CHECK", "SLEEP", "DEEP SLEEP", "QUIET FROM", "QUIET TO", "WIFI", "IP",
-      "SYSTEM", "ABOUT"
+      "SYSTEM", "ABOUT", "HISTORY"
     };
     const char* name = idx == SETTING_WIFI ? link_label : idx == SETTING_IP ? addr_label : labels[idx];
     it->print(64, NAME_Y, font_small, COLOR_ON, display::TextAlign::CENTER, name);
@@ -294,13 +322,22 @@ public:
     present(it, idx);
   }
 
-  // The 50 ms tick (mode_settings.yaml) redraws while this is true: the
-  // ABOUT intro is playing or its strip and keys are sliding in (not in
-  // the pause between), or a SYSTEM sample is due.
+  // The 50 ms tick (mode_settings.yaml) runs while this is true: the ABOUT
+  // intro is playing or its strip and keys are sliding in (not in the pause
+  // between), a SYSTEM sample is due, or HISTORY is waiting for its data.
   static bool needsTick(int selected_idx) {
-    if (selected_idx == SETTING_ABOUT)  return AboutScreen::needsFrame();
-    if (selected_idx == SETTING_SYSTEM) return SystemStats::due();
+    if (selected_idx == SETTING_ABOUT)   return AboutScreen::needsFrame();
+    if (selected_idx == SETTING_SYSTEM)  return SystemStats::due();
+    if (selected_idx == SETTING_HISTORY) return BatteryHistory::busy();
     return false;
+  }
+
+  // One tick: whether the page has to be redrawn now. ABOUT and SYSTEM
+  // always (needsTick already said a frame is due); HISTORY only when its
+  // loading animation moved on or the wait ended (BatteryHistory::poll).
+  static bool tick(int selected_idx) {
+    if (selected_idx == SETTING_HISTORY) return BatteryHistory::poll();
+    return true;
   }
 
 private:
