@@ -101,8 +101,8 @@ substitutions:
   # only log output; screenshots go through the hub instead (its "Remote
   # Screenshot" button, see packages/espnow/screenshot.yaml).
   LOGGER_BAUD_RATE: "0"
-  # "true": mirror the screen to the log for the live preview on the firmware page (https://tech.lugowski.dev/firmware/).
-  # Needs the logger, so set LOGGER_BAUD_RATE to "115200" with it (the configurator does both).
+  # "true": stream the screen over USB for the live preview on the firmware page (https://tech.lugowski.dev/firmware/).
+  # Works with the logger off. Without it a remote that finds no OLED streams anyway (see components/oled_failover).
   SCREEN_PREVIEW: "false"
 
 packages:

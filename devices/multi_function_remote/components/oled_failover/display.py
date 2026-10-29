@@ -4,8 +4,10 @@ Same options as ssd1306_i2c. At boot it probes the panel on I2C; if nothing answ
 failed (which would crash the first draw) but keeps drawing into its framebuffer and sends nothing to a screen: a
 virtual display, so every screen, key and radio path still works headless.
 
-With `mirror: true` every changed frame is also written to the log as `oledfb` lines (real or virtual display alike)
-for the website's live screen preview (docs: firmware page, "Live screen preview"). That needs the logger on.
+With `mirror: true` every changed frame is also streamed over USB as `oledfb` lines for the website's live screen
+preview (docs: firmware page, "Live screen preview"); with a virtual display it is streamed whatever `mirror` says.
+The lines go through the logger when it is on and straight to the USB-Serial-JTAG port otherwise, so no logger is
+needed.
 
     external_components:
       - source: { type: local, path: components }
@@ -22,7 +24,6 @@ import esphome.codegen as cg
 from esphome.components import i2c, ssd1306_base
 from esphome.components.ssd1306_base import _validate
 import esphome.config_validation as cv
-import esphome.final_validate as fv
 from esphome.const import CONF_ID, CONF_LAMBDA, CONF_PAGES
 
 AUTO_LOAD = ["ssd1306_base"]
@@ -45,17 +46,6 @@ CONFIG_SCHEMA = cv.All(
     cv.has_at_most_one_key(CONF_PAGES, CONF_LAMBDA),
     _validate,
 )
-
-
-def _final_validate(config):
-    if config[CONF_MIRROR]:
-        logger = fv.full_config.get().get("logger", {})
-        if logger.get("baud_rate") == 0:
-            raise cv.Invalid("mirror: true streams the screen through the log, but the logger is off (baud_rate: 0)")
-    return config
-
-
-FINAL_VALIDATE_SCHEMA = _final_validate
 
 
 async def to_code(config):

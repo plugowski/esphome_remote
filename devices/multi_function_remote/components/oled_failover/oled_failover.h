@@ -1,9 +1,13 @@
 #pragma once
 
-// An SSD1306/SH1106 over I2C that survives a missing panel (see display.py), and can mirror its framebuffer to the log:
+// An SSD1306/SH1106 over I2C that survives a missing panel (see display.py), and streams its framebuffer to USB:
 //   [I][oledfb:NN]: <frame> <part 0-7> <base64 of 128 bytes>
 // in the SH1106 page layout of tools/screenshot.py; the website's oled-preview.js and tools/oled_monitor.py read it.
-// dump_screenshot() writes the same lines once under the tag `oledshot`, whatever `mirror` says (the logger must be on).
+// The stream runs when `mirror` is on, and always while the display is virtual (no panel answered): a remote without
+// an OLED is then still watchable. dump_screenshot() writes the same lines once under the tag `oledshot`.
+// preview_line() is the one way these lines leave the chip: through the logger when it is on, otherwise straight to
+// the USB-Serial-JTAG port (only while a host is connected), so a build with the logger off - the default - can
+// still be watched. Other code that wants to appear in the preview (the battery line) calls it too.
 
 #include <cstring>
 #include "esphome/core/component.h"
@@ -11,6 +15,16 @@
 #include "esphome/core/log.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/ssd1306_base/ssd1306_base.h"
+#ifdef USE_LOGGER
+#include "esphome/components/logger/logger.h"
+#endif
+#ifdef USE_ESP32
+#include "soc/soc_caps.h"
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+#include "driver/usb_serial_jtag.h"
+#define OLED_FAILOVER_USB_DIRECT 1
+#endif
+#endif
 
 namespace esphome {
 namespace oled_failover {
@@ -19,11 +33,40 @@ static const char *const TAG = "oled_failover";
 static const char *const TAG_FB = "oledfb";      // the live mirror (every changed frame)
 static const char *const TAG_SHOT = "oledshot";  // a deliberate screenshot, same lines; the preview files it in its bucket
 
+// One preview line, as `[I][<tag>:0]: <text>`, to whatever is listening on USB. Never blocks.
+inline void preview_line(const char *tag, const char *text) {
+#ifdef USE_LOGGER
+  if (logger::global_logger != nullptr && logger::global_logger->get_baud_rate() > 0) {
+    ESP_LOGI(tag, "%s", text);
+    return;
+  }
+#endif
+#ifdef OLED_FAILOVER_USB_DIRECT
+  if (!usb_serial_jtag_is_driver_installed()) {
+    usb_serial_jtag_driver_config_t cfg{};
+    cfg.rx_buffer_size = 64;
+    cfg.tx_buffer_size = 4096;  // one frame is about 1.5 KB
+    if (usb_serial_jtag_driver_install(&cfg) != ESP_OK) return;
+  }
+  if (!usb_serial_jtag_is_connected()) return;  // nobody on the other end: do not fill the buffer for nothing
+  char head[40];
+  const int n = snprintf(head, sizeof(head), "[I][%s:0]: ", tag);
+  usb_serial_jtag_write_bytes(head, n, 0);
+  usb_serial_jtag_write_bytes(text, strlen(text), 0);
+  usb_serial_jtag_write_bytes("\r\n", 2, 0);
+#else
+  (void) tag;
+  (void) text;
+#endif
+}
+
 class OledFailover : public ssd1306_base::SSD1306, public i2c::I2CDevice {
  public:
   void set_mirror(bool mirror) { this->mirror_ = mirror; }
   // True when no panel answered at boot: drawing works, nothing reaches a screen.
   bool is_virtual() const { return this->virtual_; }
+  // The frames are streamed (and the battery line printed): the mirror option, or no panel to look at instead.
+  bool stream_active() const { return this->mirror_ || this->virtual_; }
 
   void setup() override {
     this->init_reset_();
@@ -34,13 +77,13 @@ class OledFailover : public ssd1306_base::SSD1306, public i2c::I2CDevice {
     } else {
       SSD1306::setup();
     }
-    if (!this->mirror_) this->disable_loop();
+    if (!this->stream_active()) this->disable_loop();
   }
 
   void dump_config() override {
     LOG_DISPLAY("", "OLED (failover)", this);
-    ESP_LOGCONFIG(TAG, "  Panel: %s\n  Screen preview (mirror): %s", this->virtual_ ? "none, virtual screen" : "connected",
-                  YESNO(this->mirror_));
+    ESP_LOGCONFIG(TAG, "  Panel: %s\n  Screen preview (mirror): %s%s", this->virtual_ ? "none, virtual screen" : "connected",
+                  YESNO(this->mirror_), this->virtual_ ? " (always on without a panel)" : "");
     LOG_I2C_DEVICE(this);
   }
 
@@ -48,10 +91,7 @@ class OledFailover : public ssd1306_base::SSD1306, public i2c::I2CDevice {
   void dump_screenshot() {
     if (this->buffer_ == nullptr || this->get_buffer_length_() != FRAME_BYTES) return;
     this->shot_++;
-    for (size_t part = 0; part < FRAME_BYTES / 128; part++) {
-      ESP_LOGI(TAG_SHOT, "%u %u %s", (unsigned) this->shot_, (unsigned) part,
-               base64_encode(this->buffer_ + part * 128, 128).c_str());
-    }
+    this->send_frame_(TAG_SHOT, this->shot_);
   }
 
   void loop() override {
@@ -64,13 +104,19 @@ class OledFailover : public ssd1306_base::SSD1306, public i2c::I2CDevice {
     std::memcpy(this->last_, this->buffer_, len);
     this->last_ms_ = now;
     this->frame_++;
-    for (size_t part = 0; part < FRAME_BYTES / 128; part++) {
-      ESP_LOGI(TAG_FB, "%u %u %s", (unsigned) this->frame_, (unsigned) part,
-               base64_encode(this->buffer_ + part * 128, 128).c_str());
-    }
+    this->send_frame_(TAG_FB, this->frame_);
   }
 
  protected:
+  void send_frame_(const char *tag, uint32_t number) {
+    char line[200];
+    for (size_t part = 0; part < FRAME_BYTES / 128; part++) {
+      snprintf(line, sizeof(line), "%u %u %s", (unsigned) number, (unsigned) part,
+               base64_encode(this->buffer_ + part * 128, 128).c_str());
+      preview_line(tag, line);
+    }
+  }
+
   static const size_t FRAME_BYTES = 1024;  // 128 x 64
 
   void command(uint8_t value) override {

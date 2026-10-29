@@ -25,7 +25,11 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FRAME_RE = re.compile(r"oled(?:fb|shot):\d+\]:\s+(\d+)\s+(\d)\s+([A-Za-z0-9+/=]{172,176})")
-GAUGE_RE = re.compile(r"USB=(\w+)\s+battery=(-?\d+) mV\s+(-?\d+) %\s+gauge_v=(\S+) gauge_pct=(\S+)")
+# The firmware's battery line (components/oled_failover + the board package), and the older test-build format.
+GAUGE_RE = re.compile(
+    r"(?:oledbat(?::\d+)?\]:\s*usb=(\d)\s+mv=(-?\d+)\s+pct=(-?\d+)\s+gauge_v=(\S+)\s+gauge_pct=(\S+))"
+    r"|(?:USB=(\w+)\s+battery=(-?\d+) mV\s+(-?\d+) %\s+gauge_v=(\S+) gauge_pct=(\S+))"
+)
 ANSI_RE = re.compile(r"\x1b?\[[0-9;]*m")
 
 
@@ -80,8 +84,9 @@ class Hub:
                     return f if f == f else None
                 except ValueError:
                     return None
-            sample = {"t": time.time(), "usb": g.group(1) == "ON", "mv": int(g.group(2)), "pct": int(g.group(3)),
-                      "gauge_v": num(g.group(4)), "gauge_pct": num(g.group(5))}
+            v = g.groups()[:5] if g.group(2) is not None else g.groups()[5:]
+            sample = {"t": time.time(), "usb": v[0] in ("ON", "1"), "mv": int(v[1]), "pct": int(v[2]),
+                      "gauge_v": num(v[3]), "gauge_pct": num(v[4])}
             with self.lock:
                 self.gauge.append(sample)
             self.publish("gauge", sample)

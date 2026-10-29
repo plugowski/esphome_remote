@@ -356,7 +356,7 @@ python3 tools/screenshot.py /dev/tty.usbserial-XXXX --scale 6
 
 The display driver is `components/oled_failover`, a drop-in for `ssd1306_i2c`. At boot it probes the panel on I2C; if nothing answers, the remote **keeps running with a virtual screen** (every screen, key and radio path still works, nothing is drawn anywhere) instead of marking the display failed. The log says `No OLED answered on I2C 0x3C: running with a virtual screen`.
 
-With the substitution `SCREEN_PREVIEW: "true"` (the generator's **"Screen preview over USB"** toggle, which also turns the logger on) every changed frame is written to the log as `oledfb` lines, for a real or a virtual display alike:
+With the substitution `SCREEN_PREVIEW: "true"` (the generator's **"Screen preview over USB"** toggle) every changed frame is streamed over USB as `oledfb` lines, for a real or a virtual display alike. **With no OLED the stream is always on**, whatever the toggle says. The lines go through the logger when it is on and straight to the USB-Serial-JTAG port when it is off (the default), and only while a computer is connected, so no logger is needed:
 
 ```
 [I][oledfb:20]: <frame> <part 0-7> <base64 of 128 bytes>      # 8 parts = the 1024-byte framebuffer
@@ -369,7 +369,7 @@ python3 tools/oled_monitor.py /dev/cu.usbmodemXXXX      # http://127.0.0.1:8706
 python3 tools/oled_console.py /dev/cu.usbmodemXXXX      # the same in the terminal (quick look)
 ```
 
-Notes: the remote disappears from USB while it sleeps and comes back on wake, so the viewers reconnect by themselves; only one program can hold the serial port, so close the monitor before flashing; the preview costs a little power and boot time because the logger runs, which is why it is off by default.
+While streaming, the v4.1 board package also prints the battery readings every 5 seconds as `[I][oledbat:0]: usb=1 mv=3881 pct=37 gauge_v=3.881 gauge_pct=37.6` (`mv=0 pct=-1` means no battery connected); the viewers draw them as tiles and a graph. Notes: the remote disappears from USB while it sleeps and comes back on wake, so the viewers reconnect by themselves; only one program can hold the serial port, so close the monitor before flashing; with a real OLED the stream is off by default because it adds a little work while a computer is connected.
 
 ---
 

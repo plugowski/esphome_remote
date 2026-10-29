@@ -188,6 +188,18 @@ script:
       - delay: 1500ms
       - component.update: battery_source
 
+# The preview's battery tiles and graph (website firmware page / tools): one line every 5 s while the screen is
+# streamed, i.e. SCREEN_PREVIEW or no OLED connected (components/oled_failover). Nothing runs otherwise.
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (!id(oled_display)->stream_active()) return;
+          char line[96];
+          snprintf(line, sizeof(line), "usb=%d mv=%d pct=%d gauge_v=%.3f gauge_pct=%.1f", id(usb_power).state ? 1 : 0,
+                   id(battery_mv), id(battery_pct), id(battery_gauge_voltage).state, id(battery_gauge_level).state);
+          oled_failover::preview_line("oledbat", line);
+
 binary_sensor:
   - platform: gpio
     pin:
