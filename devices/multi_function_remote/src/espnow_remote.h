@@ -13,7 +13,12 @@
 #include "automation_entities.h"
 #include "quick_action_entities.h"
 #include "quick_action_state.h"
+#ifndef BATTERY_HISTORY_FEATURE
+#define BATTERY_HISTORY_FEATURE 0  // see settings_controller.h
+#endif
+#if BATTERY_HISTORY_FEATURE
 #include "battery_history.h"
+#endif
 
 // ── EspNowRemote ──────────────────────────────────────────────────────────────
 // Remote-side glue between the ESP-NOW protocol and the shared controllers.
@@ -169,10 +174,12 @@ public:
         state_done = true;
         break;
 
+#if BATTERY_HISTORY_FEATURE
       case rnp::HIST_DATA:
         BatteryHistory::onPacket(r);
         updated_ui = true;
         break;
+#endif
 
       default:
         break;

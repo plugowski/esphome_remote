@@ -9,7 +9,16 @@
 #include "toast.h"
 #include "system_stats.h"
 #include "about_screen.h"
+// Settings > HISTORY (the battery graphs): compiled in only with -DBATTERY_HISTORY_FEATURE=1 (the substitution of the
+// same name in remote.yaml / remote_espnow.yaml). Off by default: the screen is not in the settings list and none of
+// its code is built. Turning it on also needs src/history_core.h, src/battery_history.h (and src/history_fetch.h for
+// the WiFi remote) in the esphome: includes, and the hub's `history:` block for the ESP-NOW remote.
+#ifndef BATTERY_HISTORY_FEATURE
+#define BATTERY_HISTORY_FEATURE 0
+#endif
+#if BATTERY_HISTORY_FEATURE
 #include "battery_history.h"
+#endif
 
 // ── Selectable row identifiers ────────────────────────────────────────────────
 // Fixed constants, not positions — a stored selected_setting_index always
@@ -88,7 +97,7 @@ public:
     out[n++] = SETTING_WIFI;
     out[n++] = SETTING_IP;
     out[n++] = SETTING_SYSTEM;
-    if (battery_enabled) out[n++] = SETTING_HISTORY;
+    if (battery_enabled && BATTERY_HISTORY_FEATURE) out[n++] = SETTING_HISTORY;
     out[n++] = SETTING_ABOUT;
     return n;
   }
@@ -191,11 +200,19 @@ public:
   // is shown from its cache or fetched (BatteryHistory::open).
 
   static void historyRangeDown(int& range, bool& updated_ui) {
+#if BATTERY_HISTORY_FEATURE
     BatteryHistory::rangeNext(range); BatteryHistory::open(range); updated_ui = true;
+#else
+    (void) range; (void) updated_ui;
+#endif
   }
 
   static void historyRangeUp(int& range, bool& updated_ui) {
+#if BATTERY_HISTORY_FEATURE
     BatteryHistory::rangePrev(range); BatteryHistory::open(range); updated_ui = true;
+#else
+    (void) range; (void) updated_ui;
+#endif
   }
 
   // ── display ──────────────────────────────────────────────────────────────────
@@ -240,6 +257,7 @@ public:
     // HISTORY: "BATTERY 24H" as the strip's badge, in place of the battery
     // icon and %; the page asks for its data when it comes on screen (open),
     // the tick sends the request
+#if BATTERY_HISTORY_FEATURE
     if (idx == SETTING_HISTORY) {
       if (fresh) BatteryHistory::open(history_range);
       char badge[16];
@@ -250,6 +268,7 @@ public:
       present(it, idx);
       return;
     }
+#endif
 
     // strip: SETTINGS chip, one dot per setting, battery with its %
     ContextStrip::draw(it, "SETTINGS", pos, count, conn_status, nullptr, true);
@@ -331,7 +350,9 @@ public:
   static bool needsTick(int selected_idx) {
     if (selected_idx == SETTING_ABOUT)   return AboutScreen::needsFrame();
     if (selected_idx == SETTING_SYSTEM)  return SystemStats::due();
+#if BATTERY_HISTORY_FEATURE
     if (selected_idx == SETTING_HISTORY) return BatteryHistory::busy();
+#endif
     return false;
   }
 
@@ -339,7 +360,9 @@ public:
   // always (needsTick already said a frame is due); HISTORY only when its
   // loading animation moved on or the wait ended (BatteryHistory::poll).
   static bool tick(int selected_idx) {
+#if BATTERY_HISTORY_FEATURE
     if (selected_idx == SETTING_HISTORY) return BatteryHistory::poll();
+#endif
     return true;
   }
 

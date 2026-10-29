@@ -70,6 +70,9 @@ substitutions:
   # Default for BATTERY CHECK (battery_interval_mins), adjustable later on
   # the physical Settings screen — this is just where it starts out.
   BATTERY_INTERVAL_MIN: "60"
+  # Settings > HISTORY, the battery graphs: "0" (default) leaves the screen and its code out entirely. "1" builds it; it
+  # also needs src/history_core.h and src/battery_history.h (WiFi remote: src/history_fetch.h too) in the includes below.
+  BATTERY_HISTORY_FEATURE: "0"
   # Settings > HISTORY: the battery level over the last 24 h / 7 d / 30 d,
   # read back from Home Assistant's Recorder through its REST API. The
   # entity is this device's own "Battery" sensor as HA names it (device name
@@ -136,6 +139,9 @@ esphome:
   #   adc attenuation: 12db                -> 2025.12 (11db is deprecated)
   min_version: 2025.12.0
   name_add_mac_suffix: false
+  platformio_options:
+    build_flags:
+      - -DBATTERY_HISTORY_FEATURE=${BATTERY_HISTORY_FEATURE}
   includes:
     - src/menu_entities.h
     - src/quick_action_entities.h
@@ -160,8 +166,6 @@ esphome:
     - src/about_face.h
     - src/about_screen.h
     - src/espnow_protocol.h
-    - src/history_core.h
-    - src/battery_history.h
     - src/settings_controller.h
   on_boot:
     - priority: 700

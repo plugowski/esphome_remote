@@ -188,9 +188,11 @@ script:
   - id: history_request_if_due
     then:
       - lambda: |-
+          #if BATTERY_HISTORY_FEATURE
           int range; uint8_t req_id, count; uint16_t bucket_min;
           if (BatteryHistory::takeSendRequest(range, req_id, bucket_min, count))
             id(history_request)->execute(req_id, bucket_min, count);
+          #endif
 
   - id: settings_apply_contrast
     then:

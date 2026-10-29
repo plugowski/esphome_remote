@@ -18,7 +18,6 @@
 esphome:
   includes:
     - src/settings_controller.h
-    - src/history_fetch.h
 
 # Settings > HISTORY fetches the battery's past values from Home Assistant's
 # REST API (the native API has no history call) - see history_request_if_due.
@@ -224,6 +223,7 @@ script:
   - id: history_request_if_due
     then:
       - lambda: |-
+          #if BATTERY_HISTORY_FEATURE
           int range; uint8_t req_id, count; uint16_t bucket_min;
           if (!BatteryHistory::takeSendRequest(range, req_id, bucket_min, count)) return;
           const bool have_time = id(sntp_time)->now().is_valid();
@@ -234,6 +234,7 @@ script:
           BatteryHistory::setResult(range, res.status, bucket_min, count, res.end_ts, res.tz_s,
                                     res.data.values(), res.data.valid());
           id(updated_ui) = true;
+          #endif
       - script.execute: settings_draw
 
   - id: settings_apply_contrast

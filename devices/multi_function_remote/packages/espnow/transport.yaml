@@ -214,7 +214,10 @@ script:
       - if:
           condition: { lambda: 'return !id(hub_known);' }
           then:
-            - lambda: 'BatteryHistory::sendFailed(); id(updated_ui) = true;'
+            - lambda: |-
+                #if BATTERY_HISTORY_FEATURE
+                BatteryHistory::sendFailed(); id(updated_ui) = true;
+                #endif
             - script.execute: settings_draw
           else:
             - espnow.send:
@@ -223,7 +226,11 @@ script:
                 wait_for_sent: true
                 continue_on_error: true
                 on_error:
-                  - lambda: 'ESP_LOGW("hub", "HIST_REQ send failed"); BatteryHistory::sendFailed(); id(updated_ui) = true;'
+                  - lambda: |-
+                      ESP_LOGW("hub", "HIST_REQ send failed");
+                      #if BATTERY_HISTORY_FEATURE
+                      BatteryHistory::sendFailed(); id(updated_ui) = true;
+                      #endif
                   - script.execute: settings_draw
 
   # ── battery report (timer wake) ───────────────────────────────────────────
