@@ -234,7 +234,11 @@ script:
           if (id(espnow_channel) < 1 || id(espnow_channel) > 13) id(espnow_channel) = ${ESPNOW_CHANNEL};
           id(espnow_bus).set_wifi_channel(id(espnow_channel));
           id(espnow_bus).apply_wifi_channel();
-      - espnow.broadcast:
-          data: !lambda 'return rnp::build_battery(${NETWORK_KEY}UL, id(battery_pct), id(battery_mv));'
-          wait_for_sent: true
-          continue_on_error: true
+      # No level (no battery connected, or not read yet): nothing to report - the hub would show 0 %.
+      - if:
+          condition: { lambda: 'return id(battery_pct) >= 0;' }
+          then:
+            - espnow.broadcast:
+                data: !lambda 'return rnp::build_battery(${NETWORK_KEY}UL, id(battery_pct), id(battery_mv));'
+                wait_for_sent: true
+                continue_on_error: true

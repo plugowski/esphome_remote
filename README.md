@@ -118,6 +118,10 @@ esphome_remote/
     │   │   ├── espnow/                 ← ESP-NOW counterparts of the mode packages
     │   │   │   ├── transport.yaml      ← HELLO / channel scan / command sending
     │   │   │   └── mode_*.yaml         ← same scripts, state from hub instead of HA
+    │   │   ├── boards/                 ← one file per PCB: chip, key pins, OLED power, battery
+    │   │   │   ├── pcb_v3.yaml         ← LOLIN32 (ESP32) carrier board (default)
+    │   │   │   ├── pcb_v4.yaml         ← PCB v4.0, ESP32-C3 module board
+    │   │   │   └── pcb_v4_1.yaml       ← ESP32-S3 module board, v4.1 and later
     │   │   └── layouts/
     │   │       ├── layout_v1.yaml      ← original AC board pinout (self-contained)
     │   │       └── layout_v2.yaml      ← 6-button generic layout (default)
@@ -145,14 +149,26 @@ Files marked ★ are the ones you edit to match your Home Assistant setup.
 
 ## Hardware
 
-| Component | Spec |
-|---|---|
-| MCU | ESP32 (`esp32dev`) |
-| Display | SH1106 128×64 OLED, I2C |
-| I2C pins | SDA GPIO27 · SCL GPIO25 |
-| Wake pin | GPIO0 |
-| Button pad | 6-button directional pad (v2) or original layout (v1) |
-| Battery | LiPo with 100 kΩ/100 kΩ voltage divider on GPIO34 |
+The same firmware runs on three PCB generations. Pick yours with the `PCB`
+substitution at the top of `remote.yaml` / `remote_espnow.yaml`, or per build
+with `make … PCB=v4_1` (`esphome -s PCB v4_1 …`). Each board's pins live in
+`packages/boards/pcb_<PCB>.yaml`; the button layouts refer to keys by their
+PCB switch name, so they work unchanged on every board.
+
+| | PCB v3 | PCB v4.0 | PCB v4.1 and later |
+|---|---|---|---|
+| `PCB` value | `v3` _(default)_ | `v4` | `v4_1` |
+| MCU | ESP32, WEMOS LOLIN32 board (`esp32dev`) | ESP32-C3-MINI-1 module | ESP32-S3 module (MINI-1 / WROOM-1) |
+| Charging / 3.3 V | LOLIN32's own charger and LDO | BQ24075 charger, LDO | BQ24075 charger, buck converter |
+| Battery reading | resistor divider on GPIO32 (ADC) | MAX17048 fuel gauge, on the OLED bus | MAX17048 fuel gauge, own always-on bus |
+| USB plugged-in sense | – | – | yes (*USB Power* entity) |
+| OLED I2C | SDA GPIO27 · SCL GPIO25 | SDA GPIO6 · SCL GPIO7 | SDA GPIO8 · SCL GPIO9 |
+| OLED power switch | GPIO15 | GPIO10 | GPIO14 |
+| Wake key | POWER, GPIO0 | POWER, GPIO0 | POWER, GPIO0 |
+
+Common to all: SH1106 128×64 OLED at `0x3C`, ten keys to GND with pull-ups,
+deep sleep with a timer wake for battery reports. On PCB v4.0 the ROM download
+mode is entered by holding SELECT (GPIO9) during reset instead of POWER.
 
 ---
 
@@ -336,6 +352,27 @@ python3 tools/screenshot.py /dev/tty.usbserial-XXXX --scale 6
 
 ---
 
+## Live screen preview and running without an OLED
+
+The display driver is `components/oled_failover`, a drop-in for `ssd1306_i2c`. At boot it probes the panel on I2C; if nothing answers, the remote **keeps running with a virtual screen** (every screen, key and radio path still works, nothing is drawn anywhere) instead of marking the display failed. The log says `No OLED answered on I2C 0x3C: running with a virtual screen`.
+
+With the substitution `SCREEN_PREVIEW: "true"` (the generator's **"Screen preview over USB"** toggle, which also turns the logger on) every changed frame is written to the log as `oledfb` lines, for a real or a virtual display alike:
+
+```
+[I][oledfb:20]: <frame> <part 0-7> <base64 of 128 bytes>      # 8 parts = the 1024-byte framebuffer
+```
+
+The **Live screen preview** on the website's firmware page (Chrome/Edge, Web Serial) and `tools/oled_monitor.py` read those lines and draw the screen as a dot matrix next to the battery and USB readings and the log:
+
+```bash
+python3 tools/oled_monitor.py /dev/cu.usbmodemXXXX      # http://127.0.0.1:8706
+python3 tools/oled_console.py /dev/cu.usbmodemXXXX      # the same in the terminal (quick look)
+```
+
+Notes: the remote disappears from USB while it sleeps and comes back on wake, so the viewers reconnect by themselves; only one program can hold the serial port, so close the monitor before flashing; the preview costs a little power and boot time because the logger runs, which is why it is off by default.
+
+---
+
 ## Enabling and disabling controllers
 
 Open `src/menu_entities.h`. The `MENU_LIST` array controls which controllers appear in the carousel and in what order:
@@ -484,11 +521,11 @@ Documented in `src/espnow_protocol.h`. Every packet starts with `R N <version> <
 - Try increasing `output_power` in `remote.yaml`
 
 **Display not working**
-- Check SDA/SCL wiring (GPIO27/GPIO25)
+- Check that `PCB` matches your board (pins in `packages/boards/pcb_<PCB>.yaml`)
 - Verify the display model (`SH1106` vs `SSD1306`) and I2C address (`0x3C`)
 
 **Buttons not responding**
-- Check pin assignments match your hardware revision (v1 vs v2 layout)
+- Check that `PCB` matches your board and the layout matches your keypad (v1 vs v2 layout)
 - Pins use internal pull-ups — button should connect GPIO to GND
 
 **ESP-NOW remote shows NO HUB**

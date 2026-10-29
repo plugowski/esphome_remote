@@ -1,0 +1,206 @@
+# ── pcb_v4_1.yaml ────────────────────────────────────────────────────────────
+# PCB v4.1 and later (v4.1, v4.2, v4.3): ESP32-S3 (dual-core, 8 MB flash;
+# MINI-1-N8 up to v4.2, WROOM-1-N8 from v4.3) with a BQ24075 charger, a
+# TPS62840 buck and a MAX17048 fuel gauge.
+#
+#   battery   MAX17048 at 0x36 on its own always-on bus (10 k pull-ups to
+#             3V3), readable with the OLED off
+#   OLED      GPIO14 enables the high-side OLED switch
+#   I2C       OLED bus SDA 8 / SCL 9, gauge + I2C_EXT bus SDA 15 / SCL 16,
+#             external pull-ups only
+#   USB       GPIO17 reads VBUS / 2: high while a cable is plugged in
+#   wake      any key: POWER (GPIO0) through wakeup_pin, the other nine
+#             through EXT1 any-low (all keys sit on RTC pins 0-21)
+#
+# Wired but unused by the firmware: gauge alert (GPIO13), I2C_EXT interrupt
+# (GPIO21). Selected with PCB: "v4_1" in remote.yaml / remote_espnow.yaml.
+
+substitutions:
+  PIN_KEY_POWER: "0"
+  PIN_KEY_SELECT: "1"
+  PIN_KEY_ECO: "2"
+  PIN_KEY_AC_POWER: "4"
+  PIN_KEY_MODE: "5"
+  PIN_KEY_FAN: "6"
+  PIN_KEY_UP_1: "7"
+  PIN_KEY_UP_2: "10"
+  PIN_KEY_DOWN_1: "11"
+  PIN_KEY_DOWN_2: "12"
+  PIN_I2C_SDA: "8"
+  PIN_I2C_SCL: "9"
+  PIN_FUEL_SDA: "15"
+  PIN_FUEL_SCL: "16"
+  PIN_OLED_EN: "14"
+  PIN_VBUS_SENSE: "17"
+  # No cell connected: the charger then holds the battery rail above what a LiPo can reach (measured 4.32 V, and
+  # the gauge calls it 117 %). At or above this the level is reported as unknown (-1, shown as "---").
+  BATTERY_ABSENT_MV: "4260"
+  OLED_POWER_ON_TIMER_WAKE: "false"
+  # Keys other than POWER are also deep-sleep wake pins (EXT1) - the layout
+  # then has to mark them as shared.
+  KEYS_SHARED_WITH_WAKE: "true"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 8MB
+
+esphome:
+  includes:
+    - src/ext1_wake.h
+  on_shutdown:
+    - then:
+        - lambda: |-
+            ext1_keep_pullups({${PIN_KEY_SELECT}, ${PIN_KEY_ECO}, ${PIN_KEY_AC_POWER},
+                               ${PIN_KEY_MODE}, ${PIN_KEY_FAN}, ${PIN_KEY_UP_1},
+                               ${PIN_KEY_UP_2}, ${PIN_KEY_DOWN_1}, ${PIN_KEY_DOWN_2}});
+
+# POWER keeps the wakeup_pin of remote.yaml / remote_espnow.yaml; the other
+# keys are added here. Each pin is also a binary_sensor in the layout.
+deep_sleep:
+  esp32_ext1_wakeup:
+    mode: ANY_LOW
+    pins:
+      - number: ${PIN_KEY_SELECT}
+        allow_other_uses: true
+      - number: ${PIN_KEY_ECO}
+        allow_other_uses: true
+      - number: ${PIN_KEY_AC_POWER}
+        allow_other_uses: true
+      - number: ${PIN_KEY_MODE}
+        allow_other_uses: true
+      - number: ${PIN_KEY_FAN}
+        allow_other_uses: true
+      - number: ${PIN_KEY_UP_1}
+        allow_other_uses: true
+      - number: ${PIN_KEY_UP_2}
+        allow_other_uses: true
+      - number: ${PIN_KEY_DOWN_1}
+        allow_other_uses: true
+      - number: ${PIN_KEY_DOWN_2}
+        allow_other_uses: true
+
+# Internal pull-ups off on both buses: the OLED bus has its own on the
+# switched OLED supply, the gauge bus 10 k to 3V3.
+i2c:
+  - id: oled_bus
+    sda: ${PIN_I2C_SDA}
+    scl: ${PIN_I2C_SCL}
+    sda_pullup_enabled: false
+    scl_pullup_enabled: false
+    frequency: 400kHz
+    scan: false
+  - id: fuel_bus
+    sda: ${PIN_FUEL_SDA}
+    scl: ${PIN_FUEL_SCL}
+    sda_pullup_enabled: false
+    scl_pullup_enabled: false
+    frequency: 100kHz
+    scan: false
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power
+
+sensor:
+  - platform: max17043      # also drives the MAX17048 (same registers)
+    id: battery_source
+    i2c_id: fuel_bus
+    update_interval: 60s
+    battery_voltage:
+      id: battery_gauge_voltage
+      internal: true
+      on_value:
+        then:
+          - lambda: |-
+              // The charger holds the rail above a LiPo's maximum when no cell is connected (see BATTERY_ABSENT_MV).
+              // Decided here as well as in the level callback: the level read can fail, and then only this one runs.
+              if (x * 1000.0f >= ${BATTERY_ABSENT_MV}) {
+                id(battery_mv) = 0;
+                id(battery_pct) = -1;
+                id(battery_present) = false;
+              } else {
+                id(battery_mv) = static_cast<int>(x * 1000.0f);
+                // A cell connected again: the gauge's estimate still belongs to the old state (it showed ~100 % at
+                // 3.8 V), so have it start over from the present voltage.
+                if (!id(battery_present)) { id(battery_present) = true; id(battery_need_qs) = true; }
+              }
+    battery_level:
+      id: battery_gauge_level
+      internal: true
+      on_value:
+        then:
+          - lambda: |-
+              if (id(battery_gauge_voltage).state * 1000.0f >= ${BATTERY_ABSENT_MV}) {
+                id(battery_mv) = 0;
+                id(battery_pct) = -1;     // no battery connected
+              } else {
+                id(battery_pct) = static_cast<int>((x < 0.0f) ? 0.0f : (x > 100.0f) ? 100.0f : x);
+                // The level must roughly fit the voltage (open-circuit LiPo curve, wide margin for load and charging).
+                // Two readings in a row far apart: the gauge's model has drifted, restart it (at most once an hour).
+                static const float V[] = {3.30f, 3.50f, 3.60f, 3.70f, 3.80f, 3.90f, 4.00f, 4.10f, 4.20f};
+                static const float P[] = {0.f, 5.f, 15.f, 35.f, 55.f, 70.f, 82.f, 92.f, 100.f};
+                const float v = id(battery_gauge_voltage).state;
+                float est = 100.0f;
+                if (v <= V[0]) est = 0.0f;
+                else for (int i = 1; i < 9; i++) if (v <= V[i]) { est = P[i - 1] + (P[i] - P[i - 1]) * (v - V[i - 1]) / (V[i] - V[i - 1]); break; }
+                const float off = id(battery_pct) > est ? id(battery_pct) - est : est - id(battery_pct);
+                id(battery_mismatch) = off > 35.0f ? id(battery_mismatch) + 1 : 0;
+                if (id(battery_mismatch) >= 2 && (id(battery_qs_at) == 0 || millis() - id(battery_qs_at) > 3600000UL)) {
+                  id(battery_need_qs) = true;
+                }
+              }
+          - if:
+              condition: { lambda: 'return id(battery_need_qs);' }
+              then:
+                - script.execute: battery_quickstart
+          - script.execute: battery_updated
+
+globals:
+  - id: battery_present        # a cell was seen at the last reading (see BATTERY_ABSENT_MV)
+    type: bool
+    initial_value: 'true'
+  - id: battery_need_qs        # the gauge has to restart its estimate
+    type: bool
+    initial_value: 'false'
+  - id: battery_qs_at          # millis() of the last restart, 0 = none since boot
+    type: uint32_t
+    initial_value: '0'
+  - id: battery_mismatch       # consecutive readings whose level does not fit the voltage
+    type: int
+    initial_value: '0'
+
+script:
+  # MAX17048 "quick start" (MODE register 0x06, bit 14): the gauge forgets its model state and estimates the level from
+  # the present voltage, as if the cell had just been inserted. Right after a cell is connected the voltage is the
+  # open-circuit one, which is what it wants.
+  - id: battery_quickstart
+    mode: single
+    then:
+      - lambda: |-
+          id(battery_need_qs) = false;
+          id(battery_qs_at) = millis() ? millis() : 1;
+          id(battery_mismatch) = 0;
+      - delay: 1s
+      - lambda: |-
+          ESP_LOGW("battery", "Fuel gauge level %d %% does not fit %.2f V: quick start", id(battery_pct), id(battery_gauge_voltage).state);
+          id(battery_source)->write_byte_16(0x06, 0x4000);
+      - delay: 1500ms
+      - component.update: battery_source
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: ${PIN_VBUS_SENSE}
+      mode: { input: true }
+    id: usb_power
+    name: "USB Power"
+    device_class: plug
+    entity_category: diagnostic
+    # A cable already in at boot must set the strip's bolt too; by default only a change triggers on_state.
+    trigger_on_initial_state: true
+    on_state:
+      # The status strip draws a bolt beside the battery while the cable is in (ContextStrip::drawBolt).
+      - lambda: |-
+          ContextStrip::setUsb(x);
+          id(updated_ui) = true;

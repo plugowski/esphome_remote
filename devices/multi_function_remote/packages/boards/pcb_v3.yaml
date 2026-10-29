@@ -1,0 +1,65 @@
+# ── pcb_v3.yaml ──────────────────────────────────────────────────────────────
+# PCB v3 (v3.2 / v3.3): a WEMOS LOLIN32 (classic dual-core ESP32) on the
+# carrier board. The LiPo runs on the LOLIN32's own charger and LDO.
+#
+#   battery   resistor divider to GPIO32 (ADC), always connected
+#   OLED      GPIO15 switches the OLED ground (low-side MOSFET)
+#   I2C       one bus, SDA 27 / SCL 25 (OLED)
+#   wake      POWER key (GPIO0)
+#
+# Selected with PCB: "v3" in remote.yaml / remote_espnow.yaml.
+
+substitutions:
+  # Keys by their PCB switch name; packages/layouts/* map them to functions.
+  PIN_KEY_POWER: "0"
+  PIN_KEY_SELECT: "22"     # left circle
+  PIN_KEY_ECO: "5"         # middle circle
+  PIN_KEY_AC_POWER: "33"   # right circle
+  PIN_KEY_MODE: "14"       # left rectangle
+  PIN_KEY_FAN: "26"        # right rectangle
+  PIN_KEY_UP_1: "23"       # long key 1, left half
+  PIN_KEY_UP_2: "17"       # long key 1, right half
+  PIN_KEY_DOWN_1: "19"     # long key 2, left half
+  PIN_KEY_DOWN_2: "18"     # long key 2, right half
+  PIN_I2C_SDA: "27"
+  PIN_I2C_SCL: "25"
+  PIN_OLED_EN: "15"
+  PIN_BAT_ADC: "32"
+  # The battery is read through the ADC, so a timer wake leaves the OLED off.
+  OLED_POWER_ON_TIMER_WAKE: "false"
+  # Only POWER wakes the board, so the other key pins are not shared.
+  KEYS_SHARED_WITH_WAKE: "false"
+
+esp32:
+  board: esp32dev
+
+i2c:
+  - id: oled_bus
+    sda: ${PIN_I2C_SDA}
+    scl: ${PIN_I2C_SCL}
+    frequency: 400kHz
+    scan: false
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power
+
+# Divider ratio and the LiPo range 3.2 V (0 %) → 4.2 V (100 %) as calibrated
+# on this board. battery_updated (settings package) publishes the result.
+sensor:
+  - platform: adc
+    pin: ${PIN_BAT_ADC}
+    id: battery_source
+    internal: true
+    attenuation: 12db
+    update_interval: 60s
+    filters:
+      - multiply: 2.0
+    on_value:
+      then:
+        - lambda: |-
+            id(battery_mv) = static_cast<int>(x * 1000.0f);
+            float pct = (x - 3.2f) / 1.0f * 100.0f;
+            id(battery_pct) = static_cast<int>((pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct);
+        - script.execute: battery_updated

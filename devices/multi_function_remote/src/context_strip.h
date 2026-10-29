@@ -19,7 +19,10 @@
 //                Both chips have their corner pixels cut, for a rounded look.
 //   left of it   NO WIFI / NO HA / NO HUB while conn_status != 0
 //   x=117..127   battery outline with a 5-step level; outline only while the
-//                level is unknown (battery_pct == -1). With battery_pct=true
+//                level is unknown (battery_pct == -1). With USB-C connected (setUsb) a
+//                bolt sits just left of it (x=111..114) and the badge moves 5 px left;
+//                with USB-C and no battery detected the bolt alone takes the battery's
+//                place, centred in its 11 px (x=120..123), so nothing else moves. With battery_pct=true
 //                the level also shows as "87%" left of it (Settings). With
 //                battery=false neither is drawn and the badge moves to the
 //                right edge (Settings HISTORY, whose badge says BATTERY).
@@ -30,6 +33,7 @@
 // The battery level is pushed in from YAML, so controllers don't need an
 // extra draw() argument:
 //   ContextStrip::setBattery(id(battery_pct));              // on each reading
+//   ContextStrip::setUsb(id(usb_power).state);              // when the cable is plugged / pulled
 //
 // Drawing (from a controller's draw(), after it->clear()):
 //   ContextStrip::draw(it, "LIGHTS", page, page_count, conn_status, "ALL");
@@ -43,6 +47,10 @@ public:
 
   // 0..100, or -1 while unknown.
   static void setBattery(int pct) { batteryValue() = pct; }
+
+  // USB-C connected (the board's VBUS sense; boards without one never call this). There is no charger status line
+  // to read, so a connected cable is what the bolt means.
+  static void setUsb(bool connected) { usbValue() = connected; }
 
   // ── tiny 3x5 font ─────────────────────────────────────────────────────────
 
@@ -119,8 +127,15 @@ public:
     // right side, from the edge inwards: battery, context badge, link status
     int right_edge = 128;
     if (battery) {
-      drawBattery(it, 117, y + 1);
-      right_edge = 114;
+      const bool usb = usbValue();
+      if (usb && batteryValue() < 0) {       // cable but no battery detected: the bolt alone
+        drawBolt(it, 120, y + 1);
+        right_edge = 114;
+      } else {
+        drawBattery(it, 117, y + 1);
+        if (usb) drawBolt(it, 111, y + 1);   // charging: the bolt beside the battery, the level stays readable
+        right_edge = usb ? 108 : 114;
+      }
     }
     // battery_pct: the level as "87%" left of the icon (once it's known)
     if (battery && battery_pct && batteryValue() >= 0) {
@@ -166,6 +181,16 @@ private:
   struct Glyph { char c; uint8_t w; uint8_t rows[5]; };
 
   static int& batteryValue() { static int v = -1; return v; }
+  static bool& usbValue() { static bool v = false; return v; }
+
+  // Lightning bolt, 4 x 7 pixels.
+  template<class D>
+  static void drawBolt(D* it, int x, int y) {
+    static const uint8_t ROWS[7] = {0b0001, 0b0011, 0b0110, 0b1111, 0b0011, 0b0110, 0b1100};
+    for (int r = 0; r < 7; r++)
+      for (int col = 0; col < 4; col++)
+        if (ROWS[r] & (1 << (3 - col))) it->draw_pixel_at(x + col, y + r, COLOR_ON);
+  }
 
   template<class D>
   static void drawBattery(D* it, int x, int y) {

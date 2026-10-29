@@ -1,0 +1,75 @@
+# ── pcb_v4.yaml ──────────────────────────────────────────────────────────────
+# PCB v4.0: ESP32-C3-MINI-1-N4 (single-core RISC-V, 4 MB flash) with a BQ24075
+# charger, an XC6220 LDO and a MAX17048 fuel gauge.
+#
+#   battery   MAX17048 at 0x36 on the OLED bus. The bus pull-ups sit on the
+#             switched OLED supply, so the gauge only answers while the OLED
+#             is powered: a timer wake powers it too (the display is not
+#             initialised then, so the panel stays dark).
+#   OLED      GPIO10 enables the high-side OLED switch
+#   I2C       one bus, SDA 6 / SCL 7, external pull-ups only
+#   wake      POWER key (GPIO0); GPIO0-5 are the only deep-sleep wake pins
+#   boot      hold SELECT (GPIO9) during reset for the ROM download mode
+#
+# Not wired on this board: USB power sense, gauge alert, I2C_EXT interrupt.
+# Selected with PCB: "v4" in remote.yaml / remote_espnow.yaml.
+
+substitutions:
+  PIN_KEY_POWER: "0"
+  PIN_KEY_SELECT: "9"      # strapping pin (boot mode)
+  PIN_KEY_ECO: "2"         # strapping pin, 10 k external pull-up
+  PIN_KEY_AC_POWER: "4"
+  PIN_KEY_MODE: "5"
+  PIN_KEY_FAN: "3"
+  PIN_KEY_UP_1: "1"
+  PIN_KEY_UP_2: "20"       # U0RXD, shared with the PROG header
+  PIN_KEY_DOWN_1: "8"      # strapping pin, 10 k external pull-up
+  PIN_KEY_DOWN_2: "21"     # U0TXD, shared with the PROG header
+  PIN_I2C_SDA: "6"
+  PIN_I2C_SCL: "7"
+  PIN_OLED_EN: "10"
+  OLED_POWER_ON_TIMER_WAKE: "true"
+  # Only POWER wakes the board, so the other key pins are not shared.
+  KEYS_SHARED_WITH_WAKE: "false"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  flash_size: 4MB
+
+# Internal pull-ups off: they would feed the unpowered OLED through its pins.
+i2c:
+  - id: oled_bus
+    sda: ${PIN_I2C_SDA}
+    scl: ${PIN_I2C_SCL}
+    sda_pullup_enabled: false
+    scl_pullup_enabled: false
+    frequency: 400kHz
+    scan: false
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power
+
+sensor:
+  - platform: max17043      # also drives the MAX17048 (same registers)
+    id: battery_source
+    i2c_id: oled_bus
+    # After on_boot (700) has switched the OLED supply on and let it settle:
+    # the gauge's first transfer needs the bus pull-ups, and a failed setup
+    # would disable it until the next boot.
+    setup_priority: 500
+    update_interval: 60s
+    battery_voltage:
+      id: battery_gauge_voltage
+      internal: true
+      on_value:
+        then:
+          - lambda: 'id(battery_mv) = static_cast<int>(x * 1000.0f);'
+    battery_level:
+      id: battery_gauge_level
+      internal: true
+      on_value:
+        then:
+          - lambda: 'id(battery_pct) = static_cast<int>((x < 0.0f) ? 0.0f : (x > 100.0f) ? 100.0f : x);'
+          - script.execute: battery_updated

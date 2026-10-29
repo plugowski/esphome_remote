@@ -1,27 +1,30 @@
 # ── layout_v1.yaml ────────────────────────────────────────────────────────────
 # Physical button layout for v1 hardware — original board.
 #
-# Pin assignment:
-#    0  power off  (shared with deep-sleep wake pin)
+# Keys are named after their PCB switch; the GPIO behind each name comes from
+# the PCB package (packages/boards/pcb_*.yaml).
+#
+# Key assignment:
+#   POWER     power off  (shared with deep-sleep wake pin)
 #
 # Circle pad - menu/navigation, mostly unchanged mode-to-mode:
-#    5  MENU        short: menu open / confirm      (also wakes a blanked screen)
-#                   long (0.8 s): room picker (src/room_filter.h)
-#   14  SELECT      AC: cycle entity | Lights: next | Covers: next | Autos: next
-#   26  TOGGLE      AC: power on/off | Lights: toggle | Covers: open<->close | Autos: trigger
-#   22  MODE / <<   menu: prev | AC: cycle HVAC mode | Lights: LOW/ON or prev | Covers: open
-#                   Autos: L slot | Settings: prev row
-#   33  FAN  / >>   menu: next | AC: cycle fan speed | Lights: FULL/OFF or next | Covers: close
-#                   Autos: R slot | Settings: next row
+#   ECO       MENU        short: menu open / confirm      (also wakes a blanked screen)
+#                         long (0.8 s): room picker (src/room_filter.h)
+#   MODE      SELECT      AC: cycle entity | Lights: next | Covers: next | Autos: next
+#   FAN       TOGGLE      AC: power on/off | Lights: toggle | Covers: open<->close | Autos: trigger
+#   SELECT    MODE / <<   menu: prev | AC: cycle HVAC mode | Lights: LOW/ON or prev | Covers: open
+#                         Autos: L slot | Settings: prev row
+#   AC_POWER  FAN  / >>   menu: next | AC: cycle fan speed | Lights: FULL/OFF or next | Covers: close
+#                         Autos: R slot | Settings: next row
 #
 # +/- pair - adjusts whatever value the active mode exposes; each wired to
-# two GPIOs (this board's physical + and - buttons land on different pins):
-#   23,17  +  menu (quick action selected): scroll up | AC: temp+
-#             Lights: brightness+ | Covers: pos+ | Autos: prev in list
-#             Settings: increase selected value
-#   19,18  -  menu (quick action selected): scroll down | AC: temp-
-#             Lights: brightness- | Covers: pos- | Autos: next in list
-#             Settings: decrease selected value
+# two keys (this board's physical + and - buttons land on different pins):
+#   UP_1, UP_2      +  menu (quick action selected): scroll up | AC: temp+
+#                     Lights: brightness+ | Covers: pos+ | Autos: prev in list
+#                     Settings: increase selected value
+#   DOWN_1, DOWN_2  -  menu (quick action selected): scroll down | AC: temp-
+#                     Lights: brightness- | Covers: pos- | Autos: next in list
+#                     Settings: decrease selected value
 #
 # This layout is SELF-CONTAINED — it dispatches directly to mode scripts.
 # It does NOT depend on packages/buttons.yaml (button semantics differ from v2).
@@ -32,7 +35,7 @@ binary_sensor:
   - platform: gpio
     pin:
       allow_other_uses: true   # shared with deep_sleep wakeup_pin
-      number: 0
+      number: ${PIN_KEY_POWER}
       mode: { input: true, pullup: true }
     name: "Power Off"
     internal: true
@@ -54,7 +57,8 @@ binary_sensor:
   # ── SELECT — AC: cycle entity | Lights: next | Covers: next | Autos: next ──
   - platform: gpio
     pin:
-      number: 14
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_MODE}
       mode: { input: true, pullup: true }
     name: "Button Select"
     internal: true
@@ -84,7 +88,8 @@ binary_sensor:
   # ── TOGGLE — AC: on/off | Lights: toggle | Covers: open↔close | Autos: trigger
   - platform: gpio
     pin:
-      number: 26
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_FAN}
       mode: { input: true, pullup: true }
     name: "Button Toggle"
     internal: true
@@ -120,7 +125,8 @@ binary_sensor:
   # ── ☰ menu — open menu / confirm selection ────────────────────────────────
   - platform: gpio
     pin:
-      number: 5
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_ECO}
       mode: { input: true, pullup: true }
     name: "Button Menu"
     internal: true
@@ -164,7 +170,8 @@ binary_sensor:
   # ── FAN / >> — menu next / AC fan / Covers close / Autos R ───────────────
   - platform: gpio
     pin:
-      number: 33
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_AC_POWER}
       mode: { input: true, pullup: true }
     name: "Button Fan"
     internal: true
@@ -203,7 +210,8 @@ binary_sensor:
   # ── MODE / << — menu prev / AC HVAC mode / Lights prev / Covers open / Autos L
   - platform: gpio
     pin:
-      number: 22
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_SELECT}
       mode: { input: true, pullup: true }
     name: "Button Mode"
     internal: true
@@ -242,7 +250,8 @@ binary_sensor:
   # ── TEMP ↑ primary (23) ───────────────────────────────────────────────────
   - platform: gpio
     pin:
-      number: 23
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_UP_1}
       mode: { input: true, pullup: true }
     name: "Button Temp Up"
     internal: true
@@ -278,7 +287,8 @@ binary_sensor:
   # ── TEMP ↑ secondary (17) — same actions as pin 23 ───────────────────────
   - platform: gpio
     pin:
-      number: 17
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_UP_2}
       mode: { input: true, pullup: true }
     name: "Button Temp Up 2"
     internal: true
@@ -314,7 +324,8 @@ binary_sensor:
   # ── TEMP ↓ primary (19) ───────────────────────────────────────────────────
   - platform: gpio
     pin:
-      number: 19
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_DOWN_1}
       mode: { input: true, pullup: true }
     name: "Button Temp Down"
     internal: true
@@ -350,7 +361,8 @@ binary_sensor:
   # ── TEMP ↓ secondary (18) — same actions as pin 19 ───────────────────────
   - platform: gpio
     pin:
-      number: 18
+      allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
+      number: ${PIN_KEY_DOWN_2}
       mode: { input: true, pullup: true }
     name: "Button Temp Down 2"
     internal: true

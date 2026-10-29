@@ -18,7 +18,9 @@ script:
     then:
       # Give the UI time to draw the snapshot that came with the same wake.
       - delay: 1s
-      - lambda: 'memcpy(id(shot_buf).data(), grab_raw_buffer(id(oled_display)), id(shot_buf).size());'
+      - lambda: |-
+          memcpy(id(shot_buf).data(), grab_raw_buffer(id(oled_display)), id(shot_buf).size());
+          id(oled_display)->dump_screenshot();   // also to this remote's own log, for the website's live preview
       - repeat:
           count: 8
           then:

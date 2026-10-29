@@ -1,12 +1,13 @@
 substitutions:
-  BOARD: "esp32dev"
+  # Which PCB this firmware is for; picks packages/boards/pcb_<PCB>.yaml
+  # (chip, key pins, OLED power, battery source):
+  #   "v3"    LOLIN32 (ESP32) carrier board, battery on an ADC divider
+  #   "v4"    PCB v4.0: ESP32-C3 module, MAX17048 fuel gauge, LDO
+  #   "v4_1"  ESP32-S3 module (v4.1 and later), MAX17048, buck, USB sense
+  # Also settable at build time: esphome -s PCB v4 compile remote.yaml
+  PCB: "v3"
   DEVICE_NAME: "oled-remote"
   FRIENDLY_NAME: "OLED Remote"
-  PIN_WAKE: "0"
-  PIN_I2C_SDA: "27"
-  PIN_I2C_SCL: "25"
-  PIN_OLED_EN: "15"
-  PIN_BAT_ADC: "32"
   # Lights mode view: "true" (default) shows one light per screen (card view:
   # big bulb, ON/OFF, brightness bar, LOW/FULL presets on the outer circles);
   # "false" keeps the original scrollable list. Button mapping for both is
@@ -61,7 +62,7 @@ substitutions:
   QUIET_HOURS_START: "0"
   QUIET_HOURS_END: "0"
   # Whether the Settings screen lists the BATTERY CHECK row at all — the
-  # underlying ADC sensor and its wake cadence keep running either way (that
+  # underlying battery sensor and its wake cadence keep running either way (that
   # cadence is also the general timer-wake interval, not purely a battery
   # concept, so it isn't removable without its own separate setting), this
   # only controls whether the row is worth exposing.
@@ -83,8 +84,12 @@ substitutions:
   # the Home Assistant API (and the HA-exposed Screenshot button) works
   # either way - this only controls the raw USB-serial output.
   LOGGER_BAUD_RATE: "0"
+  # "true": mirror the screen to the log for the live preview on the firmware page (https://tech.lugowski.dev/firmware/).
+  # Needs the logger, so set LOGGER_BAUD_RATE to "115200" with it (the configurator does both).
+  SCREEN_PREVIEW: "false"
 
 packages:
+  pcb:         !include packages/boards/pcb_${PCB}.yaml
   menu:        !include packages/menu.yaml
   ac:          !include packages/mode_ac.yaml
   lights:      !include packages/mode_lights.yaml
@@ -161,12 +166,24 @@ esphome:
   on_boot:
     - priority: 700
       then:
-        - lambda: 'id(is_timer_wake) = is_timer_wakeup();'
+        - lambda: |-
+            id(is_timer_wake) = is_timer_wakeup();
+            // A battery-only timer wake parks setup at the boot gate (-250):
+            // the battery job below (-200) reports and puts the remote back to
+            // sleep from there, so the display (-300) is never set up - no
+            // init sequence, no DISPLAY ON, nothing on the I2C bus for it.
+            // (On PCB v3 the OLED keeps 3V3 and only its ground is switched,
+            // so that traffic used to give it a ground path and light it.)
+            if (id(is_timer_wake)) id(battery_wake_gate).hold();
+        # A board whose fuel gauge shares the OLED bus (PCB v4.0) needs the
+        # OLED supply on a timer wake too, for the bus pull-ups; the panel
+        # stays dark since the display never initialises.
         - if:
-            condition: { lambda: 'return !id(is_timer_wake);' }
+            condition: { lambda: 'return !id(is_timer_wake) || ${OLED_POWER_ON_TIMER_WAKE};' }
             then:
               - output.turn_on: oled_power
-              - delay: 10ms
+              # blocking, so the rail is up before the I2C devices set up
+              - lambda: 'delay(10);'
     - priority: 250
       then:
         - if:
@@ -189,7 +206,9 @@ esphome:
                   // instead of whatever the user last set on the physical
                   // Settings screen.
                   id(oled_display)->set_contrast(SettingsController::contrastFloat(id(contrast_level)));
-    - priority: -200        # runs after all sensors/components are initialised
+    # Battery-only timer wake: runs while setup waits at the boot gate (WiFi
+    # and the API keep running there). Read the battery, publish it, sleep.
+    - priority: -200
       then:
         - if:
             condition: { lambda: 'return id(is_timer_wake);' }
@@ -205,7 +224,7 @@ esphome:
                         sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
                   else:
                     # Timer wake: read battery, wait for the API to publish, sleep again
-                    - component.update: battery_voltage
+                    - component.update: battery_source
                     - wait_until:
                         condition:
                           api.connected:
@@ -213,21 +232,26 @@ esphome:
                     - delay: 300ms   # ensure the value is flushed to HA
                     - deep_sleep.enter:
                         sleep_duration: !lambda 'return (uint32_t)id(battery_interval_mins) * 60000;'
-            else:
-              # Normal wake: draw the real UI immediately from cached state
+    # Normal wake: after the display (-300) is set up.
+    - priority: -400
+      then:
+        - if:
+            condition: { lambda: 'return !id(is_timer_wake);' }
+            then:
+              # Draw the real UI immediately from cached state
               # instead of blocking the screen (and buttons — they already
               # work regardless, see each mode's *_btn_* scripts) on the
               # network. conn_status drives a small corner badge instead of
               # a full-screen gate; boot_connect_watchdog updates it
               # asynchronously without holding up anything else here.
               # Read the battery now so the low-battery notice below has a value.
-              - component.update: battery_voltage
+              - component.update: battery_source
               - lambda: |-
                   mark_normal_wake();
                   id(is_booting) = false;
                   id(updated_ui) = true;
-                  // Low-battery notice from the reading just taken (battery_voltage's
-                  // on_value sets battery_pct; -1 = no reading).
+                  // Low-battery notice from the reading just taken (battery_source
+                  // sets battery_pct; -1 = no reading).
                   const int battery_now = id(battery_pct);
                   if (battery_now >= 0 && battery_now < 10) {
                     char msg[16];
@@ -237,8 +261,8 @@ esphome:
               - script.execute: main_update
               - script.execute: boot_connect_watchdog
 
+# board / flash size come from the PCB package
 esp32:
-  board: ${BOARD}
   framework:
     type: esp-idf
     sdkconfig_options:
@@ -290,15 +314,12 @@ ota:
 logger:
   baud_rate: ${LOGGER_BAUD_RATE}
 
-output:
-  - platform: gpio
-    pin: ${PIN_OLED_EN}
-    id: oled_power
-
+# oled_power (output), the I2C bus(es) and battery_source come from the PCB
+# package.
 deep_sleep:
   id: go_sleep
   wakeup_pin:
-    number: ${PIN_WAKE}
+    number: ${PIN_KEY_POWER}
     allow_other_uses: true
   wakeup_pin_mode: INVERT_WAKEUP
 
@@ -310,14 +331,26 @@ time:
   - platform: sntp
     id: sntp_time
 
-i2c:
-  sda: ${PIN_I2C_SDA}
-  scl: ${PIN_I2C_SCL}
-  frequency: 400kHz
-  scan: false
+# Battery-only timer wakes stop at this gate (held in on_boot 700) and sleep
+# from there; see components/boot_gate.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ boot_gate, oled_failover ]
+
+boot_gate:
+  id: battery_wake_gate
+  setup_priority: -250
 
 display:
-  - platform: ssd1306_i2c
+  # Falls back to a virtual screen when no OLED answers on I2C, so the remote still runs headless; with
+  # SCREEN_PREVIEW it also streams every frame to the log for the website's live preview.
+  - platform: oled_failover
+    i2c_id: oled_bus
+    mirror: ${SCREEN_PREVIEW}
+    # After the boot gate, so a battery-only timer wake never sets it up.
+    setup_priority: -300
     model: "SH1106 128x64"
     address: 0x3C
     rotation: 180

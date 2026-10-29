@@ -4,6 +4,7 @@ button:
     id: screenshot_btn
     on_press:
       - lambda: |-
+          id(oled_display)->dump_screenshot();   // the same frame for the website's live preview (oledshot lines)
           const uint8_t* buf = grab_raw_buffer(id(oled_display));
           char line[257];
           ESP_LOGI("screenshot", "SCREENSHOT_BEGIN");

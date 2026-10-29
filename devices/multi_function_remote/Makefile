@@ -15,12 +15,16 @@
 ##   make logs         → open serial monitor (device must be connected)
 ##   make logs-ota IP=x.x.x.x  → stream logs over WiFi
 ##   make clean        → remove build artefacts
+##
+## PCB=v3 | v4 | v4_1 overrides the PCB substitution of remote.yaml /
+## remote_espnow.yaml for one build, e.g.  make flash-espnow PCB=v4_1
 
 ESPHOME  := esphome
 CONFIG   := remote.yaml
 DEMO     := remote_demo.yaml
 ESPNOW   := remote_espnow.yaml
 HUB      := ../espnow_hub/hub.yaml
+SUBS     := $(if $(PCB),-s PCB $(PCB),)
 
 # ── targets ──────────────────────────────────────────────────────────────────
 
@@ -31,7 +35,7 @@ all: compile
 
 ## Compile production firmware (remote.yaml)
 compile:
-	$(ESPHOME) compile $(CONFIG)
+	$(ESPHOME) $(SUBS) compile $(CONFIG)
 
 ## Compile demo firmware (remote_demo.yaml, no HA required)
 demo:
@@ -40,7 +44,7 @@ demo:
 ## Compile + flash over USB serial
 ## Auto-detects the port; set PORT=/dev/cu.usbserial-XXXX if it fails
 flash:
-	$(ESPHOME) upload $(CONFIG) $(if $(PORT),--device $(PORT),)
+	$(ESPHOME) $(SUBS) upload $(CONFIG) $(if $(PORT),--device $(PORT),)
 
 ## Compile + flash demo over USB
 flash-demo:
@@ -50,21 +54,21 @@ flash-demo:
 ## Usage: make ota IP=192.168.1.42
 ota:
 	@test -n "$(IP)" || (echo "Usage: make ota IP=x.x.x.x" && exit 1)
-	$(ESPHOME) upload $(CONFIG) --device $(IP)
+	$(ESPHOME) $(SUBS) upload $(CONFIG) --device $(IP)
 
 ## ── ESP-NOW variant ─────────────────────────────────────────────────────────
 
 ## Compile the ESP-NOW remote (remote_espnow.yaml, no WiFi)
 espnow:
-	$(ESPHOME) compile $(ESPNOW)
+	$(ESPHOME) $(SUBS) compile $(ESPNOW)
 
 ## Compile + flash the ESP-NOW remote over USB (no OTA without WiFi)
 flash-espnow:
-	$(ESPHOME) upload $(ESPNOW) $(if $(PORT),--device $(PORT),)
+	$(ESPHOME) $(SUBS) upload $(ESPNOW) $(if $(PORT),--device $(PORT),)
 
 ## Serial monitor for the ESP-NOW remote
 logs-espnow:
-	$(ESPHOME) logs $(ESPNOW) $(if $(PORT),--device $(PORT),)
+	$(ESPHOME) $(SUBS) logs $(ESPNOW) $(if $(PORT),--device $(PORT),)
 
 ## Compile the ESP-NOW hub (devices/espnow_hub/hub.yaml)
 hub:
@@ -86,13 +90,13 @@ logs-hub:
 
 ## Open serial monitor (USB, device must be connected)
 logs:
-	$(ESPHOME) logs $(CONFIG) $(if $(PORT),--device $(PORT),)
+	$(ESPHOME) $(SUBS) logs $(CONFIG) $(if $(PORT),--device $(PORT),)
 
 ## Stream logs over WiFi
 ## Usage: make logs-ota IP=192.168.1.42
 logs-ota:
 	@test -n "$(IP)" || (echo "Usage: make logs-ota IP=x.x.x.x" && exit 1)
-	$(ESPHOME) logs $(CONFIG) --device $(IP)
+	$(ESPHOME) $(SUBS) logs $(CONFIG) --device $(IP)
 
 ## Remove generated build directories
 clean:
