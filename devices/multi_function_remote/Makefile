@@ -5,6 +5,7 @@
 ## Quick usage:
 ##   make              → compile only (no device needed)
 ##   make demo         → compile the demo firmware
+##   make welcome PCB=v4 → compile the welcome / key-tester firmware for one PCB
 ##   make flash        → compile + flash over USB
 ##   make ota IP=x.x.x.x  → compile + flash over WiFi (OTA)
 ##   make espnow       → compile the ESP-NOW remote firmware
@@ -22,13 +23,14 @@
 ESPHOME  := esphome
 CONFIG   := remote.yaml
 DEMO     := remote_demo.yaml
+WELCOME  := welcome.yaml
 ESPNOW   := remote_espnow.yaml
 HUB      := ../espnow_hub/hub.yaml
 SUBS     := $(if $(PCB),-s PCB $(PCB),)
 
 # ── targets ──────────────────────────────────────────────────────────────────
 
-.PHONY: all compile flash ota logs logs-ota clean help \
+.PHONY: all compile demo welcome flash ota logs logs-ota clean help \
         espnow flash-espnow logs-espnow hub flash-hub ota-hub logs-hub
 
 all: compile
@@ -40,6 +42,10 @@ compile:
 ## Compile demo firmware (remote_demo.yaml, no HA required)
 demo:
 	$(ESPHOME) compile $(DEMO)
+
+## Compile the welcome / key-tester firmware for the flasher page (PCB=v3 | v4 | v4_1)
+welcome:
+	$(ESPHOME) $(SUBS) compile $(WELCOME)
 
 ## Compile + flash over USB serial
 ## Auto-detects the port; set PORT=/dev/cu.usbserial-XXXX if it fails

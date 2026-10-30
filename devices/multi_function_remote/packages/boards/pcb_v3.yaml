@@ -1,5 +1,5 @@
 # ── pcb_v3.yaml ──────────────────────────────────────────────────────────────
-# PCB v3 (v3.2 / v3.3): a WEMOS LOLIN32 (classic dual-core ESP32) on the
+# PCB v3 (v3.1): a WEMOS LOLIN32 (classic dual-core ESP32) on the
 # carrier board. The LiPo runs on the LOLIN32's own charger and LDO.
 #
 #   battery   resistor divider to GPIO32 (ADC), always connected
@@ -63,3 +63,17 @@ sensor:
             float pct = (x - 3.2f) / 1.0f * 100.0f;
             id(battery_pct) = static_cast<int>((pct < 0.0f) ? 0.0f : (pct > 100.0f) ? 100.0f : pct);
         - script.execute: battery_updated
+
+# The preview's battery tiles and graph (website firmware page / tools): one line every 5 s while the screen is
+# streamed, i.e. SCREEN_PREVIEW or no OLED connected (components/oled_failover). Nothing runs otherwise.
+# Same format on every board; no USB sense on this board (usb=0) and no gauge, so
+# gauge_v / gauge_pct repeat the ADC reading.
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (!id(oled_display)->stream_active()) return;
+          char line[96];
+          snprintf(line, sizeof(line), "usb=0 mv=%d pct=%d gauge_v=%.3f gauge_pct=%d", id(battery_mv), id(battery_pct),
+                   id(battery_mv) / 1000.0f, id(battery_pct));
+          oled_failover::preview_line("oledbat", line);

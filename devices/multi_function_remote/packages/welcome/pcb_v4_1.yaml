@@ -1,0 +1,36 @@
+# Welcome build, PCB v4.1: ESP32-S3-MINI-1-N8 on the PCB. Same pins as
+# packages/boards/pcb_v4_1.yaml (only the OLED bus is used here).
+substitutions:
+  DEVICE_NAME: "welcome_41"
+  VERSION: "v4.1"
+  PIN_KEY_POWER: "0"
+  PIN_KEY_SELECT: "1"      # left circle
+  PIN_KEY_ECO: "2"         # middle circle
+  PIN_KEY_AC_POWER: "4"    # right circle
+  PIN_KEY_MODE: "5"        # left rectangle
+  PIN_KEY_FAN: "6"         # right rectangle
+  PIN_KEY_UP_1: "7"        # long key 1, left half
+  PIN_KEY_UP_2: "10"       # long key 1, right half
+  PIN_KEY_DOWN_1: "11"     # long key 2, left half
+  PIN_KEY_DOWN_2: "12"     # long key 2, right half
+  PIN_I2C_SDA: "8"
+  PIN_I2C_SCL: "9"
+  PIN_OLED_EN: "14"        # high-side switch on the OLED 3.3 V rail
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 8MB
+
+# Internal pull-ups off: the bus has its own on the switched OLED supply.
+i2c:
+  sda: ${PIN_I2C_SDA}
+  scl: ${PIN_I2C_SCL}
+  sda_pullup_enabled: false
+  scl_pullup_enabled: false
+  frequency: 400kHz
+  scan: false
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power

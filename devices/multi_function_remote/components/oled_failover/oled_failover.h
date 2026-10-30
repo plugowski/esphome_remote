@@ -6,8 +6,8 @@
 // The stream runs when `mirror` is on, and always while the display is virtual (no panel answered): a remote without
 // an OLED is then still watchable. dump_screenshot() writes the same lines once under the tag `oledshot`.
 // preview_line() is the one way these lines leave the chip: through the logger when it is on, otherwise straight to
-// the USB-Serial-JTAG port (only while a host is connected), so a build with the logger off - the default - can
-// still be watched. Other code that wants to appear in the preview (the battery line) calls it too.
+// the USB-Serial-JTAG port (only while a host is connected), or on a chip without one (the classic ESP32 of PCB v3)
+// to UART0, which its USB bridge carries, so a build with the logger off - the default - can still be watched. Other code that wants to appear in the preview (the battery line) calls it too.
 
 #include <cstring>
 #include "esphome/core/component.h"
@@ -23,6 +23,9 @@
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
 #include "driver/usb_serial_jtag.h"
 #define OLED_FAILOVER_USB_DIRECT 1
+#else
+#include "driver/uart.h"
+#define OLED_FAILOVER_UART_DIRECT 1
 #endif
 #endif
 
@@ -54,6 +57,18 @@ inline void preview_line(const char *tag, const char *text) {
   usb_serial_jtag_write_bytes(head, n, 0);
   usb_serial_jtag_write_bytes(text, strlen(text), 0);
   usb_serial_jtag_write_bytes("\r\n", 2, 0);
+#elif defined(OLED_FAILOVER_UART_DIRECT)
+  // No USB-Serial-JTAG on this chip: UART0 is what the USB bridge (CP2104) listens to. The logger is off here, so the
+  // port is free; the driver is installed on first use. There is no way to tell whether a host is reading, just write.
+  if (!uart_is_driver_installed(UART_NUM_0)) {
+    if (uart_driver_install(UART_NUM_0, 256, 4096, 0, nullptr, 0) != ESP_OK) return;  // 256 = minimum RX, 4096 = TX
+    uart_set_baudrate(UART_NUM_0, 115200);
+  }
+  char head[40];
+  const int n = snprintf(head, sizeof(head), "[I][%s:0]: ", tag);
+  uart_write_bytes(UART_NUM_0, head, n);
+  uart_write_bytes(UART_NUM_0, text, strlen(text));
+  uart_write_bytes(UART_NUM_0, "\r\n", 2);
 #else
   (void) tag;
   (void) text;

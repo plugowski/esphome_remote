@@ -1,0 +1,36 @@
+# Welcome build, PCB v4.0: ESP32-C3-MINI-1-N4 on the PCB. Same pins as
+# packages/boards/pcb_v4.yaml. ROM download mode: hold SELECT (GPIO9) at reset.
+substitutions:
+  DEVICE_NAME: "welcome_40"
+  VERSION: "v4.0"
+  PIN_KEY_POWER: "0"
+  PIN_KEY_SELECT: "9"      # left circle, strapping pin (boot mode)
+  PIN_KEY_ECO: "2"         # middle circle, strapping pin, 10 k external pull-up
+  PIN_KEY_AC_POWER: "4"    # right circle
+  PIN_KEY_MODE: "5"        # left rectangle
+  PIN_KEY_FAN: "3"         # right rectangle
+  PIN_KEY_UP_1: "1"        # long key 1, left half
+  PIN_KEY_UP_2: "20"       # long key 1, right half (U0RXD, shared with PROG)
+  PIN_KEY_DOWN_1: "8"      # long key 2, left half, strapping pin, 10 k external pull-up
+  PIN_KEY_DOWN_2: "21"     # long key 2, right half (U0TXD, shared with PROG)
+  PIN_I2C_SDA: "6"
+  PIN_I2C_SCL: "7"
+  PIN_OLED_EN: "10"        # high-side switch on the OLED 3.3 V rail
+
+esp32:
+  board: esp32-c3-devkitm-1
+  flash_size: 4MB
+
+# Internal pull-ups off: the bus has its own on the switched OLED supply.
+i2c:
+  sda: ${PIN_I2C_SDA}
+  scl: ${PIN_I2C_SCL}
+  sda_pullup_enabled: false
+  scl_pullup_enabled: false
+  frequency: 400kHz
+  scan: false
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power

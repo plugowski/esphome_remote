@@ -73,3 +73,17 @@ sensor:
         then:
           - lambda: 'id(battery_pct) = static_cast<int>((x < 0.0f) ? 0.0f : (x > 100.0f) ? 100.0f : x);'
           - script.execute: battery_updated
+
+# The preview's battery tiles and graph (website firmware page / tools): one line every 5 s while the screen is
+# streamed, i.e. SCREEN_PREVIEW or no OLED connected (components/oled_failover). Nothing runs otherwise.
+# Same format on every board; no USB sense on this board (usb=0). The gauge shares the
+# OLED bus, which is powered whenever the display is, i.e. whenever this runs.
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (!id(oled_display)->stream_active()) return;
+          char line[96];
+          snprintf(line, sizeof(line), "usb=0 mv=%d pct=%d gauge_v=%.3f gauge_pct=%.1f", id(battery_mv), id(battery_pct),
+                   id(battery_gauge_voltage).state, id(battery_gauge_level).state);
+          oled_failover::preview_line("oledbat", line);

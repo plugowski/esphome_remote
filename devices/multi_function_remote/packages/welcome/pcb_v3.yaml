@@ -1,0 +1,31 @@
+# Welcome build, PCB v3.1: WEMOS LOLIN32 carrier board (classic ESP32).
+substitutions:
+  DEVICE_NAME: "welcome_31"
+  VERSION: "v3.1"
+  PIN_KEY_POWER: "0"
+  PIN_KEY_SELECT: "22"     # left circle
+  PIN_KEY_ECO: "5"         # middle circle
+  PIN_KEY_AC_POWER: "33"   # right circle
+  PIN_KEY_MODE: "14"       # left rectangle
+  PIN_KEY_FAN: "26"        # right rectangle
+  PIN_KEY_UP_1: "23"       # long key 1, left half
+  PIN_KEY_UP_2: "17"       # long key 1, right half
+  PIN_KEY_DOWN_1: "19"     # long key 2, left half
+  PIN_KEY_DOWN_2: "18"     # long key 2, right half
+  PIN_I2C_SDA: "27"
+  PIN_I2C_SCL: "25"
+  PIN_OLED_EN: "15"        # low-side MOSFET switches the OLED ground
+
+esp32:
+  board: esp32dev
+
+i2c:
+  sda: ${PIN_I2C_SDA}
+  scl: ${PIN_I2C_SCL}
+  frequency: 400kHz
+  scan: false
+
+output:
+  - platform: gpio
+    pin: ${PIN_OLED_EN}
+    id: oled_power

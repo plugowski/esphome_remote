@@ -121,7 +121,7 @@ esphome_remote/
     │   │   ├── boards/                 ← one file per PCB: chip, key pins, OLED power, battery
     │   │   │   ├── pcb_v3.yaml         ← LOLIN32 (ESP32) carrier board (default)
     │   │   │   ├── pcb_v4.yaml         ← PCB v4.0, ESP32-C3 module board
-    │   │   │   └── pcb_v4_1.yaml       ← ESP32-S3 module board, v4.1 and later
+    │   │   │   └── pcb_v4_1.yaml       ← ESP32-S3 module board, PCB v4.1
     │   │   └── layouts/
     │   │       ├── layout_v1.yaml      ← original AC board pinout (self-contained)
     │   │       └── layout_v2.yaml      ← 6-button generic layout (default)
@@ -155,10 +155,10 @@ with `make … PCB=v4_1` (`esphome -s PCB v4_1 …`). Each board's pins live in
 `packages/boards/pcb_<PCB>.yaml`; the button layouts refer to keys by their
 PCB switch name, so they work unchanged on every board.
 
-| | PCB v3 | PCB v4.0 | PCB v4.1 and later |
+| | PCB v3 | PCB v4.0 | PCB v4.1 |
 |---|---|---|---|
 | `PCB` value | `v3` _(default)_ | `v4` | `v4_1` |
-| MCU | ESP32, WEMOS LOLIN32 board (`esp32dev`) | ESP32-C3-MINI-1 module | ESP32-S3 module (MINI-1 / WROOM-1) |
+| MCU | ESP32, WEMOS LOLIN32 board (`esp32dev`) | ESP32-C3-MINI-1 module | ESP32-S3-MINI-1-N8 module |
 | Charging / 3.3 V | LOLIN32's own charger and LDO | BQ24075 charger, LDO | BQ24075 charger, buck converter |
 | Battery reading | resistor divider on GPIO32 (ADC) | MAX17048 fuel gauge, on the OLED bus | MAX17048 fuel gauge, own always-on bus |
 | USB plugged-in sense | – | – | yes (*USB Power* entity) |
@@ -356,7 +356,7 @@ python3 tools/screenshot.py /dev/tty.usbserial-XXXX --scale 6
 
 The display driver is `components/oled_failover`, a drop-in for `ssd1306_i2c`. At boot it probes the panel on I2C; if nothing answers, the remote **keeps running with a virtual screen** (every screen, key and radio path still works, nothing is drawn anywhere) instead of marking the display failed. The log says `No OLED answered on I2C 0x3C: running with a virtual screen`.
 
-With the substitution `SCREEN_PREVIEW: "true"` (the generator's **"Screen preview over USB"** toggle) every changed frame is streamed over USB as `oledfb` lines, for a real or a virtual display alike. **With no OLED the stream is always on**, whatever the toggle says. The lines go through the logger when it is on and straight to the USB-Serial-JTAG port when it is off (the default), and only while a computer is connected, so no logger is needed:
+With the substitution `SCREEN_PREVIEW: "true"` (the generator's **"Screen preview over USB"** toggle) every changed frame is streamed over USB as `oledfb` lines, for a real or a virtual display alike. **With no OLED the stream is always on**, whatever the toggle says. The lines go through the logger when it is on and, when it is off (the default), straight to the USB-Serial-JTAG port (v4.0, v4.1) and only while a computer is connected, or to UART0 at 115200 on v3, which has no USB-Serial-JTAG and whose USB bridge listens on UART0, so no logger is needed:
 
 ```
 [I][oledfb:20]: <frame> <part 0-7> <base64 of 128 bytes>      # 8 parts = the 1024-byte framebuffer
@@ -369,7 +369,7 @@ python3 tools/oled_monitor.py /dev/cu.usbmodemXXXX      # http://127.0.0.1:8706
 python3 tools/oled_console.py /dev/cu.usbmodemXXXX      # the same in the terminal (quick look)
 ```
 
-While streaming, the v4.1 board package also prints the battery readings every 5 seconds as `[I][oledbat:0]: usb=1 mv=3881 pct=37 gauge_v=3.881 gauge_pct=37.6` (`mv=0 pct=-1` means no battery connected); the viewers draw them as tiles and a graph. Notes: the remote disappears from USB while it sleeps and comes back on wake, so the viewers reconnect by themselves; only one program can hold the serial port, so close the monitor before flashing; with a real OLED the stream is off by default because it adds a little work while a computer is connected.
+While streaming, every board package also prints the battery readings every 5 seconds (`usb` is always 0 on v3 and v4.0, which have no USB sense; v3 has no fuel gauge, so `gauge_v` / `gauge_pct` repeat its ADC reading) as `[I][oledbat:0]: usb=1 mv=3881 pct=37 gauge_v=3.881 gauge_pct=37.6` (`mv=0 pct=-1` means no battery connected); the viewers draw them as tiles and a graph. Notes: the remote disappears from USB while it sleeps and comes back on wake, so the viewers reconnect by themselves; only one program can hold the serial port, so close the monitor before flashing; with a real OLED the stream is off by default because it adds a little work while a computer is connected.
 
 ---
 

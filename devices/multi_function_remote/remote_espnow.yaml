@@ -21,7 +21,7 @@ substitutions:
   # (chip, key pins, OLED power, battery source):
   #   "v3"    LOLIN32 (ESP32) carrier board, battery on an ADC divider
   #   "v4"    PCB v4.0: ESP32-C3 module, MAX17048 fuel gauge, LDO
-  #   "v4_1"  ESP32-S3 module (v4.1 and later), MAX17048, buck, USB sense
+  #   "v4_1"  ESP32-S3-MINI-1-N8 module (PCB v4.1), MAX17048, buck, USB sense
   # Also settable at build time: esphome -s PCB v4 compile remote_espnow.yaml
   PCB: "v3"
   DEVICE_NAME: "oled-remote-espnow"
