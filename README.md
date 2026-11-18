@@ -113,6 +113,7 @@ esphome_remote/
     │   │   ├── mode_lights.yaml
     │   │   ├── mode_covers.yaml
     │   │   ├── mode_automations.yaml
+│   │   ├── mode_media.yaml         ← media player screen (entity set in remote.yaml)
     │   │   ├── mode_settings.yaml
     │   │   ├── buttons.yaml            ← abstract btn_* dispatcher (v2 layout)
     │   │   ├── espnow/                 ← ESP-NOW counterparts of the mode packages
@@ -179,7 +180,7 @@ mode is entered by holding SELECT (GPIO9) during reset instead of POWER.
 | | v1 (left) | v2 (right) |
 |---|---|---|
 | **Buttons** | AC, Power, +, − | ↑ ↓ ← → ● ■ |
-| **Use case** | AC-only | Multi-mode (AC, lights, covers, automations) |
+| **Use case** | AC-only | Multi-mode (AC, lights, covers, automations, media) |
 | **Layout file** | `layouts/layout_v1.yaml` | `layouts/layout_v2.yaml` _(default)_ |
 
 Swap the `layout:` package line in `remote.yaml` to match your hardware revision.
@@ -390,6 +391,7 @@ static const MenuEntry MENU_LIST[] = {
 - **Remove a row** — that controller disappears from the carousel. Its button handlers stay silent (`app_mode == APP_X` can never be reached).
 - **Reorder rows** — carousel order changes; routing follows automatically.
 - **Single controller** — the menu button is suppressed (nothing to switch to).
+- **Media** — the `APP_MEDIA` row ships commented out; uncomment it to show the [media player](#media-player-remoteyaml) screen.
 
 The `APP_*` constants are stable — YAML conditions never need changing regardless of which controllers are enabled.
 
@@ -468,6 +470,34 @@ static const AutomationEntity AUTOMATION_LIST[] = {
 - `service` — HA service to call (`scene.turn_on`, `automation.trigger`, `script.turn_on`, etc.)
 - `slot` — `"L"` or `"R"` pins the entry as a one-press bottom-bar shortcut; `nullptr` for list-only
 - `short_name` — bottom-bar label for slotted entries (≤5 chars)
+
+### Media player (`remote.yaml`)
+
+One Home Assistant `media_player`, set with substitutions at the top of `remote.yaml`:
+
+```yaml
+  MEDIA_ENTITY: "media_player.living_room"   # the player
+  MEDIA_NAME: "MEDIA"                        # label on the card
+  MEDIA_SOURCE: "TV"                         # source the left round key selects
+```
+
+The screen is not in the carousel by default. Uncomment its row in `MENU_LIST` (`src/menu_entities.h`):
+
+```cpp
+  { APP_MEDIA,       "\ue32d", "MEDIA"        },
+```
+
+The card shows the play state, the volume and the track title (or the source name while `MEDIA_SOURCE` plays), with a volume slider on the right edge.
+
+| Key | Action |
+|---|---|
+| ↑ / ↓ | volume ± 2, sent 300 ms after the last press |
+| ● | play / pause |
+| ← / → | previous / next track |
+| ■ or right round key | mute / unmute |
+| left round key | select `MEDIA_SOURCE` |
+
+WiFi firmware only for now: the ESP-NOW hub doesn't relay media players yet, so keep `APP_MEDIA` out of `MENU_LIST` for `remote_espnow.yaml`.
 
 ---
 

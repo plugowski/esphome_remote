@@ -16,6 +16,12 @@ substitutions:
   # Automations screen: "true" (default) one automation per screen (card:
   # icon and name), "false" the 4-row list.
   AUTOMATIONS_CARD_VIEW: "true"
+  # Media screen (src/media_controller.h; add APP_MEDIA to MENU_LIST in
+  # src/menu_entities.h to show it): the HA media player it controls, the
+  # label on its card, and the source the left round key selects.
+  MEDIA_ENTITY: "media_player.living_room"
+  MEDIA_NAME: "MEDIA"
+  MEDIA_SOURCE: "TV"
   # "LIGHT" (default) lets the radio modem sleep between DTIM beacons while
   # awake — lower average current, at the cost of a little response jitter.
   # "NONE" keeps the radio fully powered for the whole awake window — more
@@ -98,6 +104,7 @@ packages:
   lights:      !include packages/mode_lights.yaml
   covers:      !include packages/mode_covers.yaml
   automations: !include packages/mode_automations.yaml
+  media:       !include packages/mode_media.yaml
   settings:    !include packages/mode_settings.yaml
   buttons:     !include packages/buttons.yaml
   layout:      !include packages/layouts/layout_v2.yaml
@@ -521,6 +528,9 @@ script:
                               - if:
                                   condition: { lambda: 'return id(app_mode) == APP_SETTINGS;' }
                                   then: [ script.execute: settings_update ]
+                              - if:
+                                  condition: { lambda: 'return id(app_mode) == APP_MEDIA;' }
+                                  then: [ script.execute: media_update ]
                               - if:
                                   condition: { lambda: 'return id(app_mode) == APP_ROOMS;' }
                                   then: [ script.execute: room_picker_draw ]

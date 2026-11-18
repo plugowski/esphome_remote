@@ -36,7 +36,7 @@ script:
 
   # ── btn_left ──────────────────────────────────────────────────────────────
   # Menu: prev  |  AC: prev unit  |  Lights: lights_btn_left (view-dependent)
-  # Covers: prev cover  |  Automations: trigger L slot
+  # Covers: prev cover  |  Automations: trigger L slot  |  Media: prev track
 
   - id: btn_left
     then:
@@ -64,10 +64,13 @@ script:
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
           then: [ script.execute: settings_btn_up ]      # previous setting
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_MEDIA;' }
+          then: [ script.execute: media_btn_prev ]
 
   # ── btn_right ─────────────────────────────────────────────────────────────
   # Menu: next  |  AC: next unit  |  Lights: brightness ↑
-  # Covers: next cover  |  Automations: trigger R slot
+  # Covers: next cover  |  Automations: trigger R slot  |  Media: next track
 
   - id: btn_right
     then:
@@ -95,11 +98,15 @@ script:
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
           then: [ script.execute: settings_btn_down ]    # next setting
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_MEDIA;' }
+          then: [ script.execute: media_btn_next ]
 
   # ── btn_ok  ● ─────────────────────────────────────────────────────────────
   # Menu / action view: run the quick action  |  Menu / carousel: confirm mode
   # AC: toggle on/off  |  Lights: toggle on/off
   # Covers: toggle open ↔ close  |  Automations: trigger selected
+  # Media: play / pause
 
   - id: btn_ok
     then:
@@ -126,10 +133,13 @@ script:
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_AUTOMATIONS && RoomFilter::any(AUTOMATION_LIST_COUNT, automationRoom);' }
                 then: [ script.execute: automations_btn_trigger ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_MEDIA;' }
+                then: [ script.execute: media_btn_play_pause ]
 
   # ── btn_up ────────────────────────────────────────────────────────────────
   # Menu: scroll quick actions ▲  |  AC: temp +  |  Lights: scroll up ▲
-  # Covers: position +10 %  |  Automations: scroll up ▲
+  # Covers: position +10 %  |  Automations: scroll up ▲  |  Media: volume +
 
   - id: btn_up
     then:
@@ -155,10 +165,13 @@ script:
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
           then: [ script.execute: settings_btn_right ]   # value +
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_MEDIA;' }
+          then: [ script.execute: media_btn_vol_up ]
 
   # ── btn_down ──────────────────────────────────────────────────────────────
   # Menu: scroll quick actions ▼  |  AC: temp –  |  Lights: scroll down ▼
-  # Covers: position –10 %  |  Automations: scroll down ▼
+  # Covers: position –10 %  |  Automations: scroll down ▼  |  Media: volume –
 
   - id: btn_down
     then:
@@ -183,10 +196,13 @@ script:
       - if:
           condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
           then: [ script.execute: settings_btn_left ]    # value -
+      - if:
+          condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_MEDIA;' }
+          then: [ script.execute: media_btn_vol_down ]
 
   # ── btn_stop  ■ ───────────────────────────────────────────────────────────
   # Menu / action view: back to carousel  |  Menu / carousel: cancel
-  # AC: turn OFF  |  Lights: OFF  |  Covers: stop
+  # AC: turn OFF  |  Lights: OFF  |  Covers: stop  |  Media: mute / unmute
 
   - id: btn_stop
     then:
@@ -210,6 +226,9 @@ script:
             - if:
                 condition: { lambda: 'return id(app_mode) == APP_COVERS && RoomFilter::any(COVER_LIST_COUNT, coverRoom);' }
                 then: [ script.execute: covers_btn_stop ]
+            - if:
+                condition: { lambda: 'return id(app_mode) == APP_MEDIA;' }
+                then: [ script.execute: media_btn_mute ]
 
   # ── btn_menu_open ─────────────────────────────────────────────────────────
   # Opens the controller selection menu.  Mapped to long press in layout_v2.
