@@ -13,6 +13,7 @@ static const int APP_SETTINGS    = 4;
 #ifdef DEMO_MODE
 static const int APP_INFO        = 5;
 #endif
+static const int APP_MEDIA       = 6;   // WiFi firmware only (packages/mode_media.yaml)
 
 // ── Menu entry ────────────────────────────────────────────────────────────────
 struct MenuEntry {
@@ -32,6 +33,7 @@ static const MenuEntry MENU_LIST[] = {
   { APP_COVERS,      "\uec12", "COVERS"       },
   { APP_LIGHTS,      "\ue0f0", "LIGHTS"       },
   { APP_AUTOMATIONS, "\uea0b", "AUTOMATIONS"  },
+  // { APP_MEDIA,    "\ue32d", "MEDIA"        },  // MEDIA_* in remote.yaml; not on ESP-NOW yet
   { APP_SETTINGS,    "\ue8b8", "SETTINGS"     },
 #ifdef DEMO_MODE
   { APP_INFO,        "\ue88e", "INFO"         },

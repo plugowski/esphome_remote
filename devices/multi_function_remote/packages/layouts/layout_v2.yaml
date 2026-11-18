@@ -17,8 +17,8 @@
 #
 # Always-present hardware buttons (shared with v1):
 #   ECO       ☰  menu           short: open / confirm menu | long (0.8 s): room picker
-#   SELECT    MODE / <<         menu prev | AC: HVAC mode | Lights: prev or LOW/ON | Covers: open | Autos: L slot
-#   AC_POWER  FAN  / >>         menu next | AC: fan speed | Lights: next or FULL/OFF | Covers: close | Autos: R slot
+#   SELECT    MODE / <<         menu prev | AC: HVAC mode | Lights: prev or LOW/ON | Covers: open | Autos: L slot | Media: source
+#   AC_POWER  FAN  / >>         menu next | AC: fan speed | Lights: next or FULL/OFF | Covers: close | Autos: R slot | Media: mute
 #
 # btn_* routing logic lives in packages/buttons.yaml.
 # ECO / SELECT / AC_POWER are dispatched inline (different semantics from btn_left/right).
@@ -208,7 +208,7 @@ binary_sensor:
                                 then: [ script.execute: menu_confirm ]
 
   # ── MODE / << (pin 22) — menu prev | AC: HVAC mode | Lights: circle L ─────
-  # Covers: open | Autos: L slot
+  # Covers: open | Autos: L slot | Media: source
   - platform: gpio
     pin:
       allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
@@ -247,9 +247,12 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
                   then: [ script.execute: settings_btn_up ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_MEDIA;' }
+                  then: [ script.execute: media_btn_source ]
 
   # ── FAN / >> (pin 33) — menu next | AC: fan speed | Covers: close ─────────
-  # Autos: R slot
+  # Autos: R slot | Media: mute
   - platform: gpio
     pin:
       allow_other_uses: ${KEYS_SHARED_WITH_WAKE}   # true where the key is also an EXT1 wake pin (PCB v4.1+)
@@ -288,3 +291,6 @@ binary_sensor:
               - if:
                   condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_SETTINGS;' }
                   then: [ script.execute: settings_btn_down ]
+              - if:
+                  condition: { lambda: 'return !id(menu_active) && id(app_mode) == APP_MEDIA;' }
+                  then: [ script.execute: media_btn_mute ]

@@ -1,0 +1,187 @@
+# ── mode_media.yaml ──────────────────────────────────────────────────────────
+# Media mode: one Home Assistant media player (${MEDIA_ENTITY}), volume /
+# play / mute / track / source (${MEDIA_SOURCE}). Display and state live in
+# src/media_controller.h (button mapping documented there).
+#
+# Button entry points (called from buttons.yaml / layout_v2.yaml):
+#   media_btn_vol_up / media_btn_vol_down   ↑ / ↓
+#   media_btn_play_pause                    ●
+#   media_btn_mute                          ■ / round R
+#   media_btn_prev / media_btn_next         ← / →
+#   media_btn_source                        round L
+# Main update loop: media_update
+
+esphome:
+  includes:
+    - src/media_controller.h
+
+font:
+  - file:
+      type: gfonts
+      family: Material+Symbols+Rounded
+      weight: 400
+    id: media_icon
+    size: 26
+    glyphs:
+      - "\ue32d"  # speaker
+      - "\ue04f"  # volume_off
+      - "\ue037"  # play_arrow
+      - "\ue034"  # pause
+      - "\ue333"  # tv
+
+# ── HA sensors ────────────────────────────────────────────────────────────────
+text_sensor:
+  - platform: homeassistant
+    id: media_player_state
+    entity_id: ${MEDIA_ENTITY}
+    on_value:
+      then:
+        - lambda: 'MediaController::syncPlayer(x, id(updated_ui));'
+        - script.execute: media_draw
+
+  - platform: homeassistant
+    id: media_source
+    entity_id: ${MEDIA_ENTITY}
+    attribute: source
+    on_value:
+      then:
+        - lambda: 'MediaController::syncSource(x, id(updated_ui));'
+        - script.execute: media_draw
+
+  - platform: homeassistant
+    id: media_title
+    entity_id: ${MEDIA_ENTITY}
+    attribute: media_title
+    on_value:
+      then:
+        - lambda: 'MediaController::syncTitle(x, id(updated_ui));'
+        - script.execute: media_draw
+
+  - platform: homeassistant
+    id: media_muted
+    entity_id: ${MEDIA_ENTITY}
+    attribute: is_volume_muted
+    on_value:
+      then:
+        - lambda: 'MediaController::syncMuted(x, id(updated_ui));'
+        - script.execute: media_draw
+
+sensor:
+  - platform: homeassistant
+    id: media_volume
+    entity_id: ${MEDIA_ENTITY}
+    attribute: volume_level
+    on_value:
+      then:
+        - lambda: 'MediaController::syncVolume(x, id(updated_ui));'
+        - script.execute: media_draw
+
+# ── scripts ───────────────────────────────────────────────────────────────────
+script:
+
+  - id: media_btn_vol_up
+    then:
+      - if:
+          condition: { lambda: 'return MediaController::volumeStep(+1, id(updated_ui));' }
+          then: [ script.execute: media_volume_send ]
+      - script.execute: media_draw
+
+  - id: media_btn_vol_down
+    then:
+      - if:
+          condition: { lambda: 'return MediaController::volumeStep(-1, id(updated_ui));' }
+          then: [ script.execute: media_volume_send ]
+      - script.execute: media_draw
+
+  # Coalesces a run of presses into one volume_set; if HA hasn't reported the
+  # new level 3 s later, the screen goes back to HA's value.
+  - id: media_volume_send
+    mode: restart
+    then:
+      - delay: 300ms
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - if:
+          condition:
+            and:
+              - api.connected:
+              - lambda: 'return MediaController::volumeChanged();'
+          then:
+            - homeassistant.action:
+                action: media_player.volume_set
+                data:
+                  entity_id: ${MEDIA_ENTITY}
+                  volume_level: !lambda 'return MediaController::volumeToSend();'
+      - delay: 3s
+      - lambda: 'MediaController::volumeSettled(id(updated_ui));'
+      - script.execute: media_draw
+
+  - id: media_btn_play_pause
+    mode: queued
+    then:
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - homeassistant.action:
+          action: media_player.media_play_pause
+          data:
+            entity_id: ${MEDIA_ENTITY}
+
+  - id: media_btn_next
+    mode: queued
+    then:
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - homeassistant.action:
+          action: media_player.media_next_track
+          data:
+            entity_id: ${MEDIA_ENTITY}
+
+  - id: media_btn_prev
+    mode: queued
+    then:
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - homeassistant.action:
+          action: media_player.media_previous_track
+          data:
+            entity_id: ${MEDIA_ENTITY}
+
+  - id: media_btn_mute
+    then:
+      - lambda: 'MediaController::toggleMute(id(updated_ui));'
+      - script.execute: media_draw
+      - script.execute: media_mute_send
+
+  - id: media_mute_send
+    mode: restart
+    then:
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - homeassistant.action:
+          action: media_player.volume_mute
+          data:
+            entity_id: ${MEDIA_ENTITY}
+            is_volume_muted: !lambda 'return MediaController::muteToSend();'
+
+  - id: media_btn_source
+    mode: queued
+    then:
+      - wait_until: { condition: { api.connected: }, timeout: 10s }
+      - homeassistant.action:
+          action: media_player.select_source
+          data:
+            entity_id: ${MEDIA_ENTITY}
+            source: "${MEDIA_SOURCE}"
+
+  # ── display ───────────────────────────────────────────────────────────────
+
+  - id: media_update
+    then:
+      - script.execute: media_draw
+
+  - id: media_draw
+    then:
+      - if:
+          condition:
+            lambda: 'return id(app_mode) == APP_MEDIA && !id(menu_active) && !id(is_booting) && id(conn_status) == 0;'
+          then:
+            - lambda: >-
+                MediaController::draw(id(oled_display), id(media_icon),
+                                      id(font_bigger), id(font_base), id(font_small),
+                                      "${MEDIA_NAME}", "${MEDIA_SOURCE}",
+                                      id(updated_ui), id(conn_status));

@@ -24,6 +24,7 @@ font:
       - "\ue0f0"  # lightbulb
       - "\uec12"  # curtain
       - "\uea0b"  # bolt  (automations)
+      - "\ue32d"  # speaker  (media)
       - "\ue88b"  # hourglass_empty  (boot screen loading icon)
       - "\ue8b8"  # settings  (cog)
       - "\ue88e"  # info  (DEMO_MODE only - remote_demo.yaml)
@@ -39,6 +40,7 @@ font:
       - "\ue0f0"  # lightbulb
       - "\uec12"  # curtain
       - "\uea0b"  # bolt  (automations)
+      - "\ue32d"  # speaker  (media)
       - "\ue88b"  # hourglass_empty  (boot screen)
       - "\ue8b8"  # settings  (cog)
       - "\ue88e"  # info  (DEMO_MODE only - remote_demo.yaml)

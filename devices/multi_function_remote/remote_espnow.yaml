@@ -116,6 +116,7 @@ packages:
   lights:      !include packages/espnow/mode_lights.yaml
   covers:      !include packages/espnow/mode_covers.yaml
   automations: !include packages/espnow/mode_automations.yaml
+  media:       !include packages/espnow/mode_media.yaml
   settings:    !include packages/espnow/mode_settings.yaml
   buttons:     !include packages/buttons.yaml
   layout:      !include packages/layouts/layout_v2.yaml

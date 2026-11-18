@@ -1,0 +1,21 @@
+# ── espnow/mode_media.yaml ──────────────────────────────────────────────────
+# The media screen (packages/mode_media.yaml) is WiFi-only for now: the hub
+# protocol has no media player state or commands yet. These empty scripts
+# only satisfy the media routing in the shared buttons.yaml / layout_v2.yaml;
+# APP_MEDIA must stay out of MENU_LIST for ESP-NOW builds.
+
+script:
+  - id: media_btn_vol_up
+    then: []
+  - id: media_btn_vol_down
+    then: []
+  - id: media_btn_play_pause
+    then: []
+  - id: media_btn_next
+    then: []
+  - id: media_btn_prev
+    then: []
+  - id: media_btn_mute
+    then: []
+  - id: media_btn_source
+    then: []
